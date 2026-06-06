@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url'
 
 const quiet = process.argv.includes('--quiet')
 const repoDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const localBinDir = path.join(homedir(), '.local', 'bin')
 const qoreBin = path.join(repoDir, 'bin', 'qore')
+const isWindows = process.platform === 'win32'
+const localBinDir = isWindows ? path.join(process.env.APPDATA ?? path.join(homedir(), 'AppData', 'Roaming'), 'npm') : path.join(homedir(), '.local', 'bin')
 const qoreCommand = path.join(localBinDir, 'qore')
+const qoreCmdCommand = path.join(localBinDir, 'qore.cmd')
 const oldQuantCommand = path.join(localBinDir, 'quant')
 const oldQuantTarget = path.join(repoDir, 'bin', 'quant')
 const zshrcPath = path.join(homedir(), '.zshrc')
@@ -27,6 +29,11 @@ async function pathExists(filePath) {
 }
 
 async function removeOldQuantCommand() {
+  if (isWindows) {
+    await unlink(path.join(localBinDir, 'quant.cmd')).catch(() => {})
+    return
+  }
+
   try {
     const target = await readlink(oldQuantCommand)
     const resolved = path.resolve(path.dirname(oldQuantCommand), target)
@@ -42,6 +49,12 @@ async function removeOldQuantCommand() {
 async function installQoreCommand() {
   await mkdir(localBinDir, { recursive: true })
   await chmod(qoreBin, 0o755)
+
+  if (isWindows) {
+    await writeFile(qoreCmdCommand, `@echo off\r\nnode "${qoreBin}" %*\r\n`, 'utf8')
+    log(`Installed command: ${qoreCmdCommand}`)
+    return true
+  }
 
   try {
     const target = await readlink(qoreCommand)
@@ -67,6 +80,8 @@ async function installQoreCommand() {
 }
 
 async function ensureLocalBinOnZshPath() {
+  if (isWindows) return false
+
   const exportLine = 'export PATH="$HOME/.local/bin:$PATH"'
   let contents = ''
   try {

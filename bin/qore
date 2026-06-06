@@ -1,98 +1,163 @@
-#!/bin/zsh
-set -euo pipefail
+#!/usr/bin/env node
+import { spawn, spawnSync } from 'node:child_process'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { request } from 'node:http'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-script_path="$0"
-while [[ -L "${script_path}" ]]; do
-  link_dir="$(cd "$(dirname "${script_path}")" && pwd)"
-  link_target="$(readlink "${script_path}")"
-  if [[ "${link_target}" == /* ]]; then
-    script_path="${link_target}"
-  else
-    script_path="${link_dir}/${link_target}"
-  fi
-done
+const scriptPath = fileURLToPath(import.meta.url)
+const appDir = path.resolve(process.env.QORE_APP_DIR ?? path.join(path.dirname(scriptPath), '..'))
+const host = process.env.QORE_HOST ?? '127.0.0.1'
+const port = String(process.env.QORE_PORT ?? '5173')
+const url = `http://${host}:${port}/`
+const tempRoot = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? tmpdir()
+const logDir = path.join(tempRoot, 'qore')
+const logFile = path.join(logDir, 'vite.log')
+const pidFile = path.join(logDir, 'vite.pid')
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const allowedOrigins =
+  process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ?? `http://${host}:${port},http://localhost:${port},http://127.0.0.1:${port}`
 
-APP_DIR="${QORE_APP_DIR:-$(cd "$(dirname "${script_path}")/.." && pwd)}"
-HOST="${QORE_HOST:-127.0.0.1}"
-PORT="${QORE_PORT:-5173}"
-URL="http://${HOST}:${PORT}/"
-LOG_DIR="${TMPDIR:-/tmp}/qore"
-LOG_FILE="${LOG_DIR}/vite.log"
-PID_FILE="${LOG_DIR}/vite.pid"
-SCREEN_SESSION="qore"
-ALLOWED_ORIGINS="${QORE_GIT_SERVICE_ALLOWED_ORIGINS:-http://${HOST}:${PORT},http://localhost:${PORT},http://127.0.0.1:${PORT}}"
-
-dashboard_is_up() {
-  curl -fsS "${URL}" 2>/dev/null | grep -q "<title>QORE</title>"
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-mkdir -p "${LOG_DIR}"
+function dashboardIsUp() {
+  return new Promise((resolve) => {
+    const req = request(url, { timeout: 1000 }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk) => {
+        body += chunk
+      })
+      res.on('end', () => {
+        resolve(res.statusCode === 200 && body.includes('<title>QORE</title>'))
+      })
+    })
+    req.on('error', () => resolve(false))
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(false)
+    })
+    req.end()
+  })
+}
 
-if [[ "${1:-open}" == "stop" ]]; then
-  if command -v screen >/dev/null 2>&1; then
-    screen -S "${SCREEN_SESSION}" -X quit >/dev/null 2>&1 || true
-  fi
-  if [[ -f "${PID_FILE}" ]]; then
-    old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
-    if [[ -n "${old_pid}" ]]; then
-      kill "${old_pid}" >/dev/null 2>&1 || true
-    fi
-    rm -f "${PID_FILE}"
-  fi
-  echo "QORE stopped."
-  exit 0
-fi
+function openUrl() {
+  const command =
+    process.platform === 'darwin'
+      ? 'open'
+      : process.platform === 'win32'
+        ? 'cmd'
+        : 'xdg-open'
+  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url]
+  const child = spawn(command, args, { detached: true, stdio: 'ignore' })
+  child.on('error', () => {})
+  child.unref()
+}
 
-if [[ "${1:-open}" == "status" ]]; then
-  if dashboard_is_up; then
-    echo "QORE is running: ${URL}"
-  else
-    echo "QORE is not running."
-  fi
-  exit 0
-fi
+function stopLegacyScreen() {
+  if (process.platform === 'win32') return
+  spawnSync('screen', ['-S', 'qore', '-X', 'quit'], { stdio: 'ignore' })
+}
 
-if dashboard_is_up; then
-  open "${URL}"
-  echo "QORE is already running: ${URL}"
-  exit 0
-fi
+function killPidFile() {
+  if (!existsSync(pidFile)) return
+  const rawPid = readFileSync(pidFile, 'utf8').trim()
+  const pid = Number(rawPid)
+  if (Number.isFinite(pid) && pid > 0) {
+    try {
+      process.kill(pid)
+    } catch {
+      // The saved process may already be gone.
+    }
+  }
+  rmSync(pidFile, { force: true })
+}
 
-if [[ -f "${PID_FILE}" ]]; then
-  old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && ! kill -0 "${old_pid}" 2>/dev/null; then
-    rm -f "${PID_FILE}"
-  fi
-fi
+function ensureDependencies() {
+  if (existsSync(path.join(appDir, 'node_modules'))) return
+  console.log('Installing dashboard dependencies...')
+  const result = spawnSync(npmCommand, ['install'], {
+    cwd: appDir,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  })
+  if (result.status !== 0) process.exit(result.status ?? 1)
+}
 
-cd "${APP_DIR}"
+function startServer() {
+  mkdirSync(logDir, { recursive: true })
+  const logFd = openSync(logFile, 'w')
+  const child = spawn(npmCommand, ['run', 'dev', '--', '--host', host, '--port', port, '--strictPort'], {
+    cwd: appDir,
+    detached: true,
+    env: {
+      ...process.env,
+      QORE_GIT_SERVICE_ALLOWED_ORIGINS: allowedOrigins,
+    },
+    shell: process.platform === 'win32',
+    stdio: ['ignore', logFd, logFd],
+  })
+  closeSync(logFd)
+  writeFileSync(pidFile, `${child.pid}\n`, 'utf8')
+  child.unref()
+}
 
-if [[ ! -d node_modules ]]; then
-  echo "Installing dashboard dependencies..."
-  npm install
-fi
+function printRecentLog() {
+  try {
+    const lines = readFileSync(logFile, 'utf8').trimEnd().split('\n').slice(-30)
+    for (const line of lines) console.log(line)
+  } catch {
+    // No log yet.
+  }
+}
 
-echo "Starting QORE on ${URL}..."
-: >"${LOG_FILE}"
-if command -v screen >/dev/null 2>&1; then
-  screen -S "${SCREEN_SESSION}" -X quit >/dev/null 2>&1 || true
-  screen -dmS "${SCREEN_SESSION}" /bin/zsh -lc "cd ${(q)APP_DIR} && QORE_GIT_SERVICE_ALLOWED_ORIGINS=${(q)ALLOWED_ORIGINS} npm run dev -- --host ${(q)HOST} --port ${(q)PORT} --strictPort >> ${(q)LOG_FILE} 2>&1"
-else
-  QORE_GIT_SERVICE_ALLOWED_ORIGINS="${ALLOWED_ORIGINS}" nohup npm run dev -- --host "${HOST}" --port "${PORT}" --strictPort >"${LOG_FILE}" 2>&1 &
-  echo $! >"${PID_FILE}"
-fi
+const command = process.argv[2] ?? 'open'
 
-for _ in {1..60}; do
-  if dashboard_is_up; then
-    open "${URL}"
-    echo "QORE open: ${URL}"
-    echo "Server log: ${LOG_FILE}"
-    exit 0
-  fi
-  sleep 0.25
-done
+if (command === 'stop') {
+  stopLegacyScreen()
+  killPidFile()
+  console.log('QORE stopped.')
+  process.exit(0)
+}
 
-echo "QORE did not become ready at ${URL}."
-echo "Recent server log:"
-tail -30 "${LOG_FILE}" 2>/dev/null || true
-exit 1
+if (command === 'status') {
+  if (await dashboardIsUp()) {
+    console.log(`QORE is running: ${url}`)
+  } else {
+    console.log('QORE is not running.')
+  }
+  process.exit(0)
+}
+
+if (command !== 'open') {
+  console.log('Usage: qore [status|stop]')
+  process.exit(1)
+}
+
+if (await dashboardIsUp()) {
+  openUrl()
+  console.log(`QORE is already running: ${url}`)
+  process.exit(0)
+}
+
+ensureDependencies()
+console.log(`Starting QORE on ${url}...`)
+startServer()
+
+for (let attempt = 0; attempt < 60; attempt += 1) {
+  if (await dashboardIsUp()) {
+    openUrl()
+    console.log(`QORE open: ${url}`)
+    console.log(`Server log: ${logFile}`)
+    process.exit(0)
+  }
+  await sleep(250)
+}
+
+console.log(`QORE did not become ready at ${url}.`)
+console.log('Recent server log:')
+printRecentLog()
+process.exit(1)
