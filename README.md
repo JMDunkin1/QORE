@@ -2,11 +2,25 @@
 
 Local React dashboard for researching whether weather forecast error can predict natural gas returns.
 
+## Install
+
+Paste this into Terminal:
+
+```bash
+/bin/bash -lc 'set -e; dir="${QORE_DIR:-$HOME/QORE}"; repo="${QORE_REPO:-git@github.com:CaseLine-tech/QORE.git}"; if [ -d "$dir/.git" ]; then git -C "$dir" pull --ff-only; else git clone "$repo" "$dir"; fi; cd "$dir"; npm install; "$HOME/.local/bin/qore"'
+```
+
+After install, launch it with:
+
+```bash
+qore
+```
+
 ## Run
 
 ```bash
 npm install
-npm run dev
+qore
 ```
 
 `npm run dev` starts Vite and the token-protected localhost GitHub control service. The service fast-forwards from `origin/main` on launch only when the working tree is clean, runs `npm install` after package-file updates, checks GitHub every five minutes, and leaves live updates behind the dashboard's Update button.

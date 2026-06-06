@@ -11,6 +11,10 @@ const port = Number(process.env.QORE_GIT_SERVICE_PORT ?? 4774)
 const serviceUrl = `http://${host}:${port}/api/github/status`
 const viteBin = path.join(repoDir, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite')
 const serviceToken = await readOrCreateServiceToken(repoDir)
+const viteArgs = process.argv.slice(2)
+if (!viteArgs.some((arg) => arg === '--host' || arg.startsWith('--host='))) {
+  viteArgs.unshift('--host', '127.0.0.1')
+}
 const childEnv = {
   ...process.env,
   QORE_GIT_SERVICE_TOKEN: serviceToken,
@@ -60,7 +64,7 @@ if (!serviceState) {
   service = spawnChild(process.execPath, ['scripts/qore-git-service.mjs'])
 }
 
-const vite = spawnChild(viteBin, ['--host', '127.0.0.1'])
+const vite = spawnChild(viteBin, viteArgs)
 
 function shutdown(signal) {
   if (service && !service.killed) service.kill(signal)

@@ -3,10 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "bin": {
+    "qore": "./bin/qore"
+  },
   "scripts": {
+    "postinstall": "node scripts/install-command.mjs --quiet",
     "dev": "node scripts/qore-local.mjs",
     "dev:vite": "vite",
     "github-service": "node scripts/qore-git-service.mjs",
+    "install:command": "node scripts/install-command.mjs",
     "install:launch-agent": "node scripts/install-macos-launch-agent.mjs",
     "test:github-service": "node scripts/test-qore-git-service.mjs",
     "build": "tsc -b && vite build",
