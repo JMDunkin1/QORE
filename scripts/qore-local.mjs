@@ -3,18 +3,29 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { request } from 'node:http'
 import path from 'node:path'
+import { readOrCreateServiceToken } from './qore-git-auth.mjs'
 
 const repoDir = process.cwd()
 const host = process.env.QORE_GIT_SERVICE_HOST ?? '127.0.0.1'
 const port = Number(process.env.QORE_GIT_SERVICE_PORT ?? 4774)
 const serviceUrl = `http://${host}:${port}/api/github/status`
 const viteBin = path.join(repoDir, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite')
+const serviceToken = await readOrCreateServiceToken(repoDir)
+const childEnv = {
+  ...process.env,
+  QORE_GIT_SERVICE_TOKEN: serviceToken,
+  VITE_QORE_GIT_SERVICE_TOKEN: serviceToken,
+}
 
 function serviceIsRunning() {
   return new Promise((resolve) => {
-    const req = request(serviceUrl, { method: 'GET', timeout: 900 }, (res) => {
+    const req = request(serviceUrl, { method: 'GET', timeout: 900, headers: { 'X-QORE-Git-Token': serviceToken } }, (res) => {
       res.resume()
-      resolve(res.statusCode && res.statusCode < 500)
+      if (res.statusCode === 401 || res.statusCode === 403) {
+        resolve('unauthorized')
+        return
+      }
+      resolve(Boolean(res.statusCode))
     })
     req.on('error', () => resolve(false))
     req.on('timeout', () => {
@@ -28,7 +39,7 @@ function serviceIsRunning() {
 function spawnChild(command, args, options = {}) {
   return spawn(command, args, {
     cwd: repoDir,
-    env: process.env,
+    env: childEnv,
     stdio: 'inherit',
     ...options,
   })
@@ -40,7 +51,12 @@ if (!existsSync(viteBin)) {
 }
 
 let service = null
-if (!(await serviceIsRunning())) {
+const serviceState = await serviceIsRunning()
+if (serviceState === 'unauthorized') {
+  console.error('QORE Git service is already running with a different token. Restart the service or set QORE_GIT_SERVICE_TOKEN to match it.')
+  process.exit(1)
+}
+if (!serviceState) {
   service = spawnChild(process.execPath, ['scripts/qore-git-service.mjs'])
 }
 

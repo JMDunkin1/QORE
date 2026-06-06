@@ -8,6 +8,7 @@
     "dev:vite": "vite",
     "github-service": "node scripts/qore-git-service.mjs",
     "install:launch-agent": "node scripts/install-macos-launch-agent.mjs",
+    "test:github-service": "node scripts/test-qore-git-service.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

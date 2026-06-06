@@ -7,6 +7,7 @@ export type GithubStatus = {
   currentShort?: string
   remoteCommit?: string
   remoteShort?: string
+  detached?: boolean
   ahead: number
   behind: number
   updateAvailable: boolean
@@ -15,6 +16,7 @@ export type GithubStatus = {
   dirtyFiles: string[]
   lastCheckedAt: string | null
   lastLaunchUpdateAt: string | null
+  lastDependencyInstallAt?: string | null
   lastAction: string
   serviceStartedAt: string
   liveUpdateMode: string
@@ -28,12 +30,14 @@ type GithubServiceResponse = {
 }
 
 const serviceBaseUrl = (import.meta.env.VITE_QORE_GIT_SERVICE_URL ?? 'http://127.0.0.1:4774').replace(/\/$/, '')
+const serviceToken = import.meta.env.VITE_QORE_GIT_SERVICE_TOKEN ?? ''
 
 async function requestGithub(path: string, options: RequestInit = {}) {
   const response = await fetch(`${serviceBaseUrl}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(serviceToken ? { 'X-QORE-Git-Token': serviceToken } : {}),
       ...options.headers,
     },
   })

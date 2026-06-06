@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-`npm run dev` starts Vite and the localhost GitHub control service. The service fast-forwards from `origin/main` on launch when possible, checks GitHub every five minutes, and leaves live updates behind the dashboard's Update button.
+`npm run dev` starts Vite and the token-protected localhost GitHub control service. The service fast-forwards from `origin/main` on launch only when the working tree is clean, runs `npm install` after package-file updates, checks GitHub every five minutes, and leaves live updates behind the dashboard's Update button.
 
 Optional login service:
 
@@ -17,10 +17,17 @@ Optional login service:
 npm run install:launch-agent
 ```
 
+If `origin` is missing, add it before expecting updates:
+
+```bash
+git remote add origin <git-url>
+```
+
 Build check:
 
 ```bash
 npm run build
+npm run test:github-service
 ```
 
 ## What It Does

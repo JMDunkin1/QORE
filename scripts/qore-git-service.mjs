@@ -2,6 +2,7 @@
 import { execFile } from 'node:child_process'
 import { createServer } from 'node:http'
 import { promisify } from 'node:util'
+import { readOrCreateServiceToken } from './qore-git-auth.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -11,9 +12,24 @@ const repoDir = process.env.QORE_REPO_DIR ?? process.cwd()
 const checkIntervalMs = Number(process.env.QORE_GITHUB_CHECK_INTERVAL_MS ?? 5 * 60 * 1000)
 const enableLaunchUpdate = process.env.QORE_GIT_SERVICE_LAUNCH_UPDATE !== '0'
 const serviceStartedAt = new Date().toISOString()
+const apiToken = await readOrCreateServiceToken(repoDir)
+const dependencyFiles = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json']
+const defaultAllowedOrigins = [
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+  'http://127.0.0.1:4173',
+  'http://localhost:4173',
+]
+const allowedOrigins = new Set(
+  String(process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ?? defaultAllowedOrigins.join(','))
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+)
 
 let lastCheckedAt = null
 let lastLaunchUpdateAt = null
+let lastDependencyInstallAt = null
 let lastAction = 'Service started.'
 let activeOperation = null
 let latestStatus = null
@@ -51,7 +67,7 @@ async function git(args, options = {}) {
 
 async function currentBranch() {
   const branch = await git(['branch', '--show-current'], { allowFailure: true })
-  return branch.ok && branch.stdout ? branch.stdout : 'main'
+  return branch.ok && branch.stdout ? branch.stdout : ''
 }
 
 async function remoteUrl() {
@@ -60,6 +76,7 @@ async function remoteUrl() {
 }
 
 async function fetchRemote(branch) {
+  if (!branch) return { ok: false, reason: 'Detached HEAD: check out a branch before syncing with GitHub.' }
   const remote = await remoteUrl()
   if (!remote) return { ok: false, reason: 'No origin remote is configured.' }
 
@@ -67,15 +84,58 @@ async function fetchRemote(branch) {
   return fetched.ok ? { ok: true } : { ok: false, reason: fetched.stderr || fetched.stdout || 'GitHub fetch failed.' }
 }
 
+async function runCommand(command, args, options = {}) {
+  const { timeout = 60_000 } = options
+  try {
+    const result = await execFileAsync(command, args, {
+      cwd: repoDir,
+      timeout,
+      maxBuffer: 4 * 1024 * 1024,
+    })
+    return {
+      ok: true,
+      stdout: clean(result.stdout),
+      stderr: clean(result.stderr),
+    }
+  } catch (error) {
+    throw new Error(clean(error.stderr || error.stdout || error.message || `${command} ${args.join(' ')} failed`))
+  }
+}
+
+async function changedDependencyFiles(beforeCommit) {
+  if (!beforeCommit) return []
+  const after = await git(['rev-parse', 'HEAD'], { allowFailure: true })
+  if (!after.ok || !after.stdout || after.stdout === beforeCommit) return []
+
+  const changed = await git(['diff', '--name-only', beforeCommit, after.stdout, '--', ...dependencyFiles], { allowFailure: true })
+  return changed.stdout
+    ? changed.stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : []
+}
+
+async function installDependenciesIfNeeded(beforeCommit) {
+  const changedFiles = await changedDependencyFiles(beforeCommit)
+  if (!changedFiles.length) return { changed: false, files: [] }
+
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  await runCommand(npmCommand, ['install'], { timeout: 5 * 60 * 1000 })
+  lastDependencyInstallAt = new Date().toISOString()
+  return { changed: true, files: changedFiles }
+}
+
 async function gitStatus(options = {}) {
   const { refresh = false } = options
-  const branch = await currentBranch()
+  const current = await currentBranch()
+  const branch = current || 'detached'
   const remote = await remoteUrl()
   const configured = Boolean(remote)
   let fetchError = ''
 
   if (refresh && configured) {
-    const fetched = await fetchRemote(branch)
+    const fetched = await fetchRemote(current)
     if (!fetched.ok) fetchError = fetched.reason
   }
 
@@ -89,11 +149,11 @@ async function gitStatus(options = {}) {
     : []
   const head = await git(['rev-parse', 'HEAD'], { allowFailure: true })
   const headShort = await git(['rev-parse', '--short', 'HEAD'], { allowFailure: true })
-  const remoteHead = configured ? await git(['rev-parse', `origin/${branch}`], { allowFailure: true }) : { ok: false, stdout: '' }
-  const remoteShort = configured ? await git(['rev-parse', '--short', `origin/${branch}`], { allowFailure: true }) : { ok: false, stdout: '' }
+  const remoteHead = configured && current ? await git(['rev-parse', `origin/${current}`], { allowFailure: true }) : { ok: false, stdout: '' }
+  const remoteShort = configured && current ? await git(['rev-parse', '--short', `origin/${current}`], { allowFailure: true }) : { ok: false, stdout: '' }
   const counts =
-    configured && remoteHead.ok
-      ? await git(['rev-list', '--left-right', '--count', `HEAD...origin/${branch}`], { allowFailure: true })
+    configured && current && remoteHead.ok
+      ? await git(['rev-list', '--left-right', '--count', `HEAD...origin/${current}`], { allowFailure: true })
       : { ok: false, stdout: '' }
   const [aheadText = '0', behindText = '0'] = counts.stdout.split(/\s+/)
   const ahead = Number(aheadText) || 0
@@ -105,6 +165,7 @@ async function gitStatus(options = {}) {
     configured,
     remoteUrl: remote,
     branch,
+    detached: !current,
     currentCommit: head.ok ? head.stdout : '',
     currentShort: headShort.ok ? headShort.stdout : '',
     remoteCommit: remoteHead.ok ? remoteHead.stdout : '',
@@ -117,6 +178,7 @@ async function gitStatus(options = {}) {
     dirtyFiles,
     lastCheckedAt,
     lastLaunchUpdateAt,
+    lastDependencyInstallAt,
     lastAction,
     serviceStartedAt,
     liveUpdateMode: 'manual',
@@ -133,6 +195,14 @@ async function pullUpdates(reason) {
     lastAction = 'Update skipped: no origin remote.'
     return await gitStatus()
   }
+  if (before.detached) {
+    lastAction = 'Update skipped: detached HEAD. Check out a branch first.'
+    return await gitStatus()
+  }
+  if (reason === 'launch' && before.dirty) {
+    lastAction = 'Launch update skipped: local changes present. Review and update manually.'
+    return await gitStatus()
+  }
   if (!before.updateAvailable) {
     lastAction = 'No GitHub update available.'
     return before
@@ -140,7 +210,15 @@ async function pullUpdates(reason) {
 
   await git(['pull', '--ff-only', '--autostash', 'origin', before.branch], { timeout: 120_000 })
   if (reason === 'launch') lastLaunchUpdateAt = new Date().toISOString()
-  lastAction = reason === 'launch' ? 'Launch update applied.' : 'Manual update applied.'
+  const baseAction = reason === 'launch' ? 'Launch update applied.' : 'Manual update applied.'
+  let dependencyInstall = { changed: false, files: [] }
+  try {
+    dependencyInstall = await installDependenciesIfNeeded(before.currentCommit)
+  } catch (error) {
+    lastAction = `${baseAction} Dependency install failed: ${clean(error.message)}`
+    throw new Error(lastAction)
+  }
+  lastAction = dependencyInstall.changed ? `${baseAction} Dependencies refreshed.` : baseAction
   return await gitStatus({ refresh: true })
 }
 
@@ -184,13 +262,41 @@ async function exclusive(name, fn) {
   }
 }
 
-function sendJson(res, status, body) {
-  res.writeHead(status, {
+function originAllowed(origin) {
+  return !origin || allowedOrigins.has(origin)
+}
+
+function corsHeaders(req) {
+  const origin = req.headers.origin
+  const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type,X-QORE-Git-Token,Authorization',
     'Cache-Control': 'no-store',
+  }
+  if (origin && allowedOrigins.has(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin
+    headers.Vary = 'Origin'
+  }
+  return headers
+}
+
+function requestToken(req) {
+  const headerToken = req.headers['x-qore-git-token']
+  if (typeof headerToken === 'string') return headerToken.trim()
+  const authorization = req.headers.authorization ?? ''
+  return authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : ''
+}
+
+function authorize(req) {
+  if (!originAllowed(req.headers.origin)) return { ok: false, status: 403, error: 'Origin is not allowed for the QORE Git service.' }
+  if (requestToken(req) !== apiToken) return { ok: false, status: 401, error: 'QORE Git service token is required.' }
+  return { ok: true }
+}
+
+function sendJson(req, res, status, body) {
+  res.writeHead(status, {
+    ...corsHeaders(req),
   })
   res.end(JSON.stringify(body))
 }
@@ -205,35 +311,42 @@ async function readBody(req) {
 
 const server = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
-    sendJson(res, 204, {})
+    const authorizedOrigin = originAllowed(req.headers.origin)
+    sendJson(req, res, authorizedOrigin ? 204 : 403, authorizedOrigin ? {} : { error: 'Origin is not allowed for the QORE Git service.' })
     return
   }
 
   try {
+    const auth = authorize(req)
+    if (!auth.ok) {
+      sendJson(req, res, auth.status, { error: auth.error })
+      return
+    }
+
     const url = new URL(req.url ?? '/', `http://${host}:${port}`)
     if (req.method === 'GET' && url.pathname === '/api/github/status') {
       const refresh = url.searchParams.get('refresh') === '1'
       const status = await exclusive('status check', () => gitStatus({ refresh }))
-      sendJson(res, 200, { status })
+      sendJson(req, res, 200, { status })
       return
     }
 
     if (req.method === 'POST' && url.pathname === '/api/github/update') {
       const status = await exclusive('manual update', () => pullUpdates('manual'))
-      sendJson(res, 200, { status })
+      sendJson(req, res, 200, { status })
       return
     }
 
     if (req.method === 'POST' && url.pathname === '/api/github/push') {
       const body = await readBody(req)
       const status = await exclusive('push', () => pushChanges(body.message))
-      sendJson(res, 200, { status })
+      sendJson(req, res, 200, { status })
       return
     }
 
-    sendJson(res, 404, { error: 'Not found.' })
+    sendJson(req, res, 404, { error: 'Not found.' })
   } catch (error) {
-    sendJson(res, 500, { error: clean(error.message) })
+    sendJson(req, res, 500, { error: clean(error.message) })
   }
 })
 
@@ -261,6 +374,7 @@ server.listen(port, host, async () => {
         ok: false,
         configured: false,
         branch: 'main',
+        detached: false,
         ahead: 0,
         behind: 0,
         updateAvailable: false,
@@ -269,6 +383,7 @@ server.listen(port, host, async () => {
         dirtyFiles: [],
         lastCheckedAt,
         lastLaunchUpdateAt,
+        lastDependencyInstallAt,
         lastAction,
         serviceStartedAt,
         liveUpdateMode: 'manual',
