@@ -1,4 +1,4 @@
-export type ActiveView = 'overview' | 'backtest' | 'models' | 'data' | 'execution'
+export type ActiveView = 'overview' | 'backtest' | 'models' | 'data' | 'execution' | 'github'
 
 export type WeatherPoint = {
   date: string

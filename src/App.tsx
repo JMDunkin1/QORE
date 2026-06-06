@@ -1,20 +1,28 @@
-import { type ChangeEvent, type ElementType, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type ElementType, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
+  AlertTriangle,
   Bot,
   Brain,
+  CheckCircle2,
+  Clock3,
   CloudSun,
   Database,
+  Download,
   FileUp,
   Flame,
   Gauge,
+  GitBranch,
+  GitCommit,
   LineChart as LineChartIcon,
   Play,
   RadioTower,
+  RefreshCw,
   ShieldCheck,
   SlidersHorizontal,
   TrendingUp,
   Upload,
+  UploadCloud,
   Zap,
 } from 'lucide-react'
 import {
@@ -38,6 +46,7 @@ import {
 import './App.css'
 import { defaultSettings, rankStrategies } from './backtesting/engine'
 import { generateDemoData, modelRuns, strategies } from './data/demoData'
+import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
 import { adapterChecklist, executionVenues, integrationConnectors } from './integrations/connectors'
 import { evaluateWeatherModel, featureImportance } from './ml/evaluation'
 import type { ActiveView, BacktestSettings, MarketBar, StrategyId, WeatherPoint } from './types'
@@ -52,9 +61,10 @@ const navItems: Array<{ id: ActiveView; label: string; icon: ElementType }> = [
   { id: 'models', label: 'Models', icon: Brain },
   { id: 'data', label: 'Data Ops', icon: Database },
   { id: 'execution', label: 'Execution', icon: RadioTower },
+  { id: 'github', label: 'GitHub', icon: GitBranch },
 ]
 
-const activeViews: ActiveView[] = ['overview', 'backtest', 'models', 'data', 'execution']
+const activeViews: ActiveView[] = ['overview', 'backtest', 'models', 'data', 'execution', 'github']
 
 const chartMargin = { top: 16, right: 18, bottom: 4, left: 0 }
 const tooltipStyle = {
@@ -151,6 +161,25 @@ function RangeControl({
   )
 }
 
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return 'Never'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function githubTone(status: GithubStatus | null, error: string) {
+  if (error || !status?.configured) return 'warning'
+  if (status.updateAvailable || status.behind > 0) return 'negative'
+  if (status.dirty || status.ahead > 0) return 'warning'
+  return 'positive'
+}
+
 function App() {
   const [activeView, setActiveViewState] = useState<ActiveView>(() => viewFromHash())
   const [weather, setWeather] = useState<WeatherPoint[]>(demoData.weather)
@@ -159,6 +188,11 @@ function App() {
   const [selectedStrategyId, setSelectedStrategyId] = useState<StrategyId>('ml-ensemble')
   const [dataLabel, setDataLabel] = useState('Demo fixture pack')
   const [importLog, setImportLog] = useState('Ready for weather CSV, natural gas CSV, or QORE run artifacts.')
+  const [githubStatus, setGithubStatus] = useState<GithubStatus | null>(null)
+  const [githubError, setGithubError] = useState('')
+  const [githubMessage, setGithubMessage] = useState('Checking GitHub.')
+  const [githubBusy, setGithubBusy] = useState(false)
+  const [commitMessage, setCommitMessage] = useState('Update QORE dashboard')
 
   const leaderboard = useMemo(() => rankStrategies(market, weather, settings), [market, weather, settings])
   const selectedBacktest = useMemo(
@@ -205,6 +239,18 @@ function App() {
     setSettings((current) => ({ ...current, [key]: value }))
   }
 
+  const loadGithubStatus = useCallback(async (refresh = false) => {
+    try {
+      const status = await fetchGithubStatus(refresh)
+      setGithubStatus(status)
+      setGithubError('')
+      setGithubMessage(status.lastAction || status.message)
+    } catch (error) {
+      setGithubError(error instanceof Error ? error.message : 'QORE Git service is unavailable.')
+      setGithubMessage('GitHub service offline.')
+    }
+  }, [])
+
   const setActiveView = (view: ActiveView) => {
     setActiveViewState(view)
     window.history.replaceState(null, '', `#${view}`)
@@ -215,6 +261,27 @@ function App() {
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
+
+  useEffect(() => {
+    const initialCheck = window.setTimeout(() => {
+      void loadGithubStatus(true)
+    }, 0)
+    const interval = window.setInterval(() => {
+      void loadGithubStatus(true)
+    }, 5 * 60 * 1000)
+    return () => {
+      window.clearTimeout(initialCheck)
+      window.clearInterval(interval)
+    }
+  }, [loadGithubStatus])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) void loadGithubStatus(true)
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [loadGithubStatus])
 
   const handleFile = (kind: 'weather' | 'market') => async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0]
@@ -248,6 +315,61 @@ function App() {
     setDataLabel('Demo fixture pack')
     setImportLog('Demo weather and natural gas fixtures restored.')
   }
+
+  const handleGithubUpdate = async () => {
+    if (!githubStatus?.updateAvailable) return
+    const confirmed = window.confirm('Update QORE from GitHub now? Stop running tests or local work first.')
+    if (!confirmed) return
+
+    setGithubBusy(true)
+    setGithubMessage('Updating from GitHub.')
+    try {
+      const status = await updateFromGithub()
+      setGithubStatus(status)
+      setGithubError('')
+      setGithubMessage(status.lastAction)
+    } catch (error) {
+      setGithubError(error instanceof Error ? error.message : 'GitHub update failed.')
+    } finally {
+      setGithubBusy(false)
+    }
+  }
+
+  const handleGithubPush = async () => {
+    if (!githubStatus?.configured) return
+    if (githubStatus.dirty && !commitMessage.trim()) {
+      setGithubError('A commit message is required for local changes.')
+      return
+    }
+    const confirmed = window.confirm(
+      githubStatus.dirty ? 'Commit local changes and push to GitHub?' : 'Push committed changes to GitHub?',
+    )
+    if (!confirmed) return
+
+    setGithubBusy(true)
+    setGithubMessage('Pushing to GitHub.')
+    try {
+      const status = await pushToGithub(commitMessage)
+      setGithubStatus(status)
+      setGithubError('')
+      setGithubMessage(status.lastAction)
+    } catch (error) {
+      setGithubError(error instanceof Error ? error.message : 'GitHub push failed.')
+    } finally {
+      setGithubBusy(false)
+    }
+  }
+
+  const repoTone = githubTone(githubStatus, githubError)
+  const repoStatusText = githubError
+    ? 'Attention'
+    : githubStatus?.updateAvailable
+      ? 'Update ready'
+      : githubStatus?.dirty || (githubStatus?.ahead ?? 0) > 0
+        ? 'Local changes'
+        : githubStatus?.configured
+          ? 'Current'
+          : 'No remote'
 
   return (
     <div className="app-shell">
@@ -296,6 +418,10 @@ function App() {
             <button type="button" className="ghost-button" onClick={resetDemoData}>
               <Zap size={17} aria-hidden="true" />
               Demo data
+            </button>
+            <button type="button" className="ghost-button" onClick={() => setActiveView('github')}>
+              <GitBranch size={17} aria-hidden="true" />
+              GitHub
             </button>
             <button type="button" className="primary-button" onClick={() => setActiveView('backtest')}>
               <Play size={17} aria-hidden="true" />
@@ -880,6 +1006,96 @@ function App() {
                 </button>
               </article>
             </div>
+          </section>
+        )}
+
+        {activeView === 'github' && (
+          <section className="view-stack">
+            <div className="split-layout">
+              <article className="panel github-panel wide">
+                <SectionHeading
+                  eyebrow="Repository"
+                  title="GitHub control"
+                  action={<span className={`repo-pill ${repoTone}`}>{repoStatusText}</span>}
+                />
+                <div className="repo-status-grid">
+                  <article>
+                    <GitBranch size={18} aria-hidden="true" />
+                    <span>Branch</span>
+                    <strong>{githubStatus?.branch ?? 'main'}</strong>
+                    <em>{githubStatus?.currentShort ?? 'Local'}</em>
+                  </article>
+                  <article>
+                    <Download size={18} aria-hidden="true" />
+                    <span>Behind</span>
+                    <strong>{githubStatus?.behind ?? 0}</strong>
+                    <em>{githubStatus?.remoteShort ?? 'Remote'}</em>
+                  </article>
+                  <article>
+                    <UploadCloud size={18} aria-hidden="true" />
+                    <span>Ahead</span>
+                    <strong>{githubStatus?.ahead ?? 0}</strong>
+                    <em>{githubStatus?.dirtyCount ?? 0} dirty</em>
+                  </article>
+                  <article>
+                    <Clock3 size={18} aria-hidden="true" />
+                    <span>Last check</span>
+                    <strong>{formatTimestamp(githubStatus?.lastCheckedAt)}</strong>
+                    <em>{formatTimestamp(githubStatus?.lastLaunchUpdateAt)} launch</em>
+                  </article>
+                </div>
+                <div className={`github-message ${repoTone}`}>
+                  {repoTone === 'positive' ? (
+                    <CheckCircle2 size={18} aria-hidden="true" />
+                  ) : (
+                    <AlertTriangle size={18} aria-hidden="true" />
+                  )}
+                  <span>{githubError || githubMessage || githubStatus?.message}</span>
+                </div>
+                <code>{githubStatus?.remoteUrl || 'origin remote not configured'}</code>
+              </article>
+
+              <article className="panel github-actions-card">
+                <SectionHeading eyebrow="Actions" title="Sync controls" />
+                <div className="github-button-grid">
+                  <button type="button" className="ghost-button" disabled={githubBusy} onClick={() => void loadGithubStatus(true)}>
+                    <RefreshCw size={17} aria-hidden="true" />
+                    Check now
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={githubBusy || !githubStatus?.updateAvailable}
+                    onClick={() => void handleGithubUpdate()}
+                  >
+                    <Download size={17} aria-hidden="true" />
+                    Update
+                  </button>
+                </div>
+                <label className="commit-control">
+                  <span>Commit message</span>
+                  <input value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
+                </label>
+                <button
+                  type="button"
+                  className="primary-button push-button"
+                  disabled={githubBusy || !githubStatus?.configured || (!githubStatus?.dirty && (githubStatus?.ahead ?? 0) === 0)}
+                  onClick={() => void handleGithubPush()}
+                >
+                  <GitCommit size={17} aria-hidden="true" />
+                  Commit + push
+                </button>
+              </article>
+            </div>
+
+            <article className="panel table-panel">
+              <SectionHeading eyebrow="Working tree" title="Local change list" />
+              <div className="dirty-file-list">
+                {(githubStatus?.dirtyFiles.length ? githubStatus.dirtyFiles : ['Clean working tree']).map((file) => (
+                  <code key={file}>{file}</code>
+                ))}
+              </div>
+            </article>
           </section>
         )}
       </main>

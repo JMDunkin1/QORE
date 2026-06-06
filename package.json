@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/qore-local.mjs",
+    "dev:vite": "vite",
+    "github-service": "node scripts/qore-git-service.mjs",
+    "install:launch-agent": "node scripts/install-macos-launch-agent.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

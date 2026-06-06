@@ -188,6 +188,13 @@ button {
   transform: translateY(-1px);
 }
 
+.ghost-button:disabled,
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -736,6 +743,131 @@ code {
   font-size: 22px;
 }
 
+.github-panel,
+.github-actions-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.repo-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  background: #f1f5f9;
+}
+
+.repo-pill.positive {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.repo-pill.warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.repo-pill.negative {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.repo-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.repo-status-grid article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 13px;
+}
+
+.repo-status-grid svg {
+  color: #2563eb;
+}
+
+.repo-status-grid span,
+.commit-control span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.repo-status-grid strong {
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.repo-status-grid em {
+  color: var(--soft);
+  font-size: 12px;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+.github-message {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+  color: var(--soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.github-message.positive svg {
+  color: #0f766e;
+}
+
+.github-message.warning svg {
+  color: #b45309;
+}
+
+.github-message.negative svg {
+  color: #dc2626;
+}
+
+.github-button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.commit-control {
+  display: grid;
+  gap: 7px;
+}
+
+.commit-control input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px;
+  background: #f8fafc;
+  color: var(--ink);
+}
+
+.push-button {
+  width: 100%;
+}
+
+.dirty-file-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 @media (max-width: 1180px) {
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -746,7 +878,8 @@ code {
   }
 
   .three-column,
-  .connector-grid {
+  .connector-grid,
+  .repo-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -763,7 +896,7 @@ code {
   }
 
   .nav-list {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .nav-list button {
@@ -801,12 +934,15 @@ code {
   .three-column,
   .models-grid,
   .connector-grid,
-  .stat-grid {
+  .stat-grid,
+  .repo-status-grid,
+  .github-button-grid,
+  .dirty-file-list {
     grid-template-columns: 1fr;
   }
 
   .nav-list {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
   }
 
   .topbar h1 {
