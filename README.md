@@ -7,7 +7,7 @@ Local React dashboard for researching whether weather forecast error can predict
 Paste this into Terminal:
 
 ```bash
-/bin/bash -lc 'set -e; dir="${QORE_DIR:-$HOME/QORE}"; repo="${QORE_REPO:-git@github.com:CaseLine-tech/QORE.git}"; if [ -d "$dir/.git" ]; then git -C "$dir" pull --ff-only; else git clone "$repo" "$dir"; fi; cd "$dir"; npm install; "$HOME/.local/bin/qore"'
+/bin/bash -lc 'set -e; for cmd in git node npm; do command -v "$cmd" >/dev/null || { echo "Missing $cmd. Install Git and Node.js, then run this again."; exit 1; }; done; dir="${QORE_DIR:-$HOME/QORE}"; repo="${QORE_REPO:-https://github.com/CaseLine-tech/QORE.git}"; if [ -d "$dir/.git" ]; then git -C "$dir" pull --ff-only; else git clone "$repo" "$dir"; fi; cd "$dir"; npm install; node scripts/install-command.mjs; ./bin/qore'
 ```
 
 After install, launch it with:
@@ -15,6 +15,8 @@ After install, launch it with:
 ```bash
 qore
 ```
+
+This private repo requires GitHub access. If clone fails, make sure the user is invited to `CaseLine-tech/QORE` and is signed into GitHub for command-line Git.
 
 ## Run
 
