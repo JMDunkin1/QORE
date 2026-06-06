@@ -1,0 +1,86 @@
+#!/bin/zsh
+set -euo pipefail
+
+APP_DIR="/Users/jamesdunkin/Documents/Local Automations/QORE"
+HOST="${QUANT_HOST:-127.0.0.1}"
+PORT="${QUANT_PORT:-5173}"
+URL="http://${HOST}:${PORT}/"
+LOG_DIR="${TMPDIR:-/tmp}/qore"
+LOG_FILE="${LOG_DIR}/vite.log"
+PID_FILE="${LOG_DIR}/vite.pid"
+SCREEN_SESSION="qore"
+
+dashboard_is_up() {
+  curl -fsS "${URL}" 2>/dev/null | grep -q "<title>QORE</title>"
+}
+
+mkdir -p "${LOG_DIR}"
+
+if [[ "${1:-open}" == "stop" ]]; then
+  if command -v screen >/dev/null 2>&1; then
+    screen -S "${SCREEN_SESSION}" -X quit >/dev/null 2>&1 || true
+  fi
+  if [[ -f "${PID_FILE}" ]]; then
+    old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
+    if [[ -n "${old_pid}" ]]; then
+      kill "${old_pid}" >/dev/null 2>&1 || true
+    fi
+    rm -f "${PID_FILE}"
+  fi
+  echo "QORE stopped."
+  exit 0
+fi
+
+if [[ "${1:-open}" == "status" ]]; then
+  if dashboard_is_up; then
+    echo "QORE is running: ${URL}"
+  else
+    echo "QORE is not running."
+  fi
+  exit 0
+fi
+
+if dashboard_is_up; then
+  open "${URL}"
+  echo "QORE is already running: ${URL}"
+  exit 0
+fi
+
+if [[ -f "${PID_FILE}" ]]; then
+  old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
+  if [[ -n "${old_pid}" ]] && ! kill -0 "${old_pid}" 2>/dev/null; then
+    rm -f "${PID_FILE}"
+  fi
+fi
+
+cd "${APP_DIR}"
+
+if [[ ! -d node_modules ]]; then
+  echo "Installing dashboard dependencies..."
+  npm install
+fi
+
+echo "Starting QORE on ${URL}..."
+: >"${LOG_FILE}"
+if command -v screen >/dev/null 2>&1; then
+  screen -S "${SCREEN_SESSION}" -X quit >/dev/null 2>&1 || true
+  screen -dmS "${SCREEN_SESSION}" /bin/zsh -lc "cd ${(q)APP_DIR} && npm run dev -- --host ${(q)HOST} --port ${(q)PORT} --strictPort >> ${(q)LOG_FILE} 2>&1"
+else
+  nohup npm run dev -- --host "${HOST}" --port "${PORT}" --strictPort >"${LOG_FILE}" 2>&1 &
+  echo $! >"${PID_FILE}"
+fi
+
+for _ in {1..60}; do
+  if dashboard_is_up; then
+    open "${URL}"
+    echo "QORE open: ${URL}"
+    echo "Server log: ${LOG_FILE}"
+    exit 0
+  fi
+  sleep 0.25
+done
+
+echo "QORE did not become ready at ${URL}."
+echo "Recent server log:"
+tail -30 "${LOG_FILE}" 2>/dev/null || true
+exit 1
