@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from 'node:child_process'
 import { createServer } from 'node:http'
+import path from 'node:path'
 import { promisify } from 'node:util'
 import { readOrCreateServiceToken } from './qore-git-auth.mjs'
 
@@ -8,7 +9,7 @@ const execFileAsync = promisify(execFile)
 
 const host = process.env.QORE_GIT_SERVICE_HOST ?? '127.0.0.1'
 const port = Number(process.env.QORE_GIT_SERVICE_PORT ?? 4774)
-const repoDir = process.env.QORE_REPO_DIR ?? process.cwd()
+const repoDir = path.resolve(process.env.QORE_REPO_DIR ?? process.cwd())
 const checkIntervalMs = Number(process.env.QORE_GITHUB_CHECK_INTERVAL_MS ?? 5 * 60 * 1000)
 const enableLaunchUpdate = process.env.QORE_GIT_SERVICE_LAUNCH_UPDATE !== '0'
 const serviceStartedAt = new Date().toISOString()
@@ -163,6 +164,7 @@ async function gitStatus(options = {}) {
   latestStatus = {
     ok: !fetchError,
     configured,
+    repoDir,
     remoteUrl: remote,
     branch,
     detached: !current,
@@ -373,6 +375,7 @@ server.listen(port, host, async () => {
       latestStatus = {
         ok: false,
         configured: false,
+        repoDir,
         branch: 'main',
         detached: false,
         ahead: 0,

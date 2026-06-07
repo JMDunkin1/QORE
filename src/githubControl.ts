@@ -1,6 +1,7 @@
 export type GithubStatus = {
   ok: boolean
   configured: boolean
+  repoDir?: string
   remoteUrl?: string
   branch: string
   currentCommit?: string

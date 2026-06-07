@@ -12,6 +12,17 @@ const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
 const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
 const marketEndDate = process.env.QORE_MARKET_END ?? addDays(new Date().toISOString().slice(0, 10), 1)
 const yahooEndEpoch = Math.floor(new Date(`${marketEndDate}T00:00:00Z`).getTime() / 1000)
+const eiaApiKey = process.env.EIA_API_KEY ?? 'DEMO_KEY'
+const skipYahoo = truthy(process.env.QORE_SKIP_YAHOO)
+const skipNasaPower = truthy(process.env.QORE_SKIP_NASA_POWER)
+const skipOpenMeteo = truthy(process.env.QORE_SKIP_OPEN_METEO)
+const skipEia = truthy(process.env.QORE_SKIP_EIA)
+
+const arcticBlastThresholds = {
+  coldAnomalyF: -8,
+  extremeAnomalyF: -14,
+  minCoveragePct: 0.55,
+}
 
 const locations = [
   { id: 'minneapolis', name: 'Minneapolis', latitude: 44.9778, longitude: -93.265, region: 'Upper Midwest', weight: 0.07 },
@@ -59,6 +70,10 @@ function rowsToCsv(rows, headers) {
   return [headers.join(','), ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(','))].join('\n') + '\n'
 }
 
+function truthy(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').toLowerCase())
+}
+
 function dateFromEpoch(seconds) {
   return new Date(seconds * 1000).toISOString().slice(0, 10)
 }
@@ -92,6 +107,46 @@ function datesBetween(start, end, stepDays) {
     dates.push(cursor)
   }
   return dates
+}
+
+function isHeatingSeason(dateText) {
+  const month = Number(dateText.slice(5, 7))
+  return month <= 3 || month >= 11
+}
+
+function parseCsvLine(line) {
+  const values = []
+  let value = ''
+  let quoted = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    const next = line[index + 1]
+    if (char === '"' && quoted && next === '"') {
+      value += '"'
+      index += 1
+    } else if (char === '"') {
+      quoted = !quoted
+    } else if (char === ',' && !quoted) {
+      values.push(value)
+      value = ''
+    } else {
+      value += char
+    }
+  }
+
+  values.push(value)
+  return values
+}
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean)
+  if (!lines.length) return []
+  const headers = parseCsvLine(lines[0])
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line)
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']))
+  })
 }
 
 async function ensureDir(dir) {
@@ -133,6 +188,14 @@ async function writeCsv(filePath, rows, headers) {
 async function collectYahooMarket(manifest) {
   const marketDir = path.join(dataRoot, 'market', 'yahoo')
   await ensureDir(marketDir)
+
+  if (skipYahoo) {
+    manifest.market.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_YAHOO is enabled; keeping existing cached market files.',
+    })
+    return
+  }
 
   for (const source of marketSymbols) {
     const encoded = encodeURIComponent(source.symbol)
@@ -199,6 +262,115 @@ async function collectYahooMarket(manifest) {
   }
 }
 
+async function collectEiaStorage(manifest) {
+  const eiaDir = path.join(dataRoot, 'fundamentals', 'eia')
+  await ensureDir(eiaDir)
+
+  if (skipEia) {
+    manifest.fundamentals.eiaStorage.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_EIA is enabled.',
+    })
+    return []
+  }
+
+  const url = new URL('https://api.eia.gov/v2/natural-gas/stor/wkly/data/')
+  url.searchParams.set('api_key', eiaApiKey)
+  url.searchParams.set('frequency', 'weekly')
+  url.searchParams.set('data[0]', 'value')
+  url.searchParams.append('facets[series][]', 'NW2_EPG0_SWO_R48_BCF')
+  url.searchParams.set('sort[0][column]', 'period')
+  url.searchParams.set('sort[0][direction]', 'asc')
+  url.searchParams.set('offset', '0')
+  url.searchParams.set('length', '5000')
+
+  try {
+    const json = await fetchJson(url)
+    const rows = (json.response?.data ?? [])
+      .map((row) => ({
+        date: row.period,
+        series: row.series,
+        storageBcf: Number(row.value),
+        unit: row['unit-name'] ?? row.units ?? 'Bcf',
+        areaName: row['area-name'] ?? 'Lower 48',
+        source: 'EIA Open Data API',
+      }))
+      .filter((row) => row.date && Number.isFinite(row.storageBcf))
+    const csvPath = path.join(eiaDir, 'working-gas-storage-lower48-weekly.csv')
+    const jsonPath = path.join(eiaDir, 'working-gas-storage-lower48-weekly.raw.json')
+    await writeCsv(csvPath, rows, ['date', 'series', 'storageBcf', 'unit', 'areaName', 'source'])
+    await writeJson(jsonPath, json)
+    manifest.fundamentals.eiaStorage.push({
+      status: 'ok',
+      rows: rows.length,
+      firstDate: rows[0]?.date,
+      lastDate: rows.at(-1)?.date,
+      apiKeySource: process.env.EIA_API_KEY ? 'EIA_API_KEY' : 'DEMO_KEY',
+      files: [csvPath, jsonPath].map((file) => path.relative(repoDir, file)),
+    })
+    console.log(`eia storage ok: ${rows.length} rows`)
+    return rows
+  } catch (error) {
+    manifest.fundamentals.eiaStorage.push({
+      status: 'failed',
+      error: error.message,
+      url: url.toString().replace(eiaApiKey, 'REDACTED'),
+    })
+    console.warn(`eia storage failed: ${error.message}`)
+    return []
+  }
+}
+
+async function backfillMarketStorage(manifest, storageRows) {
+  if (!storageRows.length) {
+    manifest.fundamentals.marketStorageJoins.push({
+      status: 'skipped',
+      reason: 'No EIA storage rows were available.',
+    })
+    return
+  }
+
+  const sortedStorage = [...storageRows].sort((a, b) => a.date.localeCompare(b.date))
+  const marketDir = path.join(dataRoot, 'market', 'yahoo')
+  const files = ['UNG-qore-market.csv', 'NG-F-qore-market.csv']
+
+  for (const file of files) {
+    const filePath = path.join(marketDir, file)
+    try {
+      const rows = parseCsv(await readFile(filePath, 'utf8'))
+      let storageIndex = 0
+      let latestStorage = 0
+      const joinedRows = rows.map((row) => {
+        while (storageIndex < sortedStorage.length && sortedStorage[storageIndex].date <= row.date) {
+          latestStorage = sortedStorage[storageIndex].storageBcf
+          storageIndex += 1
+        }
+        return {
+          ...row,
+          storageBcf: latestStorage || row.storageBcf || 0,
+        }
+      })
+      await writeCsv(filePath, joinedRows, ['date', 'open', 'high', 'low', 'close', 'volume', 'contract', 'storageBcf'])
+      manifest.fundamentals.marketStorageJoins.push({
+        status: 'ok',
+        file: path.relative(repoDir, filePath),
+        rows: joinedRows.length,
+        storageRowsUsed: sortedStorage.length,
+        firstStorageDate: sortedStorage[0]?.date,
+        lastStorageDate: sortedStorage.at(-1)?.date,
+      })
+      console.log(`market storage joined: ${file}`)
+    } catch (error) {
+      manifest.fundamentals.marketStorageJoins.push({
+        status: 'failed',
+        file: path.relative(repoDir, filePath),
+        error: error.message,
+      })
+      console.warn(`market storage join failed: ${file}: ${error.message}`)
+    }
+  }
+}
+
 async function collectLocationCsv() {
   const filePath = path.join(dataRoot, 'weather', 'locations.csv')
   await writeCsv(filePath, locations, ['id', 'name', 'latitude', 'longitude', 'region', 'weight'])
@@ -211,6 +383,14 @@ async function collectNasaPowerTemperatures(manifest) {
   const anomalyRows = []
   await ensureDir(actualDir)
   await ensureDir(normalDir)
+
+  if (skipNasaPower) {
+    manifest.weather.nasaPower.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_NASA_POWER is enabled; keeping existing NASA POWER files.',
+    })
+    return
+  }
 
   for (const location of locations) {
     const normalUrl = new URL('https://power.larc.nasa.gov/api/temporal/daily/point')
@@ -312,10 +492,196 @@ async function collectNasaPowerTemperatures(manifest) {
   manifest.weather.nasaPowerAnomalyRows = anomalyRows.length
 }
 
+async function buildActualArcticBlastEvents(manifest) {
+  const anomalyPath = path.join(dataRoot, 'weather', 'nasa-power', `daily-temperature-anomalies-${startDate}-${endDate}.csv`)
+  const eventDir = path.join(dataRoot, 'weather', 'events')
+  await ensureDir(eventDir)
+
+  let rows
+  try {
+    rows = parseCsv(await readFile(anomalyPath, 'utf8'))
+  } catch (error) {
+    manifest.weather.actualArcticBlastEvents.push({
+      status: 'failed',
+      error: `Could not read NASA anomaly file: ${error.message}`,
+      file: path.relative(repoDir, anomalyPath),
+    })
+    return
+  }
+
+  const basketWeight = locations.reduce((sum, location) => sum + location.weight, 0)
+  const rowsByDate = new Map()
+  for (const row of rows) {
+    rowsByDate.set(row.date, [...(rowsByDate.get(row.date) ?? []), row])
+  }
+
+  const dailyRows = Array.from(rowsByDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, dayRows]) => {
+      const sampledWeight = dayRows.reduce((sum, row) => sum + Number(row.weight || 0), 0)
+      const weightedAnomalyF = sampledWeight
+        ? dayRows.reduce((sum, row) => sum + Number(row.anomalyF || 0) * Number(row.weight || 0), 0) / sampledWeight
+        : 0
+      const coldWeight = dayRows
+        .filter((row) => Number(row.anomalyF) <= arcticBlastThresholds.coldAnomalyF)
+        .reduce((sum, row) => sum + Number(row.weight || 0), 0)
+      const coveragePct = basketWeight ? coldWeight / basketWeight : 0
+      const extremeCount = dayRows.filter((row) => Number(row.anomalyF) <= arcticBlastThresholds.extremeAnomalyF).length
+      const qualifies =
+        weightedAnomalyF <= arcticBlastThresholds.coldAnomalyF &&
+        coveragePct >= arcticBlastThresholds.minCoveragePct
+
+      return {
+        date,
+        weightedAnomalyF: round(weightedAnomalyF, 2),
+        coveragePct: round(coveragePct, 3),
+        extremeCount,
+        sampledWeight: round(sampledWeight, 3),
+        locationCount: dayRows.length,
+        heatingSeason: isHeatingSeason(date),
+        qualifies,
+        source: 'NASA POWER actual anomaly basket',
+      }
+    })
+
+  function eventRowsFor(dayRows, prefix) {
+    const events = []
+    let current = null
+
+    for (const row of dayRows) {
+      if (!row.qualifies) {
+        if (current) events.push(current)
+        current = null
+        continue
+      }
+
+      if (!current) {
+        current = {
+          eventId: `${prefix}-${events.length + 1}`,
+          startDate: row.date,
+          endDate: row.date,
+          peakDate: row.date,
+          minWeightedAnomalyF: row.weightedAnomalyF,
+          maxCoveragePct: row.coveragePct,
+          qualifyingDays: 1,
+          source: 'NASA POWER actual anomaly basket',
+        }
+        continue
+      }
+
+      current.endDate = row.date
+      current.qualifyingDays += 1
+      if (row.weightedAnomalyF < current.minWeightedAnomalyF) {
+        current.minWeightedAnomalyF = row.weightedAnomalyF
+        current.peakDate = row.date
+      }
+      current.maxCoveragePct = Math.max(current.maxCoveragePct, row.coveragePct)
+    }
+
+    if (current) events.push(current)
+    return events
+  }
+
+  const events = eventRowsFor(dailyRows, 'actual-cold')
+  const heatingEvents = eventRowsFor(
+    dailyRows.map((row) => ({
+      ...row,
+      qualifies: row.qualifies && row.heatingSeason,
+    })),
+    'actual-heating-cold',
+  )
+
+  function windowRowsFor(events) {
+    return events.flatMap((event) => [
+      {
+        eventId: event.eventId,
+        windowId: 'rumor',
+        startDate: addDays(event.startDate, -10),
+        endDate: addDays(event.startDate, -7),
+        tradeQuestion: 'Did broad 7-10 day forecast cold bid UNG before the event?',
+      },
+      {
+        eventId: event.eventId,
+        windowId: 'selloff',
+        startDate: addDays(event.startDate, -3),
+        endDate: addDays(event.startDate, -1),
+        tradeQuestion: 'Did UNG fade in the 1-3 day buy-the-rumor/sell-the-news window?',
+      },
+      {
+        eventId: event.eventId,
+        windowId: 'event',
+        startDate: event.startDate,
+        endDate: event.endDate,
+        tradeQuestion: 'What happened while the actual cold event was present?',
+      },
+    ])
+  }
+
+  const windows = windowRowsFor(events)
+  const heatingWindows = windowRowsFor(heatingEvents)
+
+  const dailyPath = path.join(eventDir, `arctic-blast-actual-daily-${startDate}-${endDate}.csv`)
+  const eventsPath = path.join(eventDir, `arctic-blast-actual-events-${startDate}-${endDate}.csv`)
+  const windowsPath = path.join(eventDir, `arctic-blast-trade-windows-${startDate}-${endDate}.csv`)
+  const heatingEventsPath = path.join(eventDir, `arctic-blast-heating-season-events-${startDate}-${endDate}.csv`)
+  const heatingWindowsPath = path.join(eventDir, `arctic-blast-heating-season-trade-windows-${startDate}-${endDate}.csv`)
+  await writeCsv(dailyPath, dailyRows, [
+    'date',
+    'weightedAnomalyF',
+    'coveragePct',
+    'extremeCount',
+    'sampledWeight',
+    'locationCount',
+    'heatingSeason',
+    'qualifies',
+    'source',
+  ])
+  await writeCsv(eventsPath, events, [
+    'eventId',
+    'startDate',
+    'endDate',
+    'peakDate',
+    'minWeightedAnomalyF',
+    'maxCoveragePct',
+    'qualifyingDays',
+    'source',
+  ])
+  await writeCsv(windowsPath, windows, ['eventId', 'windowId', 'startDate', 'endDate', 'tradeQuestion'])
+  await writeCsv(heatingEventsPath, heatingEvents, [
+    'eventId',
+    'startDate',
+    'endDate',
+    'peakDate',
+    'minWeightedAnomalyF',
+    'maxCoveragePct',
+    'qualifyingDays',
+    'source',
+  ])
+  await writeCsv(heatingWindowsPath, heatingWindows, ['eventId', 'windowId', 'startDate', 'endDate', 'tradeQuestion'])
+  manifest.weather.actualArcticBlastEvents.push({
+    status: 'ok',
+    dailyRows: dailyRows.length,
+    eventRows: events.length,
+    windowRows: windows.length,
+    heatingSeasonEventRows: heatingEvents.length,
+    heatingSeasonWindowRows: heatingWindows.length,
+    files: [dailyPath, eventsPath, windowsPath, heatingEventsPath, heatingWindowsPath].map((file) => path.relative(repoDir, file)),
+  })
+  console.log(`actual arctic events ok: ${events.length} events, ${heatingEvents.length} heating-season events`)
+}
+
 async function collectNormals(manifest) {
   const normalDir = path.join(dataRoot, 'weather', 'open-meteo', 'normals')
   await ensureDir(normalDir)
   let failures = 0
+
+  if (skipOpenMeteo) {
+    manifest.weather.normals.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_OPEN_METEO is enabled.',
+    })
+    return
+  }
 
   for (const location of locations) {
     if (failures >= weatherFailureLimit) {
@@ -364,6 +730,14 @@ async function collectHistoricalForecasts(manifest) {
   await ensureDir(forecastDir)
   const models = forecastModels.filter((model) => model.source === 'historical-forecast')
   let failures = 0
+
+  if (skipOpenMeteo) {
+    manifest.weather.historicalForecasts.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_OPEN_METEO is enabled.',
+    })
+    return
+  }
 
   for (const location of locations) {
     for (const model of models) {
@@ -421,6 +795,14 @@ async function collectSingleRuns(manifest) {
 
   if (!model) return
 
+  if (skipOpenMeteo) {
+    manifest.weather.singleRuns.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_OPEN_METEO is enabled.',
+    })
+    return
+  }
+
   for (const location of locations) {
     for (const date of runDates) {
       if (failures >= weatherFailureLimit) {
@@ -474,6 +856,14 @@ async function collectPreviousRuns(manifest) {
   const previousDir = path.join(dataRoot, 'weather', 'open-meteo', 'previous-runs')
   await ensureDir(previousDir)
   let failures = 0
+
+  if (skipOpenMeteo) {
+    manifest.weather.previousRuns.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_OPEN_METEO is enabled.',
+    })
+    return
+  }
 
   for (const location of locations) {
     if (failures >= weatherFailureLimit) {
@@ -547,6 +937,10 @@ async function main() {
     },
     previousManifestGeneratedAt: previousManifest?.generatedAt ?? null,
     market: [],
+    fundamentals: {
+      eiaStorage: [],
+      marketStorageJoins: [],
+    },
     weather: {
       locationsFile: path.relative(repoDir, await collectLocationCsv()),
       nasaPower: [],
@@ -556,11 +950,15 @@ async function main() {
       historicalForecasts: [],
       singleRuns: [],
       previousRuns: [],
+      actualArcticBlastEvents: [],
     },
   }
 
   await collectYahooMarket(manifest)
+  const storageRows = await collectEiaStorage(manifest)
+  await backfillMarketStorage(manifest, storageRows)
   await collectNasaPowerTemperatures(manifest)
+  await buildActualArcticBlastEvents(manifest)
   await collectNormals(manifest)
   await collectHistoricalForecasts(manifest)
   await collectSingleRuns(manifest)

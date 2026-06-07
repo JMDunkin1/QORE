@@ -10,7 +10,6 @@ import {
   Database,
   Download,
   FileUp,
-  Flame,
   Gauge,
   GitBranch,
   GitCommit,
@@ -180,6 +179,12 @@ function githubTone(status: GithubStatus | null, error: string) {
   return 'positive'
 }
 
+function githubRemoteLabel(status: GithubStatus | null, error: string) {
+  if (error) return 'GitHub service unavailable'
+  if (!status) return 'Waiting for GitHub service'
+  return status.remoteUrl || 'origin remote not configured'
+}
+
 function App() {
   const [activeView, setActiveViewState] = useState<ActiveView>(() => viewFromHash())
   const [weather, setWeather] = useState<WeatherPoint[]>(demoData.weather)
@@ -244,7 +249,7 @@ function App() {
       const status = await fetchGithubStatus(refresh)
       setGithubStatus(status)
       setGithubError('')
-      setGithubMessage(status.lastAction || status.message)
+      setGithubMessage(status.message || status.lastAction)
     } catch (error) {
       setGithubError(error instanceof Error ? error.message : 'QORE Git service is unavailable.')
       setGithubMessage('GitHub service offline.')
@@ -327,7 +332,7 @@ function App() {
       const status = await updateFromGithub()
       setGithubStatus(status)
       setGithubError('')
-      setGithubMessage(status.lastAction)
+      setGithubMessage(status.lastAction || status.message)
     } catch (error) {
       setGithubError(error instanceof Error ? error.message : 'GitHub update failed.')
     } finally {
@@ -352,7 +357,7 @@ function App() {
       const status = await pushToGithub(commitMessage)
       setGithubStatus(status)
       setGithubError('')
-      setGithubMessage(status.lastAction)
+      setGithubMessage(status.lastAction || status.message)
     } catch (error) {
       setGithubError(error instanceof Error ? error.message : 'GitHub push failed.')
     } finally {
@@ -361,8 +366,17 @@ function App() {
   }
 
   const repoTone = githubTone(githubStatus, githubError)
+  const repoBranchLabel = githubStatus?.branch ?? (githubError ? 'Unknown' : 'main')
+  const repoRemoteLabel = githubRemoteLabel(githubStatus, githubError)
+  const dirtyFileRows = githubError
+    ? [githubError]
+    : githubStatus
+      ? githubStatus.dirtyFiles.length
+        ? githubStatus.dirtyFiles
+        : ['Clean working tree']
+      : ['Waiting for GitHub service']
   const repoStatusText = githubError
-    ? 'Attention'
+    ? 'Service offline'
     : githubStatus?.updateAvailable
       ? 'Update ready'
       : githubStatus?.dirty || (githubStatus?.ahead ?? 0) > 0
@@ -376,11 +390,11 @@ function App() {
       <aside className="sidebar" aria-label="QORE dashboard sections">
         <div className="brand-block">
           <div className="brand-mark">
-            <Flame size={23} aria-hidden="true" />
+            <img src="/qore-mark-clean.svg?v=solid-q" alt="" aria-hidden="true" />
           </div>
           <div>
             <strong>QORE</strong>
-            <span>Weather alpha desk</span>
+            <span>Quantitative Operations Runtime Engine</span>
           </div>
         </div>
 
@@ -1022,19 +1036,19 @@ function App() {
                   <article>
                     <GitBranch size={18} aria-hidden="true" />
                     <span>Branch</span>
-                    <strong>{githubStatus?.branch ?? 'main'}</strong>
-                    <em>{githubStatus?.currentShort ?? 'Local'}</em>
+                    <strong>{repoBranchLabel}</strong>
+                    <em>{githubStatus?.currentShort ?? (githubError ? 'No status' : 'Local')}</em>
                   </article>
                   <article>
                     <Download size={18} aria-hidden="true" />
                     <span>Behind</span>
-                    <strong>{githubStatus?.behind ?? 0}</strong>
-                    <em>{githubStatus?.remoteShort ?? 'Remote'}</em>
+                    <strong>{githubStatus?.behind ?? '-'}</strong>
+                    <em>{githubStatus?.remoteShort ?? (githubError ? 'No status' : 'Remote')}</em>
                   </article>
                   <article>
                     <UploadCloud size={18} aria-hidden="true" />
                     <span>Ahead</span>
-                    <strong>{githubStatus?.ahead ?? 0}</strong>
+                    <strong>{githubStatus?.ahead ?? '-'}</strong>
                     <em>{githubStatus?.dirtyCount ?? 0} dirty</em>
                   </article>
                   <article>
@@ -1052,7 +1066,7 @@ function App() {
                   )}
                   <span>{githubError || githubMessage || githubStatus?.message}</span>
                 </div>
-                <code>{githubStatus?.remoteUrl || 'origin remote not configured'}</code>
+                <code>{repoRemoteLabel}</code>
               </article>
 
               <article className="panel github-actions-card">
@@ -1091,7 +1105,7 @@ function App() {
             <article className="panel table-panel">
               <SectionHeading eyebrow="Working tree" title="Local change list" />
               <div className="dirty-file-list">
-                {(githubStatus?.dirtyFiles.length ? githubStatus.dirtyFiles : ['Clean working tree']).map((file) => (
+                {dirtyFileRows.map((file) => (
                   <code key={file}>{file}</code>
                 ))}
               </div>

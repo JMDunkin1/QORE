@@ -32,7 +32,7 @@ function dashboardIsUp() {
         body += chunk
       })
       res.on('end', () => {
-        resolve(res.statusCode === 200 && body.includes('<title>QORE</title>'))
+        resolve(res.statusCode === 200 && body.includes('<title>QORE'))
       })
     })
     req.on('error', () => resolve(false))

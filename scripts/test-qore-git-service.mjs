@@ -170,6 +170,7 @@ const tests = [
           assert.equal(badOrigin.status, 403)
           const ok = await request(service.baseUrl, '/api/github/status', { token: service.token })
           assert.equal(ok.status, 200)
+          assert.equal(ok.payload.status.repoDir, repo)
         } finally {
           await service.stop()
         }

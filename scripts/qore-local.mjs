@@ -5,10 +5,11 @@ import { request } from 'node:http'
 import path from 'node:path'
 import { readOrCreateServiceToken } from './qore-git-auth.mjs'
 
-const repoDir = process.cwd()
+const repoDir = path.resolve(process.cwd())
 const host = process.env.QORE_GIT_SERVICE_HOST ?? '127.0.0.1'
 const port = Number(process.env.QORE_GIT_SERVICE_PORT ?? 4774)
-const serviceUrl = `http://${host}:${port}/api/github/status`
+const serviceBaseUrl = `http://${host}:${port}`
+const serviceUrl = `${serviceBaseUrl}/api/github/status`
 const viteBin = path.join(repoDir, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite')
 const serviceToken = await readOrCreateServiceToken(repoDir)
 const viteArgs = process.argv.slice(2)
@@ -18,18 +19,42 @@ if (!viteArgs.some((arg) => arg === '--host' || arg.startsWith('--host='))) {
 const childEnv = {
   ...process.env,
   QORE_GIT_SERVICE_TOKEN: serviceToken,
+  VITE_QORE_GIT_SERVICE_URL: serviceBaseUrl,
   VITE_QORE_GIT_SERVICE_TOKEN: serviceToken,
 }
 
 function serviceIsRunning() {
   return new Promise((resolve) => {
     const req = request(serviceUrl, { method: 'GET', timeout: 900, headers: { 'X-QORE-Git-Token': serviceToken } }, (res) => {
-      res.resume()
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk) => {
+        body += chunk
+      })
+      res.on('end', () => {
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          resolve('unauthorized')
+          return
+        }
+        if (res.statusCode !== 200) {
+          resolve(Boolean(res.statusCode))
+          return
+        }
+        try {
+          const payload = JSON.parse(body)
+          const runningRepoDir = payload?.status?.repoDir ? path.resolve(payload.status.repoDir) : ''
+          if (runningRepoDir && runningRepoDir !== repoDir) {
+            resolve('wrong-repo')
+            return
+          }
+        } catch {
+          // Older services did not expose repo metadata; keep the existing reuse path.
+        }
+        resolve(true)
+      })
       if (res.statusCode === 401 || res.statusCode === 403) {
-        resolve('unauthorized')
-        return
+        res.resume()
       }
-      resolve(Boolean(res.statusCode))
     })
     req.on('error', () => resolve(false))
     req.on('timeout', () => {
@@ -58,6 +83,10 @@ let service = null
 const serviceState = await serviceIsRunning()
 if (serviceState === 'unauthorized') {
   console.error('QORE Git service is already running with a different token. Restart the service or set QORE_GIT_SERVICE_TOKEN to match it.')
+  process.exit(1)
+}
+if (serviceState === 'wrong-repo') {
+  console.error('QORE Git service is already running for a different checkout. Stop that service or use a different QORE_GIT_SERVICE_PORT.')
   process.exit(1)
 }
 if (!serviceState) {

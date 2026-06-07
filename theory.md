@@ -1,5 +1,7 @@
 # Theory
 
+QORE is the Quantitative Operations Runtime Engine for turning this weather and natural gas thesis into local data, model, backtest, and execution-readiness work.
+
 ## Basic observation from last winter
 
 Forecasts of below normal air temperatures in the central and eastern US (eastern ⅔ of CONUS) trigger sharp rises in the price of united states natural gas prises of the UNG etf

@@ -1,6 +1,6 @@
-# QORE
+# QORE: Quantitative Operations Runtime Engine
 
-Local React dashboard for researching whether weather forecast error can predict natural gas returns.
+QORE stands for Quantitative Operations Runtime Engine. It is a local React dashboard for researching whether weather forecast error can predict natural gas returns.
 
 ## Install On Windows
 
