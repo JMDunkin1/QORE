@@ -10,6 +10,14 @@ export const integrationConnectors: IntegrationConnector[] = [
     sourceUrl: 'https://www.ncdc.noaa.gov/cdo-web/webservices/v2',
   },
   {
+    name: 'Open-Meteo Forecast Archives',
+    category: 'Weather',
+    status: 'Ready scaffold',
+    purpose: 'Current forecasts, historical forecast runs, previous-run lead windows, and 2m temperature anomaly inputs.',
+    envVar: 'OPEN_METEO_BASE_URL',
+    sourceUrl: 'https://open-meteo.com/en/docs/historical-forecast-api',
+  },
+  {
     name: 'EIA Open Data API',
     category: 'Market data',
     status: 'Needs key',
