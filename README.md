@@ -54,6 +54,14 @@ npm run build
 npm run test:github-service
 ```
 
+Free research data cache:
+
+```bash
+npm run collect:free-data
+```
+
+This writes no-key market and weather research data under `.local/qore/`. The cache is ignored by Git. Check `.local/qore/runs/free-data-manifest.json` to see which sources succeeded or failed.
+
 ## What It Does
 
 - Generates deterministic demo weather and Henry Hub-style natural gas fixtures.
