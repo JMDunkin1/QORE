@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { loadLocalEnv } from './local-env.mjs'
 
 const repoDir = process.cwd()
+loadLocalEnv(repoDir)
+
 const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, '.local', 'qore')
 const timeoutMs = Number(process.env.QORE_FETCH_TIMEOUT_MS ?? 15000)
 const weatherFailureLimit = Number(process.env.QORE_WEATHER_FAILURE_LIMIT ?? 8)

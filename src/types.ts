@@ -131,7 +131,7 @@ export type FeatureImportance = {
 export type IntegrationConnector = {
   name: string
   category: 'Weather' | 'Market data' | 'Execution' | 'Storage' | 'ML'
-  status: 'Ready scaffold' | 'Needs key' | 'Paper only' | 'Research'
+  status: 'Ready scaffold' | 'Free demo key' | 'Free email token' | 'Needs key' | 'Paper only' | 'Research'
   purpose: string
   envVar: string
   sourceUrl: string

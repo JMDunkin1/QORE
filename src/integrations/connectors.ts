@@ -4,7 +4,7 @@ export const integrationConnectors: IntegrationConnector[] = [
   {
     name: 'NOAA Climate Data Online',
     category: 'Weather',
-    status: 'Needs key',
+    status: 'Free email token',
     purpose: 'Historical station data, daily summaries, degree-day features, and station metadata.',
     envVar: 'NOAA_CDO_TOKEN',
     sourceUrl: 'https://www.ncdc.noaa.gov/cdo-web/webservices/v2',
@@ -20,7 +20,7 @@ export const integrationConnectors: IntegrationConnector[] = [
   {
     name: 'EIA Open Data API',
     category: 'Market data',
-    status: 'Needs key',
+    status: 'Free demo key',
     purpose: 'Natural gas storage, prices, production, consumption, and regional fundamental series.',
     envVar: 'EIA_API_KEY',
     sourceUrl: 'https://www.eia.gov/opendata/documentation/APIv2.1.0.pdf',

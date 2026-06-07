@@ -438,7 +438,6 @@ function App() {
           </div>
           <div>
             <strong>QORE</strong>
-            <span>Quantitative Operations Runtime Engine</span>
           </div>
         </div>
 
@@ -469,8 +468,8 @@ function App() {
       <main className="dashboard">
         <header className="topbar">
           <div>
-            <span className="eyebrow">Natural gas x weather research</span>
             <h1>Strategy command center</h1>
+            <p className="topbar-subtitle">Quantitative Operations Runtime Engine</p>
           </div>
           <div className="top-actions">
             <button type="button" className="ghost-button" disabled={githubChecking} onClick={refreshDashboard} title="Refresh dashboard">

@@ -34,13 +34,13 @@
 }
 
 .brand-block {
-  gap: 12px;
+  gap: 14px;
 }
 
 .brand-mark {
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
+  width: 62px;
+  height: 62px;
+  border-radius: 12px;
   background: #ffffff;
   border: 1px solid #d8dde4;
   display: grid;
@@ -48,8 +48,8 @@
 }
 
 .brand-mark img {
-  width: 31px;
-  height: 31px;
+  width: 46px;
+  height: 46px;
   display: block;
 }
 
@@ -61,7 +61,7 @@
 }
 
 .brand-block strong {
-  font-size: 17px;
+  font-size: 28px;
 }
 
 .brand-block span,
@@ -137,6 +137,11 @@ button {
   margin-bottom: 20px;
 }
 
+.topbar > div,
+.top-actions {
+  min-width: 0;
+}
+
 .eyebrow,
 .section-heading > div > span {
   color: var(--muted);
@@ -148,7 +153,16 @@ button {
 .topbar h1 {
   font-size: 34px;
   line-height: 1.05;
-  margin: 5px 0 0;
+  margin: 0;
+}
+
+.topbar-subtitle {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 8px 0 0;
+  text-transform: uppercase;
 }
 
 .top-actions,
@@ -899,10 +913,12 @@ code {
     position: static;
     height: auto;
     padding: 14px;
+    max-width: 100vw;
   }
 
   .nav-list {
     grid-template-columns: repeat(6, minmax(0, 1fr));
+    width: min(100%, calc(100vw - 28px));
   }
 
   .nav-list button {
@@ -953,6 +969,18 @@ code {
 
   .topbar h1 {
     font-size: 28px;
+  }
+
+  .top-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(100%, calc(100vw - 36px));
+  }
+
+  .top-actions .ghost-button,
+  .top-actions .primary-button {
+    min-width: 0;
+    width: 100%;
   }
 
   .panel {
