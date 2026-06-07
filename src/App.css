@@ -41,15 +41,15 @@
   width: 42px;
   height: 42px;
   border-radius: 8px;
-  background: #0b1017;
-  border: 1px solid #263241;
+  background: #ffffff;
+  border: 1px solid #d8dde4;
   display: grid;
   place-items: center;
 }
 
 .brand-mark img {
-  width: 28px;
-  height: 28px;
+  width: 31px;
+  height: 31px;
   display: block;
 }
 

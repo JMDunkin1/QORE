@@ -15,6 +15,7 @@ export type GithubStatus = {
   dirty: boolean
   dirtyCount: number
   dirtyFiles: string[]
+  checking?: boolean
   lastCheckedAt: string | null
   lastLaunchUpdateAt: string | null
   lastDependencyInstallAt?: string | null

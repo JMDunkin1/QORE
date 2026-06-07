@@ -91,6 +91,22 @@ async function request(baseUrl, requestPath, options = {}) {
   return { status: response.status, payload }
 }
 
+async function preflight(baseUrl, requestPath, options = {}) {
+  const response = await fetch(`${baseUrl}${requestPath}`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: options.origin ?? allowedOrigin,
+      'Access-Control-Request-Method': options.method ?? 'GET',
+      'Access-Control-Request-Headers': options.headers ?? 'x-qore-git-token',
+    },
+  })
+  return {
+    status: response.status,
+    allowOrigin: response.headers.get('access-control-allow-origin') ?? '',
+    allowHeaders: response.headers.get('access-control-allow-headers') ?? '',
+  }
+}
+
 async function startService(repoDir, options = {}) {
   const port = nextPort++
   const token = options.token ?? `test-token-${port}-0123456789abcdef`
@@ -168,6 +184,10 @@ const tests = [
           assert.equal(noToken.status, 401)
           const badOrigin = await request(service.baseUrl, '/api/github/status', { token: service.token, origin: 'http://example.invalid' })
           assert.equal(badOrigin.status, 403)
+          const browserPreflight = await preflight(service.baseUrl, '/api/github/status')
+          assert.equal(browserPreflight.status, 204)
+          assert.equal(browserPreflight.allowOrigin, allowedOrigin)
+          assert.match(browserPreflight.allowHeaders.toLowerCase(), /x-qore-git-token/)
           const ok = await request(service.baseUrl, '/api/github/status', { token: service.token })
           assert.equal(ok.status, 200)
           assert.equal(ok.payload.status.repoDir, repo)

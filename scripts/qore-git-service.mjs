@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -11,6 +11,8 @@ const host = process.env.QORE_GIT_SERVICE_HOST ?? '127.0.0.1'
 const port = Number(process.env.QORE_GIT_SERVICE_PORT ?? 4774)
 const repoDir = path.resolve(process.env.QORE_REPO_DIR ?? process.cwd())
 const checkIntervalMs = Number(process.env.QORE_GITHUB_CHECK_INTERVAL_MS ?? 5 * 60 * 1000)
+const configuredFetchTimeoutMs = Number(process.env.QORE_GITHUB_FETCH_TIMEOUT_MS ?? 15_000)
+const fetchTimeoutMs = Number.isFinite(configuredFetchTimeoutMs) && configuredFetchTimeoutMs > 0 ? configuredFetchTimeoutMs : 15_000
 const enableLaunchUpdate = process.env.QORE_GIT_SERVICE_LAUNCH_UPDATE !== '0'
 const serviceStartedAt = new Date().toISOString()
 const apiToken = await readOrCreateServiceToken(repoDir)
@@ -41,29 +43,86 @@ function clean(value) {
     .trim()
 }
 
+function gitSshCommand() {
+  const configured = String(process.env.GIT_SSH_COMMAND ?? '').trim()
+  if (!configured) return 'ssh -o BatchMode=yes'
+  return /\bBatchMode\b/i.test(configured) ? configured : `${configured} -o BatchMode=yes`
+}
+
+function gitEnv() {
+  return {
+    ...process.env,
+    GIT_ASKPASS: '',
+    GIT_TERMINAL_PROMPT: '0',
+    SSH_ASKPASS: '',
+    GIT_SSH_COMMAND: gitSshCommand(),
+  }
+}
+
+function stopGitProcess(child, signal) {
+  if (!child.pid) return
+  try {
+    if (process.platform === 'win32') {
+      child.kill(signal)
+    } else {
+      process.kill(-child.pid, signal)
+    }
+  } catch {
+    child.kill(signal)
+  }
+}
+
 async function git(args, options = {}) {
   const { allowFailure = false, timeout = 60_000 } = options
 
-  try {
-    const result = await execFileAsync('git', args, {
+  const output = await new Promise((resolve) => {
+    const child = spawn('git', args, {
       cwd: repoDir,
-      timeout,
-      maxBuffer: 2 * 1024 * 1024,
+      detached: process.platform !== 'win32',
+      env: gitEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
-    return {
-      ok: true,
-      stdout: clean(result.stdout),
-      stderr: clean(result.stderr),
-    }
-  } catch (error) {
-    const output = {
-      ok: false,
-      stdout: clean(error.stdout),
-      stderr: clean(error.stderr || error.message),
-    }
-    if (allowFailure) return output
-    throw new Error(output.stderr || output.stdout || `git ${args.join(' ')} failed`)
+
+    let stdout = ''
+    let stderr = ''
+    let timedOut = false
+    let killTimer = null
+    const timer = setTimeout(() => {
+      timedOut = true
+      stopGitProcess(child, 'SIGTERM')
+      killTimer = setTimeout(() => stopGitProcess(child, 'SIGKILL'), 2_000)
+    }, timeout)
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      if (killTimer) clearTimeout(killTimer)
+      resolve({ ok: false, stdout, stderr: stderr || error.message })
+    })
+    child.on('close', (code, signal) => {
+      clearTimeout(timer)
+      if (killTimer) clearTimeout(killTimer)
+      const timeoutMessage = timedOut ? `git ${args.join(' ')} timed out after ${timeout}ms` : ''
+      resolve({
+        ok: code === 0,
+        stdout,
+        stderr: stderr || timeoutMessage || (signal ? `git ${args.join(' ')} stopped by ${signal}` : ''),
+      })
+    })
+  })
+
+  const result = {
+    ok: output.ok,
+    stdout: clean(output.stdout),
+    stderr: clean(output.stderr),
   }
+  if (result.ok || allowFailure) return result
+  throw new Error(result.stderr || result.stdout || `git ${args.join(' ')} failed`)
 }
 
 async function currentBranch() {
@@ -81,7 +140,7 @@ async function fetchRemote(branch) {
   const remote = await remoteUrl()
   if (!remote) return { ok: false, reason: 'No origin remote is configured.' }
 
-  const fetched = await git(['fetch', '--prune', 'origin', branch], { allowFailure: true, timeout: 120_000 })
+  const fetched = await git(['fetch', '--prune', 'origin', branch], { allowFailure: true, timeout: fetchTimeoutMs })
   return fetched.ok ? { ok: true } : { ok: false, reason: fetched.stderr || fetched.stdout || 'GitHub fetch failed.' }
 }
 
@@ -303,6 +362,16 @@ function sendJson(req, res, status, body) {
   res.end(JSON.stringify(body))
 }
 
+function latestStatusWhileBusy() {
+  if (!latestStatus) return null
+  return {
+    ...latestStatus,
+    checking: true,
+    lastAction,
+    message: `Git operation in progress: ${activeOperation}. Showing latest status.`,
+  }
+}
+
 async function readBody(req) {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
@@ -328,6 +397,11 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${host}:${port}`)
     if (req.method === 'GET' && url.pathname === '/api/github/status') {
       const refresh = url.searchParams.get('refresh') === '1'
+      const busyStatus = activeOperation ? latestStatusWhileBusy() : null
+      if (busyStatus) {
+        sendJson(req, res, 200, { status: busyStatus })
+        return
+      }
       const status = await exclusive('status check', () => gitStatus({ refresh }))
       sendJson(req, res, 200, { status })
       return

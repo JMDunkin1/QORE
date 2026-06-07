@@ -185,6 +185,16 @@ function githubRemoteLabel(status: GithubStatus | null, error: string) {
   return status.remoteUrl || 'origin remote not configured'
 }
 
+function githubStatusMessage(status: GithubStatus) {
+  if (status.checking) return status.message || 'Checking GitHub.'
+  const checkedAt = formatTimestamp(status.lastCheckedAt)
+  const checkedSuffix = checkedAt === 'Never' || checkedAt === 'Unknown' ? '' : ` Checked at ${checkedAt}.`
+  if (!status.ok || !status.configured) return `${status.message || status.lastAction}${checkedSuffix}`.trim()
+  if (status.updateAvailable) return `Update ready.${checkedSuffix}`
+  if (status.dirty || status.ahead > 0) return `Local changes.${checkedSuffix}`
+  return `GitHub checked at ${checkedAt}.`
+}
+
 function App() {
   const [activeView, setActiveViewState] = useState<ActiveView>(() => viewFromHash())
   const [weather, setWeather] = useState<WeatherPoint[]>(demoData.weather)
@@ -197,6 +207,7 @@ function App() {
   const [githubError, setGithubError] = useState('')
   const [githubMessage, setGithubMessage] = useState('Checking GitHub.')
   const [githubBusy, setGithubBusy] = useState(false)
+  const [githubChecking, setGithubChecking] = useState(false)
   const [commitMessage, setCommitMessage] = useState('Update QORE dashboard')
 
   const leaderboard = useMemo(() => rankStrategies(market, weather, settings), [market, weather, settings])
@@ -245,16 +256,26 @@ function App() {
   }
 
   const loadGithubStatus = useCallback(async (refresh = false) => {
+    if (refresh) {
+      setGithubChecking(true)
+      setGithubMessage('Checking GitHub.')
+    }
     try {
       const status = await fetchGithubStatus(refresh)
       setGithubStatus(status)
       setGithubError('')
-      setGithubMessage(status.message || status.lastAction)
+      setGithubMessage(githubStatusMessage(status))
+      setGithubChecking(Boolean(status.checking))
     } catch (error) {
       setGithubError(error instanceof Error ? error.message : 'QORE Git service is unavailable.')
       setGithubMessage('GitHub service offline.')
+      setGithubChecking(false)
     }
   }, [])
+
+  const refreshDashboard = useCallback(() => {
+    void loadGithubStatus(true)
+  }, [loadGithubStatus])
 
   const setActiveView = (view: ActiveView) => {
     setActiveViewState(view)
@@ -269,24 +290,44 @@ function App() {
 
   useEffect(() => {
     const initialCheck = window.setTimeout(() => {
-      void loadGithubStatus(true)
+      refreshDashboard()
     }, 0)
     const interval = window.setInterval(() => {
-      void loadGithubStatus(true)
+      refreshDashboard()
     }, 5 * 60 * 1000)
     return () => {
       window.clearTimeout(initialCheck)
       window.clearInterval(interval)
     }
-  }, [loadGithubStatus])
+  }, [refreshDashboard])
 
   useEffect(() => {
     const handleVisibility = () => {
-      if (!document.hidden) void loadGithubStatus(true)
+      if (!document.hidden) refreshDashboard()
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [loadGithubStatus])
+  }, [refreshDashboard])
+
+  useEffect(() => {
+    if (!githubStatus?.checking) return
+    const retry = window.setTimeout(() => {
+      refreshDashboard()
+    }, 2000)
+    return () => window.clearTimeout(retry)
+  }, [githubStatus?.checking, refreshDashboard])
+
+  useEffect(() => {
+    const handleDashboardRefreshShortcut = (event: KeyboardEvent) => {
+      if (event.repeat || event.shiftKey || event.altKey) return
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'r') return
+      event.preventDefault()
+      refreshDashboard()
+    }
+
+    window.addEventListener('keydown', handleDashboardRefreshShortcut)
+    return () => window.removeEventListener('keydown', handleDashboardRefreshShortcut)
+  }, [refreshDashboard])
 
   const handleFile = (kind: 'weather' | 'market') => async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0]
@@ -365,7 +406,8 @@ function App() {
     }
   }
 
-  const repoTone = githubTone(githubStatus, githubError)
+  const isGithubChecking = githubChecking || Boolean(githubStatus?.checking)
+  const repoTone = isGithubChecking ? 'warning' : githubTone(githubStatus, githubError)
   const repoBranchLabel = githubStatus?.branch ?? (githubError ? 'Unknown' : 'main')
   const repoRemoteLabel = githubRemoteLabel(githubStatus, githubError)
   const dirtyFileRows = githubError
@@ -377,7 +419,9 @@ function App() {
       : ['Waiting for GitHub service']
   const repoStatusText = githubError
     ? 'Service offline'
-    : githubStatus?.updateAvailable
+    : isGithubChecking
+      ? 'Checking'
+      : githubStatus?.updateAvailable
       ? 'Update ready'
       : githubStatus?.dirty || (githubStatus?.ahead ?? 0) > 0
         ? 'Local changes'
@@ -390,7 +434,7 @@ function App() {
       <aside className="sidebar" aria-label="QORE dashboard sections">
         <div className="brand-block">
           <div className="brand-mark">
-            <img src="/qore-mark-clean.svg?v=solid-q" alt="" aria-hidden="true" />
+            <img src="/qore-mark-clean.svg?v=signal-mark" alt="" aria-hidden="true" />
           </div>
           <div>
             <strong>QORE</strong>
@@ -429,6 +473,10 @@ function App() {
             <h1>Strategy command center</h1>
           </div>
           <div className="top-actions">
+            <button type="button" className="ghost-button" disabled={githubChecking} onClick={refreshDashboard} title="Refresh dashboard">
+              <RefreshCw size={17} aria-hidden="true" />
+              {githubChecking ? 'Checking' : 'Refresh'}
+            </button>
             <button type="button" className="ghost-button" onClick={resetDemoData}>
               <Zap size={17} aria-hidden="true" />
               Demo data
@@ -1054,8 +1102,8 @@ function App() {
                   <article>
                     <Clock3 size={18} aria-hidden="true" />
                     <span>Last check</span>
-                    <strong>{formatTimestamp(githubStatus?.lastCheckedAt)}</strong>
-                    <em>{formatTimestamp(githubStatus?.lastLaunchUpdateAt)} launch</em>
+                    <strong>{isGithubChecking ? 'Checking...' : formatTimestamp(githubStatus?.lastCheckedAt)}</strong>
+                    <em>{isGithubChecking ? 'GitHub refresh' : `${formatTimestamp(githubStatus?.lastLaunchUpdateAt)} launch`}</em>
                   </article>
                 </div>
                 <div className={`github-message ${repoTone}`}>
@@ -1072,9 +1120,9 @@ function App() {
               <article className="panel github-actions-card">
                 <SectionHeading eyebrow="Actions" title="Sync controls" />
                 <div className="github-button-grid">
-                  <button type="button" className="ghost-button" disabled={githubBusy} onClick={() => void loadGithubStatus(true)}>
+                  <button type="button" className="ghost-button" disabled={githubBusy || githubChecking} onClick={refreshDashboard}>
                     <RefreshCw size={17} aria-hidden="true" />
-                    Check now
+                    {githubChecking ? 'Checking' : 'Check now'}
                   </button>
                   <button
                     type="button"
