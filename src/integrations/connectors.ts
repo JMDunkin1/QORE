@@ -47,7 +47,7 @@ export const integrationConnectors: IntegrationConnector[] = [
     status: 'Ready scaffold',
     purpose: 'Reads local weather, natural-gas, signal, and run artifacts from this project data contract.',
     envVar: 'QORE_DATA_ROOT',
-    sourceUrl: 'local://.local/qore',
+    sourceUrl: 'local://data/qore',
   },
   {
     name: 'Model Registry',

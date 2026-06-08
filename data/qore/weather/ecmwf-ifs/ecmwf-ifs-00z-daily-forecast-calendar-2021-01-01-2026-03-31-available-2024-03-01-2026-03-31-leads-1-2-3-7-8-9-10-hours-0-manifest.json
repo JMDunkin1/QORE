@@ -1,0 +1,123 @@
+{
+  "generatedAt": "2026-06-08T03:48:28.456Z",
+  "source": "ECMWF IFS 0.25 degree open data on AWS, 2t surface field",
+  "requestedRange": {
+    "startDate": "2021-01-01",
+    "endDate": "2026-03-31"
+  },
+  "availableRangeBuilt": {
+    "startDate": "2024-03-01",
+    "endDate": "2026-03-31"
+  },
+  "unavailableRange": {
+    "startDate": "2021-01-01",
+    "endDate": "2024-02-29"
+  },
+  "unavailableReason": "ECMWF Open Data portal is rolling only; official AWS mirror had IFS 0.25 files from 2024-03-01 in tested paths and returned 404 for 2021-01-01 and 2024-02-03.",
+  "runHour": "00",
+  "leadDays": [
+    1,
+    2,
+    3,
+    7,
+    8,
+    9,
+    10
+  ],
+  "validHoursUtc": [
+    0
+  ],
+  "heatingSeasonOnly": true,
+  "modelId": "ecmwf-ifs-025-00z-aws-open-data",
+  "locations": 18,
+  "expectedScoreRows": 2291,
+  "finalScoreRows": 2291,
+  "finalLocationRows": 41238,
+  "finalReturnRows": 4582,
+  "missingScoreRows": 0,
+  "duplicateInputRowsRemoved": {
+    "locationAnomalies": 2160,
+    "signalScores": 120,
+    "signalReturns": 240
+  },
+  "chunkManifests": [
+    {
+      "file": "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2024-03-01-2024-12-31-available-2024-03-01-2024-12-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
+      "range": {
+        "startDate": "2024-03-01",
+        "endDate": "2024-12-31"
+      },
+      "rowsCompleted": 604,
+      "failures": 0
+    },
+    {
+      "file": "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2024-12-22-2025-01-10-available-2024-12-22-2025-01-10-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
+      "range": {
+        "startDate": "2024-12-22",
+        "endDate": "2025-01-10"
+      },
+      "rowsCompleted": 100,
+      "failures": 0
+    },
+    {
+      "file": "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2025-01-01-2025-12-31-available-2025-01-01-2025-12-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
+      "range": {
+        "startDate": "2025-01-01",
+        "endDate": "2025-12-31"
+      },
+      "rowsCompleted": 1017,
+      "failures": 0
+    },
+    {
+      "file": "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2025-12-22-2026-01-10-available-2025-12-22-2026-01-10-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
+      "range": {
+        "startDate": "2025-12-22",
+        "endDate": "2026-01-10"
+      },
+      "rowsCompleted": 100,
+      "failures": 0
+    },
+    {
+      "file": "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2026-01-01-2026-03-31-available-2026-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
+      "range": {
+        "startDate": "2026-01-01",
+        "endDate": "2026-03-31"
+      },
+      "rowsCompleted": 590,
+      "failures": 0
+    }
+  ],
+  "sourceTests": [
+    {
+      "source": "ECMWF Open Data portal",
+      "url": "https://data.ecmwf.int/forecasts/20260331/00z/ifs/0p25/oper/20260331000000-24h-oper-fc.index",
+      "result": "HTTP 404 on historical requested date; portal is rolling only."
+    },
+    {
+      "source": "ECMWF AWS open-data mirror",
+      "url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260331/00z/ifs/0p25/oper/20260331000000-24h-oper-fc.index",
+      "result": "HTTP 200; JSON index with param=2t byte range."
+    },
+    {
+      "source": "ECMWF AWS open-data mirror",
+      "url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20210101/00z/ifs/0p25/oper/20210101000000-24h-oper-fc.index",
+      "result": "HTTP 404; no official no-auth IFS 0.25 file for 2021 in tested path."
+    },
+    {
+      "source": "Open-Meteo Previous Runs API",
+      "url": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=41.8781&longitude=-87.6298&start_date=2024-03-09&end_date=2024-03-10&hourly=temperature_2m_previous_day8,temperature_2m_previous_day9,temperature_2m_previous_day10&models=ecmwf_ifs025&temperature_unit=fahrenheit&timezone=GMT",
+      "result": "HTTP 200 in probe; viable non-official fallback, but not used for final official AWS build."
+    },
+    {
+      "source": "Open-Meteo Single Runs API",
+      "url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=41.8781&longitude=-87.6298&hourly=temperature_2m&models=ecmwf_ifs025&run=2024-03-01T00:00&forecast_days=10&temperature_unit=fahrenheit&timezone=GMT",
+      "result": "HTTP 400 for 2024-03-01 ecmwf_ifs025 single run; 2025-09-01 succeeded in a separate probe."
+    }
+  ],
+  "files": {
+    "locationAnomalies": "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+    "signalScores": "data/qore/research/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+    "signalReturns": "data/qore/research/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+    "manifest": "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+  }
+}

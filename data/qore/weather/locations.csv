@@ -1,0 +1,19 @@
+id,name,latitude,longitude,region,weight
+minneapolis,Minneapolis,44.9778,-93.265,Upper Midwest,0.07
+chicago,Chicago,41.8781,-87.6298,Great Lakes,0.09
+detroit,Detroit,42.3314,-83.0458,Great Lakes,0.06
+cleveland,Cleveland,41.4993,-81.6944,Great Lakes,0.05
+indianapolis,Indianapolis,39.7684,-86.1581,Ohio Valley,0.05
+st-louis,St. Louis,38.627,-90.1994,Midwest,0.05
+kansas-city,Kansas City,39.0997,-94.5786,Central Plains,0.04
+nashville,Nashville,36.1627,-86.7816,Mid-South,0.05
+memphis,Memphis,35.1495,-90.049,Mid-South,0.04
+atlanta,Atlanta,33.749,-84.388,Southeast,0.07
+charlotte,Charlotte,35.2271,-80.8431,Southeast,0.05
+raleigh,Raleigh,35.7796,-78.6382,Southeast,0.04
+washington-dc,"Washington, DC",38.9072,-77.0369,Mid-Atlantic,0.07
+philadelphia,Philadelphia,39.9526,-75.1652,Mid-Atlantic,0.06
+new-york,New York,40.7128,-74.006,Northeast,0.11
+boston,Boston,42.3601,-71.0589,Northeast,0.06
+dallas,Dallas,32.7767,-96.797,Texas/Oklahoma fringe,0.05
+houston,Houston,29.7604,-95.3698,Texas/Oklahoma fringe,0.05

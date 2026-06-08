@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-06-08T05:02:30.780Z",
+  "source": "NOAA GraphCastGFS 0.25 degree forecast archive on AWS, TMP 2 m above ground",
+  "forecastSource": "graphcastgfs",
+  "range": {
+    "startDate": "2024-04-26",
+    "endDate": "2026-03-31"
+  },
+  "actualRawArchiveIssueRange": {
+    "startDate": "2024-10-22",
+    "endDate": "2026-03-30"
+  },
+  "runHour": "00",
+  "leadDays": [
+    1,
+    2,
+    3,
+    7,
+    8,
+    9,
+    10
+  ],
+  "validHoursUtc": [
+    0
+  ],
+  "heatingSeasonOnly": true,
+  "allowPartial": false,
+  "modelId": "ncep-gfs-graphcast-00z-noaa-aws",
+  "locations": 18,
+  "expectedScoreRows": 2114,
+  "finalCompleteRows": 2114,
+  "missingCompleteRows": 0,
+  "notes": [
+    "NOAA raw GraphCastGFS 00z archive probes returned 404 before 2024-04-26.",
+    "With heating-season target filtering and requested lead days, the first merged issue date is 2024-10-22."
+  ],
+  "files": {
+    "locationAnomalies": "data/qore/weather/gfs-graphcast/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+    "signalScores": "data/qore/research/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+    "signalReturns": "data/qore/research/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+    "manifest": "data/qore/weather/gfs-graphcast/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+  }
+}

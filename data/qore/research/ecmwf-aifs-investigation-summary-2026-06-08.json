@@ -1,0 +1,98 @@
+{
+  "generatedAt": "2026-06-08T03:36:25.888Z",
+  "requested": {
+    "range": "2021-01-01..2026-03-31",
+    "runHour": "00",
+    "leadDays": [
+      1,
+      2,
+      3,
+      7,
+      8,
+      9,
+      10
+    ],
+    "validHoursUtc": [
+      0
+    ],
+    "basketLocations": 18,
+    "heatingSeasonOnly": true
+  },
+  "sourcesTested": [
+    {
+      "name": "ECMWF Open Data Portal",
+      "exampleUrl": "https://data.ecmwf.int/forecasts/20260331/00z/aifs/0p25/oper/20260331000000-24h-oper-fc.index",
+      "result": "404 for historical requested dates; portal listing showed only 20260604..20260607 during probe."
+    },
+    {
+      "name": "ECMWF AWS open-data bucket",
+      "exampleUrl": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260331/00z/aifs-single/0p25/oper/20260331000000-24h-oper-fc.index",
+      "result": "Historical AIFS keys exist and 2t byte-range GRIB extraction works from 2024-03-14 with current parser; direct full run was too slow interactively."
+    },
+    {
+      "name": "Open-Meteo Single Runs API",
+      "exampleUrl": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=41.8781&longitude=-87.6298&run=2025-08-02T00:00&hourly=temperature_2m&models=ecmwf_aifs025_single&temperature_unit=fahrenheit&timezone=UTC&forecast_days=11",
+      "result": "Selector ecmwf_aifs025_single returned non-null data in probes; calendar build hit Open-Meteo hourly request limits after earlier concurrency burst."
+    }
+  ],
+  "outputs": {
+    "officialAwsPartial": {
+      "signalScores": {
+        "file": ".local/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "dataRows": 171,
+        "firstIssueDate": "2024-03-14",
+        "lastIssueDate": "2024-11-07",
+        "leads": [
+          "1",
+          "2",
+          "3",
+          "7",
+          "8",
+          "9",
+          "10"
+        ]
+      },
+      "locationAnomalies": {
+        "file": ".local/qore/weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "dataRows": 3078,
+        "firstIssueDate": "2024-03-14",
+        "lastIssueDate": "2024-11-07",
+        "leads": [
+          "1",
+          "2",
+          "3",
+          "7",
+          "8",
+          "9",
+          "10"
+        ]
+      },
+      "signalReturns": {
+        "file": ".local/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "dataRows": 342,
+        "firstIssueDate": "2024-03-14",
+        "lastIssueDate": "2024-11-07",
+        "leads": [
+          "1",
+          "2",
+          "3",
+          "7",
+          "8",
+          "9",
+          "10"
+        ]
+      },
+      "expectedScoreRowsForParserCompatibleRange": 2200
+    },
+    "localBuilders": [
+      ".local/qore/research/ecmwf-aifs-build-calendar.mjs",
+      ".local/qore/research/ecmwf-aifs-open-meteo-single-runs-build-calendar.mjs"
+    ]
+  },
+  "blockers": [
+    "No no-auth official ECMWF portal history for 2021-01-01..2026-03-31; ECMWF says full archive uses Archive/MARS registration.",
+    "AWS no-auth historical AIFS exists, but 2024-02-29..2024-03-13 2t messages decode to zero messages with @mattnucc/gribberish in this repo.",
+    "Official AWS byte-range extraction is feasible but slow: 171/2200 parser-compatible score rows completed before stopping the interactive run.",
+    "Open-Meteo Single Runs can provide lead days 1,2,3,7,8,9,10 from 2025-08-02, but this Mac hit Open-Meteo hourly request limits during calendar build."
+  ]
+}

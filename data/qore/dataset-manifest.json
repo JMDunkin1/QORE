@@ -1,0 +1,151 @@
+{
+  "generatedAt": "2026-06-08T06:59:50.682Z",
+  "defaultDataRoot": "data/qore",
+  "fileCount": 117,
+  "totalBytes": 90277336,
+  "forecastCalendars": [
+    {
+      "id": "gfs",
+      "label": "GFS",
+      "issueDateRange": {
+        "start": "2021-01-01",
+        "end": "2026-03-30"
+      },
+      "rows": {
+        "signalScores": 5874,
+        "locationAnomalies": 105732,
+        "signalReturns": 11748
+      },
+      "files": {
+        "locationAnomalies": "weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "signalScores": "research/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "signalReturns": "research/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "manifest": "weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+      }
+    },
+    {
+      "id": "gefs-mean",
+      "label": "GEFS mean",
+      "issueDateRange": {
+        "start": "2021-01-01",
+        "end": "2026-03-30"
+      },
+      "rows": {
+        "signalScores": 5882,
+        "locationAnomalies": 105876,
+        "signalReturns": 11764
+      },
+      "files": {
+        "locationAnomalies": "weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "signalScores": "research/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "signalReturns": "research/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "manifest": "weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+      }
+    },
+    {
+      "id": "graphcastgfs",
+      "label": "GraphCastGFS",
+      "issueDateRange": {
+        "start": "2024-10-22",
+        "end": "2026-03-30"
+      },
+      "rows": {
+        "signalScores": 2114,
+        "locationAnomalies": 38052,
+        "signalReturns": 4228
+      },
+      "files": {
+        "locationAnomalies": "weather/gfs-graphcast/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "signalScores": "research/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "signalReturns": "research/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "manifest": "weather/gfs-graphcast/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+      }
+    },
+    {
+      "id": "ecmwf-ifs",
+      "label": "ECMWF IFS",
+      "issueDateRange": {
+        "start": "2024-03-01",
+        "end": "2026-03-30"
+      },
+      "rows": {
+        "signalScores": 2291,
+        "locationAnomalies": 41238,
+        "signalReturns": 4582
+      },
+      "files": {
+        "locationAnomalies": "weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "signalScores": "research/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "signalReturns": "research/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "manifest": "weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+      }
+    },
+    {
+      "id": "ecmwf-aifs",
+      "label": "ECMWF AIFS",
+      "issueDateRange": {
+        "start": "2024-03-14",
+        "end": "2024-11-07"
+      },
+      "rows": {
+        "signalScores": 171,
+        "locationAnomalies": 3078,
+        "signalReturns": 342
+      },
+      "files": {
+        "locationAnomalies": "weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "signalScores": "research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "signalReturns": "research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "manifest": "weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+      }
+    },
+    {
+      "id": "aigfs",
+      "label": "AIGFS",
+      "issueDateRange": {
+        "start": "2026-01-07",
+        "end": "2026-03-30"
+      },
+      "rows": {
+        "signalScores": 545,
+        "locationAnomalies": 9810,
+        "signalReturns": 1090
+      },
+      "files": {
+        "locationAnomalies": "weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "signalScores": "research/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "signalReturns": "research/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "manifest": "weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+      }
+    },
+    {
+      "id": "gem-global",
+      "label": "GEM Global",
+      "issueDateRange": {
+        "start": "2024-01-19",
+        "end": "2026-03-30"
+      },
+      "rows": {
+        "signalScores": 1487,
+        "locationAnomalies": 26766,
+        "signalReturns": 2974
+      },
+      "files": {
+        "locationAnomalies": "weather/gem-global/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "signalScores": "research/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "signalReturns": "research/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "manifest": "weather/gem-global/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+      }
+    }
+  ],
+  "supportData": {
+    "market": "market/yahoo",
+    "fundamentals": "fundamentals/eia",
+    "nasaPower": "weather/nasa-power",
+    "actualEvents": "weather/events"
+  },
+  "notes": [
+    "This directory is tracked intentionally so fresh checkouts include the research dataset.",
+    "Set QORE_DATA_ROOT=.local/qore for private scratch runs."
+  ]
+}

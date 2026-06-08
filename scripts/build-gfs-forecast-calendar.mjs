@@ -8,7 +8,8 @@ import { loadLocalEnv } from './local-env.mjs'
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
 
-const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, '.local', 'qore')
+const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
+const forecastSource = process.env.QORE_FORECAST_SOURCE ?? 'gfs'
 const startDate = process.env.QORE_GFS_CALENDAR_START ?? process.env.QORE_TEST_START ?? '2021-01-01'
 const endDate = process.env.QORE_GFS_CALENDAR_END ?? process.env.QORE_TEST_END ?? '2026-03-31'
 const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
@@ -51,14 +52,66 @@ const locations = [
 ]
 
 const basketWeight = locations.reduce((sum, location) => sum + location.weight, 0)
+const sourceConfigs = {
+  gfs: {
+    outputPrefix: 'gfs',
+    weatherDir: 'noaa-gfs',
+    modelId: () => `ncep-gfs-global-${runHour}z-noaa-aws`,
+    source: 'NOAA GFS 0.25 degree forecast archive on AWS, TMP 2 m above ground',
+    userAgent: 'QORE NOAA GFS backfill',
+    objectBases(issueDate, fhr) {
+      const ymd = compactDate(issueDate)
+      const fff = String(fhr).padStart(3, '0')
+      const fileName = `gfs.t${runHour}z.pgrb2.0p25.f${fff}`
+      return [
+        `https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.${ymd}/${runHour}/atmos/${fileName}`,
+        `https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.${ymd}/${runHour}/${fileName}`,
+      ]
+    },
+  },
+  'gefs-mean': {
+    outputPrefix: 'gefs-mean',
+    weatherDir: 'noaa-gefs',
+    modelId: () => `ncep-gefs-mean-${runHour}z-noaa-aws`,
+    source: 'NOAA GEFS 0.25 degree ensemble mean forecast archive on AWS, TMP 2 m above ground',
+    userAgent: 'QORE NOAA GEFS backfill',
+    objectBases(issueDate, fhr) {
+      const ymd = compactDate(issueDate)
+      const fff = String(fhr).padStart(3, '0')
+      const fileName = `geavg.t${runHour}z.pgrb2s.0p25.f${fff}`
+      return [
+        `https://noaa-gefs-pds.s3.amazonaws.com/gefs.${ymd}/${runHour}/atmos/pgrb2sp25/${fileName}`,
+      ]
+    },
+  },
+  graphcastgfs: {
+    outputPrefix: 'graphcastgfs',
+    weatherDir: 'gfs-graphcast',
+    modelId: () => `ncep-gfs-graphcast-${runHour}z-noaa-aws`,
+    source: 'NOAA GraphCastGFS 0.25 degree forecast archive on AWS, TMP 2 m above ground',
+    userAgent: 'QORE NOAA GraphCastGFS backfill',
+    objectBases(issueDate, fhr) {
+      const ymd = compactDate(issueDate)
+      const fff = String(fhr).padStart(3, '0')
+      const fileName = `graphcastgfs.t${runHour}z.pgrb2.0p25.f${fff}`
+      return [
+        `https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com/graphcastgfs.${ymd}/${runHour}/forecasts_13_levels/${fileName}`,
+      ]
+    },
+  },
+}
+const sourceConfig = sourceConfigs[forecastSource]
+if (!sourceConfig) {
+  throw new Error(`Unsupported QORE_FORECAST_SOURCE=${forecastSource}. Expected one of: ${Object.keys(sourceConfigs).join(', ')}`)
+}
 const rangeLabel = `${startDate}-${endDate}`
 const validHourLabel = validHoursUtc.join('-')
 const leadLabel = leadDays.join('-')
-const baseName = `gfs-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
-const anomalyPath = path.join(dataRoot, 'weather', 'noaa-gfs', `${baseName}-location-anomalies.csv`)
+const baseName = `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
+const anomalyPath = path.join(dataRoot, 'weather', sourceConfig.weatherDir, `${baseName}-location-anomalies.csv`)
 const scorePath = path.join(dataRoot, 'research', `${baseName}-signal-scores.csv`)
 const returnsPath = path.join(dataRoot, 'research', `${baseName}-signal-returns.csv`)
-const manifestPath = path.join(dataRoot, 'weather', 'noaa-gfs', `${baseName}-manifest.json`)
+const manifestPath = path.join(dataRoot, 'weather', sourceConfig.weatherDir, `${baseName}-manifest.json`)
 
 const anomalyHeaders = [
   'issueDate',
@@ -214,7 +267,7 @@ async function fetchWithTimeout(url, options = {}) {
     return await fetch(url, {
       ...options,
       headers: {
-        'User-Agent': 'QORE NOAA GFS backfill',
+        'User-Agent': sourceConfig.userAgent,
         ...(options.headers ?? {}),
       },
       signal: controller.signal,
@@ -253,18 +306,8 @@ async function fetchWithRetry(label, fn, retries = 2) {
   throw new Error(`${label}: ${lastError.message}`)
 }
 
-function gfsObjectBases(issueDate, fhr) {
-  const ymd = compactDate(issueDate)
-  const fff = String(fhr).padStart(3, '0')
-  const fileName = `gfs.t${runHour}z.pgrb2.0p25.f${fff}`
-  return [
-    `https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.${ymd}/${runHour}/atmos/${fileName}`,
-    `https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.${ymd}/${runHour}/${fileName}`,
-  ]
-}
-
-async function fetchGfsIndex(issueDate, fhr) {
-  const bases = gfsObjectBases(issueDate, fhr)
+async function fetchForecastIndex(issueDate, fhr) {
+  const bases = sourceConfig.objectBases(issueDate, fhr)
   const errors = []
   for (const gribUrl of bases) {
     const idxUrl = `${gribUrl}.idx`
@@ -295,7 +338,7 @@ function targetRangeFromIndex(indexText) {
     row.level.includes('2 m') &&
     row.level.includes('above ground')
   )
-  if (targetIndex === -1) throw new Error('Could not find TMP:2 m above ground in GFS index.')
+  if (targetIndex === -1) throw new Error(`Could not find TMP:2 m above ground in ${forecastSource} index.`)
   const target = rows[targetIndex]
   const next = rows[targetIndex + 1]
   if (!next) throw new Error(`TMP range was last row in index: ${target.line}`)
@@ -316,11 +359,11 @@ function sampleLocation(message, location) {
 }
 
 async function fetchForecastSamples(issueDate, fhr) {
-  const { gribUrl, idxUrl, text } = await fetchGfsIndex(issueDate, fhr)
+  const { gribUrl, idxUrl, text } = await fetchForecastIndex(issueDate, fhr)
   const { start, end, indexLine } = targetRangeFromIndex(text)
   const bytes = await fetchWithRetry(`grib ${gribUrl}`, () => fetchRange(gribUrl, start, end))
   const [message] = parseMessagesFromBuffer(bytes)
-  if (!message) throw new Error(`Could not parse GFS GRIB message from ${gribUrl}`)
+  if (!message) throw new Error(`Could not parse ${forecastSource} GRIB message from ${gribUrl}`)
   return {
     sourceUrl: gribUrl,
     indexUrl: idxUrl,
@@ -461,7 +504,7 @@ async function loadResumeState(expectedReturnRows) {
     await rewriteRowsWithoutKeys(anomalyPath, anomalyHeaders, prunedKeys)
     await rewriteRowsWithoutKeys(scorePath, scoreHeaders, prunedKeys)
     await rewriteRowsWithoutKeys(returnsPath, returnHeaders, prunedKeys)
-    console.warn(`gfs calendar resume pruned ${prunedKeys.size} incomplete output groups`)
+    console.warn(`${forecastSource} calendar resume pruned ${prunedKeys.size} incomplete output groups`)
   }
 
   return { completeKeys, prunedKeys }
@@ -508,7 +551,7 @@ async function buildItem(item, normalMeans) {
       targetDate: item.targetDate,
       leadDays: item.leadDays,
       windowId: item.windowId,
-      modelId: `ncep-gfs-global-${runHour}z-noaa-aws`,
+      modelId: sourceConfig.modelId(),
       locationId: location.id,
       region: location.region,
       weight: location.weight,
@@ -518,7 +561,7 @@ async function buildItem(item, normalMeans) {
       sampledValidHoursUtc: validHoursUtc.join('|'),
       nearestGridLatitude: nearest.nearestGridLatitude,
       nearestGridLongitude: nearest.nearestGridLongitude,
-      source: 'NOAA GFS 0.25 degree forecast archive on AWS, TMP 2 m above ground',
+      source: sourceConfig.source,
     }
   })
 
@@ -535,7 +578,7 @@ async function buildItem(item, normalMeans) {
     targetDate: item.targetDate,
     leadDays: item.leadDays,
     windowId: item.windowId,
-    modelId: `ncep-gfs-global-${runHour}z-noaa-aws`,
+    modelId: sourceConfig.modelId(),
     weightedAnomalyF: round(weightedAnomalyF, 3),
     coveragePct: round(coveragePct, 3),
     extremeCount: locationRows.filter((row) => row.forecastAnomalyF <= arcticBlastThresholds.extremeAnomalyF).length,
@@ -545,7 +588,7 @@ async function buildItem(item, normalMeans) {
     qualifies:
       weightedAnomalyF <= arcticBlastThresholds.coldAnomalyF &&
       coveragePct >= arcticBlastThresholds.minCoveragePct,
-    source: 'NOAA GFS 0.25 degree forecast archive on AWS, TMP 2 m above ground',
+    source: sourceConfig.source,
   }
 
   return { item, locationRows, scoreRow }
@@ -614,31 +657,32 @@ async function main() {
         await queueWrite(result)
       } catch (error) {
         failures.push({ ...item, error: error.message })
-        console.warn(`gfs calendar failed: ${item.issueDate} lead ${item.leadDays}: ${error.message}`)
+        console.warn(`${forecastSource} calendar failed: ${item.issueDate} lead ${item.leadDays}: ${error.message}`)
       }
       completed += 1
       if (completed % 25 === 0 || completed === items.length) {
-        console.log(`gfs calendar progress: ${completed}/${items.length} items (${failures.length} failures)`)
+        console.log(`${forecastSource} calendar progress: ${completed}/${items.length} items (${failures.length} failures)`)
       }
     }
   }
 
   console.log(
-    `gfs calendar start: ${items.length} items, range ${startDate}..${endDate}, leads ${leadDays.join(',')}, valid hours ${validHoursUtc.join(',')}, concurrency ${concurrency}`,
+    `${forecastSource} calendar start: ${items.length} items, range ${startDate}..${endDate}, leads ${leadDays.join(',')}, valid hours ${validHoursUtc.join(',')}, concurrency ${concurrency}`,
   )
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
   await writeQueue
 
   const manifest = {
     generatedAt: new Date().toISOString(),
-    source: 'NOAA GFS 0.25 degree forecast archive on AWS, TMP 2 m above ground',
+    source: sourceConfig.source,
+    forecastSource,
     range: { startDate, endDate },
     runHour,
     leadDays,
     validHoursUtc,
     heatingSeasonOnly,
     allowPartial,
-    modelId: `ncep-gfs-global-${runHour}z-noaa-aws`,
+    modelId: sourceConfig.modelId(),
     locations: locations.length,
     expectedScoreRows: expectedItems.length,
     existingCompleteRowsBeforeRun: doneKeys.size,
@@ -656,10 +700,10 @@ async function main() {
     },
   }
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
-  console.log(`gfs calendar manifest written: ${path.relative(repoDir, manifestPath)}`)
+  console.log(`${forecastSource} calendar manifest written: ${path.relative(repoDir, manifestPath)}`)
   if (failures.length && !allowPartial) {
     console.error(
-      `gfs calendar incomplete: ${failures.length} failures. Set QORE_GFS_ALLOW_PARTIAL=1 to keep a zero exit code for partial exploratory runs.`,
+      `${forecastSource} calendar incomplete: ${failures.length} failures. Set QORE_GFS_ALLOW_PARTIAL=1 to keep a zero exit code for partial exploratory runs.`,
     )
     process.exitCode = 1
   }

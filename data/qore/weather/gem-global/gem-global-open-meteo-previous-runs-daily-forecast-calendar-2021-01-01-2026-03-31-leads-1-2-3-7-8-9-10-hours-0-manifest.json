@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-06-08T03:20:08.778Z",
+  "source": "Open-Meteo Previous Runs API, GEM Global, temperature_2m_previous_dayN",
+  "sourceEndpoint": "https://previous-runs-api.open-meteo.com/v1/forecast",
+  "range": {
+    "startDate": "2021-01-01",
+    "endDate": "2026-03-31"
+  },
+  "sourceProbeStartDate": "2024-01-01",
+  "fetchStartDate": "2024-01-01",
+  "requestDelayMs": 3500,
+  "rateLimitDelayMs": 65000,
+  "leadDays": [
+    1,
+    2,
+    3,
+    7,
+    8,
+    9,
+    10
+  ],
+  "validHoursUtc": [
+    0
+  ],
+  "heatingSeasonOnly": true,
+  "modelId": "gem-global-open-meteo-previous-runs",
+  "locations": 18,
+  "expectedScoreRows": 5882,
+  "finalScoreRows": 1487,
+  "missingScoreRows": 4395,
+  "expectedByLead": {
+    "1": 845,
+    "2": 844,
+    "3": 843,
+    "7": 839,
+    "8": 838,
+    "9": 837,
+    "10": 836
+  },
+  "presentByLead": {
+    "1": 374,
+    "2": 373,
+    "3": 372,
+    "7": 368,
+    "8": 0,
+    "9": 0,
+    "10": 0
+  },
+  "missingScoreRowsByLead": {
+    "1": 471,
+    "2": 471,
+    "3": 471,
+    "7": 471,
+    "8": 838,
+    "9": 837,
+    "10": 836
+  },
+  "firstScoreDateByLead": {
+    "1": "2024-01-19",
+    "2": "2024-01-19",
+    "3": "2024-01-19",
+    "7": "2024-01-19",
+    "8": null,
+    "9": null,
+    "10": null
+  },
+  "lastScoreDateByLead": {
+    "1": "2026-03-30",
+    "2": "2026-03-29",
+    "3": "2026-03-28",
+    "7": "2026-03-24",
+    "8": null,
+    "9": null,
+    "10": null
+  },
+  "missingLocationSamplesByLead": {
+    "1": 342,
+    "2": 360,
+    "3": 378,
+    "7": 450,
+    "8": 7074,
+    "9": 7074,
+    "10": 7074
+  },
+  "failures": [],
+  "attemptedUrlExamples": [
+    "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=44.9778%2C41.8781%2C42.3314%2C41.4993%2C39.7684%2C38.627%2C39.0997%2C36.1627%2C35.1495%2C33.749%2C35.2271%2C35.7796%2C38.9072%2C39.9526%2C40.7128%2C42.3601%2C32.7767%2C29.7604&longitude=-93.265%2C-87.6298%2C-83.0458%2C-81.6944%2C-86.1581%2C-90.1994%2C-94.5786%2C-86.7816%2C-90.049%2C-84.388%2C-80.8431%2C-78.6382%2C-77.0369%2C-75.1652%2C-74.006%2C-71.0589%2C-96.797%2C-95.3698&hourly=temperature_2m_previous_day1%2Ctemperature_2m_previous_day2%2Ctemperature_2m_previous_day3%2Ctemperature_2m_previous_day7%2Ctemperature_2m_previous_day8%2Ctemperature_2m_previous_day9%2Ctemperature_2m_previous_day10&temperature_unit=fahrenheit&timezone=GMT&models=gem_global&start_date=2024-01-01&end_date=2024-01-31&cell_selection=nearest",
+    "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=44.9778%2C41.8781%2C42.3314%2C41.4993%2C39.7684%2C38.627%2C39.0997%2C36.1627%2C35.1495%2C33.749%2C35.2271%2C35.7796%2C38.9072%2C39.9526%2C40.7128%2C42.3601%2C32.7767%2C29.7604&longitude=-93.265%2C-87.6298%2C-83.0458%2C-81.6944%2C-86.1581%2C-90.1994%2C-94.5786%2C-86.7816%2C-90.049%2C-84.388%2C-80.8431%2C-78.6382%2C-77.0369%2C-75.1652%2C-74.006%2C-71.0589%2C-96.797%2C-95.3698&hourly=temperature_2m_previous_day1%2Ctemperature_2m_previous_day2%2Ctemperature_2m_previous_day3%2Ctemperature_2m_previous_day7%2Ctemperature_2m_previous_day8%2Ctemperature_2m_previous_day9%2Ctemperature_2m_previous_day10&temperature_unit=fahrenheit&timezone=GMT&models=gem_global&start_date=2024-02-01&end_date=2024-02-29&cell_selection=nearest",
+    "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=44.9778%2C41.8781%2C42.3314%2C41.4993%2C39.7684%2C38.627%2C39.0997%2C36.1627%2C35.1495%2C33.749%2C35.2271%2C35.7796%2C38.9072%2C39.9526%2C40.7128%2C42.3601%2C32.7767%2C29.7604&longitude=-93.265%2C-87.6298%2C-83.0458%2C-81.6944%2C-86.1581%2C-90.1994%2C-94.5786%2C-86.7816%2C-90.049%2C-84.388%2C-80.8431%2C-78.6382%2C-77.0369%2C-75.1652%2C-74.006%2C-71.0589%2C-96.797%2C-95.3698&hourly=temperature_2m_previous_day1%2Ctemperature_2m_previous_day2%2Ctemperature_2m_previous_day3%2Ctemperature_2m_previous_day7%2Ctemperature_2m_previous_day8%2Ctemperature_2m_previous_day9%2Ctemperature_2m_previous_day10&temperature_unit=fahrenheit&timezone=GMT&models=gem_global&start_date=2024-03-01&end_date=2024-03-31&cell_selection=nearest"
+  ],
+  "files": {
+    "locationAnomalies": "data/qore/weather/gem-global/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+    "signalScores": "data/qore/research/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+    "signalReturns": "data/qore/research/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+    "manifest": "data/qore/weather/gem-global/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+  },
+  "notes": [
+    "This is a lead-specific calendar from Open-Meteo Previous Runs, not the stitched Historical Forecast API.",
+    "Open-Meteo Previous Runs returned nulls for GEM Global previous_day8, previous_day9, and previous_day10 in spot checks; those lead days remain missing here.",
+    "Rows are filtered to the same heating-season target-date convention used by the local NOAA GFS calendar script."
+  ]
+}

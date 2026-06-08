@@ -1,0 +1,49 @@
+{
+  "generatedAt": "2026-06-08T04:33:38.540Z",
+  "source": "NOAA GEFS 0.25 degree ensemble mean forecast archive on AWS, TMP 2 m above ground",
+  "forecastSource": "gefs-mean",
+  "range": {
+    "startDate": "2021-01-01",
+    "endDate": "2026-03-31"
+  },
+  "runHour": "00",
+  "leadDays": [
+    1,
+    2,
+    3,
+    7,
+    8,
+    9,
+    10
+  ],
+  "validHoursUtc": [
+    0
+  ],
+  "heatingSeasonOnly": true,
+  "allowPartial": false,
+  "modelId": "ncep-gefs-mean-00z-noaa-aws",
+  "locations": 18,
+  "expectedScoreRows": 5882,
+  "finalCompleteRows": 5882,
+  "missingCompleteRows": 0,
+  "failures": [],
+  "mergedFromRanges": [
+    "2021-01-01-2021-12-31",
+    "2022-01-01-2022-12-31",
+    "2023-01-01-2023-12-31",
+    "2024-01-01-2024-12-31",
+    "2025-01-01-2025-12-31",
+    "2026-01-01-2026-03-31",
+    "2021-12-22-2022-01-10",
+    "2022-12-22-2023-01-10",
+    "2023-12-22-2024-01-10",
+    "2024-12-22-2025-01-10",
+    "2025-12-22-2026-01-10"
+  ],
+  "files": {
+    "locationAnomalies": "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+    "signalScores": "data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+    "signalReturns": "data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+    "manifest": "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+  }
+}

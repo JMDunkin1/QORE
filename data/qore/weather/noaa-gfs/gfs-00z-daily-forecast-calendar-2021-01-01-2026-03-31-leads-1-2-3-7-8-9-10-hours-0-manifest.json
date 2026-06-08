@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-06-08T02:53:43.361Z",
+  "source": "NOAA GFS 0.25 degree forecast archive on AWS, TMP 2 m above ground",
+  "range": {
+    "startDate": "2021-01-01",
+    "endDate": "2026-03-31"
+  },
+  "runHour": "00",
+  "leadDays": [
+    1,
+    2,
+    3,
+    7,
+    8,
+    9,
+    10
+  ],
+  "validHoursUtc": [
+    0
+  ],
+  "heatingSeasonOnly": true,
+  "modelId": "ncep-gfs-global-00z-noaa-aws",
+  "locations": 18,
+  "expectedScoreRows": 5882,
+  "existingScoreRowsBeforeRun": 5873,
+  "itemRowsAttemptedThisRun": 9,
+  "itemRowsCompletedThisRun": 1,
+  "finalScoreRows": 5874,
+  "missingScoreRows": 8,
+  "failures": [
+    {
+      "key": "2021-02-02|7",
+      "issueDate": "2021-02-02",
+      "leadDays": 7,
+      "targetDate": "2021-02-09",
+      "windowId": "rumor",
+      "error": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f168.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f168.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f168.idx</Key | https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f168.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f168.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/gfs.t00z.pgrb2.0p25.f168.idx</Key><Requ"
+    },
+    {
+      "key": "2021-02-02|3",
+      "issueDate": "2021-02-02",
+      "leadDays": 3,
+      "targetDate": "2021-02-05",
+      "windowId": "selloff",
+      "error": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f072.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f072.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f072.idx</Key | https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f072.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f072.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/gfs.t00z.pgrb2.0p25.f072.idx</Key><Requ"
+    },
+    {
+      "key": "2021-02-02|2",
+      "issueDate": "2021-02-02",
+      "leadDays": 2,
+      "targetDate": "2021-02-04",
+      "windowId": "selloff",
+      "error": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f048.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f048.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f048.idx</Key | https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f048.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f048.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/gfs.t00z.pgrb2.0p25.f048.idx</Key><Requ"
+    },
+    {
+      "key": "2021-02-02|1",
+      "issueDate": "2021-02-02",
+      "leadDays": 1,
+      "targetDate": "2021-02-03",
+      "windowId": "selloff",
+      "error": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f024.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f024.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f024.idx</Key | https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f024.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f024.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/gfs.t00z.pgrb2.0p25.f024.idx</Key><Requ"
+    },
+    {
+      "key": "2022-11-30|7",
+      "issueDate": "2022-11-30",
+      "leadDays": 7,
+      "targetDate": "2022-12-07",
+      "windowId": "rumor",
+      "error": "Could not parse GFS GRIB message from https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20221130/00/atmos/gfs.t00z.pgrb2.0p25.f168"
+    },
+    {
+      "key": "2021-02-02|9",
+      "issueDate": "2021-02-02",
+      "leadDays": 9,
+      "targetDate": "2021-02-11",
+      "windowId": "rumor",
+      "error": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f216.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f216.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f216.idx</Key | https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f216.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f216.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/gfs.t00z.pgrb2.0p25.f216.idx</Key><Requ"
+    },
+    {
+      "key": "2021-02-02|8",
+      "issueDate": "2021-02-02",
+      "leadDays": 8,
+      "targetDate": "2021-02-10",
+      "windowId": "rumor",
+      "error": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f192.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f192.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f192.idx</Key | https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f192.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f192.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/gfs.t00z.pgrb2.0p25.f192.idx</Key><Requ"
+    },
+    {
+      "key": "2021-02-02|10",
+      "issueDate": "2021-02-02",
+      "leadDays": 10,
+      "targetDate": "2021-02-12",
+      "windowId": "rumor",
+      "error": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f240.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f240.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/atmos/gfs.t00z.pgrb2.0p25.f240.idx</Key | https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f240.idx: index https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20210202/00/gfs.t00z.pgrb2.0p25.f240.idx: HTTP 404: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>gfs.20210202/00/gfs.t00z.pgrb2.0p25.f240.idx</Key><Requ"
+    }
+  ],
+  "files": {
+    "locationAnomalies": "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+    "signalScores": "data/qore/research/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+    "signalReturns": "data/qore/research/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+    "manifest": "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+  }
+}

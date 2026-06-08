@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-06-08T03:27:12.661Z",
+  "source": "Open-Meteo Single Runs API, model ncep_aigfs025, temperature_2m",
+  "requestedRange": {
+    "startDate": "2021-01-01",
+    "endDate": "2026-03-31"
+  },
+  "sourceAvailableStartDate": "2026-01-07",
+  "effectiveRange": {
+    "startDate": "2026-01-07",
+    "endDate": "2026-03-31"
+  },
+  "runHour": "00",
+  "leadDays": [
+    1,
+    2,
+    3,
+    7,
+    8,
+    9,
+    10
+  ],
+  "validHoursUtc": [
+    0
+  ],
+  "modelId": "ncep-aigfs-025-00z-openmeteo-single-runs",
+  "locations": 18,
+  "expectedScoreRows": 548,
+  "itemRowsCompletedThisRun": 545,
+  "missingScoreRows": 3,
+  "runDatesAttemptedThisRun": 83,
+  "runDatesCompletedThisRun": 82,
+  "failedItemRows": 3,
+  "marketSymbols": [
+    "UNG",
+    "NG=F"
+  ],
+  "failures": [
+    {
+      "issueDate": "2026-03-27",
+      "itemCount": 3,
+      "error": "Invalid JSON: Unexpected error while streaming data: modelRunUnavailable(model: App.DomainRegistry.ncep_aigfs025, run: App.Timestamp(timeIntervalSince1970: 1774569600))",
+      "url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=44.9778%2C41.8781%2C42.3314%2C41.4993%2C39.7684%2C38.627%2C39.0997%2C36.1627%2C35.1495%2C33.749%2C35.2271%2C35.7796%2C38.9072%2C39.9526%2C40.7128%2C42.3601%2C32.7767%2C29.7604&longitude=-93.265%2C-87.6298%2C-83.0458%2C-81.6944%2C-86.1581%2C-90.1994%2C-94.5786%2C-86.7816%2C-90.049%2C-84.388%2C-80.8431%2C-78.6382%2C-77.0369%2C-75.1652%2C-74.006%2C-71.0589%2C-96.797%2C-95.3698&hourly=temperature_2m&run=2026-03-27T00%3A00&models=ncep_aigfs025&forecast_days=16&timezone=GMT"
+    }
+  ],
+  "sampleUrl": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=44.9778%2C41.8781%2C42.3314%2C41.4993%2C39.7684%2C38.627%2C39.0997%2C36.1627%2C35.1495%2C33.749%2C35.2271%2C35.7796%2C38.9072%2C39.9526%2C40.7128%2C42.3601%2C32.7767%2C29.7604&longitude=-93.265%2C-87.6298%2C-83.0458%2C-81.6944%2C-86.1581%2C-90.1994%2C-94.5786%2C-86.7816%2C-90.049%2C-84.388%2C-80.8431%2C-78.6382%2C-77.0369%2C-75.1652%2C-74.006%2C-71.0589%2C-96.797%2C-95.3698&hourly=temperature_2m&run=2026-01-07T00%3A00&models=ncep_aigfs025&forecast_days=16&timezone=GMT",
+  "files": {
+    "locationAnomalies": "data/qore/weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+    "signalScores": "data/qore/research/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+    "signalReturns": "data/qore/research/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+    "manifest": "data/qore/weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+  }
+}

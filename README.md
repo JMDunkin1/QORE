@@ -60,15 +60,17 @@ Free research data cache:
 npm run collect:free-data
 ```
 
-This writes no-key market and weather research data under `.local/qore/`. The cache is ignored by Git. Check `.local/qore/runs/free-data-manifest.json` to see which sources succeeded or failed.
+This writes no-key market and weather research data under `data/qore/` so it can be shared with the project. Check `data/qore/runs/free-data-manifest.json` to see which sources succeeded or failed. Set `QORE_DATA_ROOT=.local/qore` when you want a private scratch cache.
 
-NOAA GFS forecast signal calendar:
+NOAA forecast signal calendars:
 
 ```bash
 npm run collect:gfs-calendar
+npm run collect:gefs-calendar
+npm run collect:graphcast-calendar
 ```
 
-This builds a resume-friendly daily GFS forecast calendar under `.local/qore/` for arctic-blast lead windows. Failed items make the command exit nonzero unless `QORE_GFS_ALLOW_PARTIAL=1` is set.
+These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS forecast calendars under `data/qore/` for arctic-blast lead windows. The GraphCastGFS script starts on the first raw NOAA 00z archive date verified for this collector, `2024-04-26`. Failed items make the command exit nonzero unless `QORE_GFS_ALLOW_PARTIAL=1` is set.
 
 ## What It Does
 

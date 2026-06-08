@@ -1,0 +1,106 @@
+{
+  "generatedAt": "2026-06-08T03:28:57Z",
+  "requestedRange": {
+    "startDate": "2021-01-01",
+    "endDate": "2026-03-31"
+  },
+  "requestedLeadDays": [1, 2, 3, 7, 8, 9, 10],
+  "requestedField": "2 m temperature / temperature_2m",
+  "requestedBasket": "QORE eastern CONUS demand basket, 18 locations",
+  "findings": [
+    {
+      "source": "NWS Service Change Notice 25-89",
+      "url": "https://www.weather.gov/media/notification/pdf_2025/scn25-89_AIGFS_AIGEFS_and_HGEFS.pdf",
+      "result": "AIGFS became operational on 2025-12-17 at 12 UTC; evaluation data began 2025-12-09; files are GRIB2 on NOMADS only; sfc files include TMP at 2 m above ground; forecast hours are 000..384 every 6 hours."
+    },
+    {
+      "source": "NCEP AIGFS product inventory",
+      "url": "https://www.nco.ncep.noaa.gov/pmb/products/aigfs/",
+      "result": "Inventory lists aigfs.tCCz.pres.fFFF.grib2 and aigfs.tCCz.sfc.fFFF.grib2, with GRIB2 via NOMADS HTTPS and no NWS FTP server."
+    },
+    {
+      "source": "NCEP AIGFS inventory example",
+      "url": "https://www.nco.ncep.noaa.gov/pmb/products/aigfs/aigfs.t00z.sfc.f000.grib2.shtml",
+      "result": "Inventory for sfc f000 includes TMP at 2 m above ground."
+    },
+    {
+      "source": "NOMADS operational HTTPS",
+      "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod/",
+      "result": "Directory listing returned only recent rotating operational dates aigfs.20260529 through aigfs.20260607 when tested; no requested-range history was exposed."
+    },
+    {
+      "source": "NOMADS requested-range operational file",
+      "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod/aigfs.20260331/00/model/atmos/grib2/aigfs.t00z.sfc.f024.grib2.idx",
+      "result": "HTTP 403 when tested; requested-range AIGFS file not obtainable from NOMADS."
+    },
+    {
+      "source": "NOMADS current operational file",
+      "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod/aigfs.20260607/00/model/atmos/grib2/aigfs.t00z.sfc.f024.grib2.idx",
+      "result": "Obtained current index; line 3 is TMP:2 m above ground:24 hour fcst, proving current AIGFS 2 m temperature is scriptable from NOMADS."
+    },
+    {
+      "source": "NOMADS evaluation para path",
+      "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/para/aigfs.20251209/12/model/atmos/grib2/aigfs.t12z.sfc.f024.grib2.idx",
+      "result": "HTTP 403 when tested; evaluation-period AIGFS files were not obtainable from this public path."
+    },
+    {
+      "source": "NOAA EAGLE / GraphCastGFS AWS registry",
+      "url": "https://registry.opendata.aws/noaa-nws-graphcastgfs-pds/",
+      "result": "Registry says AIGFS/AIGEFS are operational replacements for EAGLE SOLO/Ensemble; EAGLE SOLO ran 2024-04-24 06Z through 2025-12-18 18Z; AIGFSdev forecasts continue separately."
+    },
+    {
+      "source": "NOAA EAGLE / GraphCastGFS S3 root listing",
+      "url": "https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com/?list-type=2&delimiter=/&max-keys=200",
+      "result": "Root listing showed aigfs prefixes starting at aigfs.20260416 plus graphcastgfs prefixes back to 2024-02-05. AIGFS S3 objects begin after the requested 2026-03-31 end date."
+    },
+    {
+      "source": "NOAA EAGLE / GraphCastGFS S3 requested AIGFS prefix",
+      "url": "https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com/?list-type=2&prefix=aigfs.20260331/&max-keys=5",
+      "result": "KeyCount 0; no AIGFS S3 objects for the requested end date."
+    },
+    {
+      "source": "NOAA EAGLE / GraphCastGFS S3 requested GraphCastGFS prefix",
+      "url": "https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com/?list-type=2&prefix=graphcastgfs.20260331/&max-keys=5",
+      "result": "KeyCount 5; GraphCastGFS predecessor objects exist for 2026-03-31, but they are not AIGFS."
+    },
+    {
+      "source": "Open-Meteo Historical Forecast docs",
+      "url": "https://open-meteo.com/en/docs/historical-forecast-api",
+      "result": "Docs list NOAA NCEP AIGFS as global 0.25 degree, 6-hourly, available since 2026-01-07."
+    },
+    {
+      "source": "Open-Meteo Single Runs docs",
+      "url": "https://open-meteo.com/en/docs/single-runs-api",
+      "result": "Single Runs API preserves model run initialization time via the run parameter and can retrieve individual model runs."
+    },
+    {
+      "source": "Open-Meteo Single Runs AIGFS selector proof",
+      "url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=41.8781&longitude=-87.6298&hourly=temperature_2m&run=2026-01-07T00:00&models=ncep_aigfs025&forecast_days=16&timezone=GMT",
+      "result": "Obtained 384 hourly values with model selector ncep_aigfs025; lead hours 24, 48, 72, 168, 192, 216, and 240 are accessible."
+    },
+    {
+      "source": "Open-Meteo Single Runs missing run proof",
+      "url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=41.8781&longitude=-87.6298&hourly=temperature_2m&run=2026-03-27T00:00&models=ncep_aigfs025&forecast_days=16&timezone=GMT",
+      "result": "Returned: The requested model run is not available. Model: ncep_aigfs025, run: 2026-03-27T00:00Z."
+    }
+  ],
+  "calendarBuild": {
+    "source": "Open-Meteo Single Runs API",
+    "modelSelector": "ncep_aigfs025",
+    "runHour": "00",
+    "effectiveStartDate": "2026-01-07",
+    "effectiveEndDate": "2026-03-31",
+    "expectedScoreRows": 548,
+    "completedScoreRows": 545,
+    "missingScoreRows": 3,
+    "missingRunDates": ["2026-03-27T00:00"],
+    "locationRows": 9810,
+    "returnRows": 1090,
+    "files": {
+      "locationAnomalies": ".local/qore/weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+      "signalScores": ".local/qore/research/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+      "signalReturns": ".local/qore/research/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+      "manifest": ".local/qore/weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json"
+    }
+  }
+}

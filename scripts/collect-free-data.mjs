@@ -6,7 +6,7 @@ import { loadLocalEnv } from './local-env.mjs'
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
 
-const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, '.local', 'qore')
+const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
 const timeoutMs = Number(process.env.QORE_FETCH_TIMEOUT_MS ?? 15000)
 const weatherFailureLimit = Number(process.env.QORE_WEATHER_FAILURE_LIMIT ?? 8)
 const startDate = process.env.QORE_TEST_START ?? '2025-11-01'
