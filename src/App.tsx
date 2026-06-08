@@ -434,7 +434,7 @@ function App() {
       <aside className="sidebar" aria-label="QORE dashboard sections">
         <div className="brand-block">
           <div className="brand-mark">
-            <img src="/qore-mark-clean.svg?v=signal-mark" alt="" aria-hidden="true" />
+            <img src="/favicon.svg?v=planet-mark-v2" alt="" aria-hidden="true" />
           </div>
           <div>
             <strong>QORE</strong>
