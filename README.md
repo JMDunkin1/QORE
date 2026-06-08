@@ -63,6 +63,8 @@ npm run collect:free-data
 This writes no-key market and weather research data under `data/qore/` so it can be shared with the project. Check `data/qore/runs/free-data-manifest.json` to see which sources succeeded or failed. Set `QORE_DATA_ROOT=.local/qore` when you want a private scratch cache.
 By default it refreshes the full shared backtest window from `2021-01-01` through the latest complete UTC day; set `QORE_TEST_START` / `QORE_TEST_END` only when you need a fixed historical slice.
 
+Market cache note: `UNG` is ETF history, and `NG=F` is a Yahoo continuous front-month proxy. Do not label results as futures-grade Henry Hub NG performance until `data/qore/market/futures/henry-hub-ng-readiness.md` is satisfied with per-contract prices, expiry dates, and roll logic.
+
 NOAA forecast signal calendars:
 
 ```bash
@@ -96,10 +98,21 @@ Natural gas:
 date,open,high,low,close,volume,contract,storageBcf
 ```
 
+For ETF or continuous-proxy research, `contract` may be `UNG` or `NG=F`. For futures-grade tests, `contract` must identify the actual NG delivery month and be paired with an explicit expiry/roll calendar.
+
+Forecast signal returns:
+
+```csv
+issueDate,targetDate,leadDays,windowId,modelId,symbol,priorTradeDate,entryTradeDate,targetTradeDate,priorClose,entryClose,targetClose,returnPctPriorCloseToTarget,returnPctEntryCloseToTarget,qualifies
+```
+
+For Arctic Blast strategy testing, use the `close-after-issue-v1` timing convention from `src/backtesting/timing.ts`: treat the forecast score as available only after the `issueDate` close, enter at the first market close strictly after `issueDate`, and exit at the first market close on or after `targetDate` and strictly after entry. Use `returnPctEntryCloseToTarget`; `returnPctPriorCloseToTarget` is diagnostic only because it starts before the signal is known.
+
 ## Integration Seams
 
 - `src/integrations/connectors.ts`: NOAA CDO, EIA API, CME/NYMEX metadata, IBKR paper execution, local project data, model registry.
 - `src/backtesting/engine.ts`: replace or extend strategy signal functions here.
+- `src/backtesting/timing.ts`: no-lookahead timing checks for forecast signal-return rows.
 - `src/ml/evaluation.ts`: weather model scoring and feature importance.
 - `src/utils/importers.ts`: CSV parsers for dashboard ingestion.
 

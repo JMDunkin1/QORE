@@ -28,10 +28,20 @@ export const integrationConnectors: IntegrationConnector[] = [
   {
     name: 'CME / NYMEX Contract Metadata',
     category: 'Market data',
-    status: 'Ready scaffold',
-    purpose: 'Henry Hub futures contract specs, expirations, product sizing, and risk calendar metadata.',
+    status: 'Research',
+    purpose:
+      'Official Henry Hub futures specs, expiration-calendar checks, product sizing, and delivery-risk metadata; historical per-contract bars and roll logic are not implemented.',
     envVar: 'CME_DATA_TOKEN',
     sourceUrl: 'https://www.cmegroup.com/markets/energy/natural-gas/natural-gas.contractSpecs.html',
+  },
+  {
+    name: 'EIA NYMEX Futures Contract 1-4 History',
+    category: 'Market data',
+    status: 'Research',
+    purpose:
+      'No-auth daily Henry Hub NYMEX Contract 1-4 settlement history for front-ladder research; this is not a specific month-code contract database and is stale after 2024-04-05.',
+    envVar: 'EIA_API_KEY',
+    sourceUrl: 'https://www.eia.gov/dnav/ng/ng_pri_fut_s1_d.htm',
   },
   {
     name: 'IBKR Gateway / TWS API',

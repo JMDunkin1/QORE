@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-08T03:36:25.888Z",
+  "generatedAt": "2026-06-08T18:43:18.450Z",
   "requested": {
     "range": "2021-01-01..2026-03-31",
     "runHour": "00",
@@ -38,10 +38,10 @@
   "outputs": {
     "officialAwsPartial": {
       "signalScores": {
-        "file": ".local/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
-        "dataRows": 171,
+        "file": "data/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
+        "dataRows": 196,
         "firstIssueDate": "2024-03-14",
-        "lastIssueDate": "2024-11-07",
+        "lastIssueDate": "2024-11-10",
         "leads": [
           "1",
           "2",
@@ -53,10 +53,10 @@
         ]
       },
       "locationAnomalies": {
-        "file": ".local/qore/weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
-        "dataRows": 3078,
+        "file": "data/qore/weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+        "dataRows": 3528,
         "firstIssueDate": "2024-03-14",
-        "lastIssueDate": "2024-11-07",
+        "lastIssueDate": "2024-11-10",
         "leads": [
           "1",
           "2",
@@ -68,10 +68,10 @@
         ]
       },
       "signalReturns": {
-        "file": ".local/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
-        "dataRows": 342,
+        "file": "data/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
+        "dataRows": 392,
         "firstIssueDate": "2024-03-14",
-        "lastIssueDate": "2024-11-07",
+        "lastIssueDate": "2024-11-10",
         "leads": [
           "1",
           "2",
@@ -82,7 +82,20 @@
           "10"
         ]
       },
-      "expectedScoreRowsForParserCompatibleRange": 2200
+      "expectedScoreRowsForParserCompatibleRange": 2200,
+      "missingScoreRowsForParserCompatibleRange": 2004,
+      "latestTrackedValidation": {
+        "duplicateScoreKeys": 0,
+        "scoreRowsPerLead": {
+          "1": 28,
+          "2": 28,
+          "3": 28,
+          "7": 28,
+          "8": 28,
+          "9": 28,
+          "10": 28
+        }
+      }
     },
     "localBuilders": [
       ".local/qore/research/ecmwf-aifs-build-calendar.mjs",
@@ -92,7 +105,7 @@
   "blockers": [
     "No no-auth official ECMWF portal history for 2021-01-01..2026-03-31; ECMWF says full archive uses Archive/MARS registration.",
     "AWS no-auth historical AIFS exists, but 2024-02-29..2024-03-13 2t messages decode to zero messages with @mattnucc/gribberish in this repo.",
-    "Official AWS byte-range extraction is feasible but slow: 171/2200 parser-compatible score rows completed before stopping the interactive run.",
+    "Official AWS byte-range extraction is feasible but slow: 196/2200 parser-compatible score rows are now tracked after a bounded resumed run.",
     "Open-Meteo Single Runs can provide lead days 1,2,3,7,8,9,10 from 2025-08-02, but this Mac hit Open-Meteo hourly request limits during calendar build."
   ]
 }

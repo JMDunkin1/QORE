@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-08T03:16:54.435Z",
+  "generatedAt": "2026-06-08T18:43:18.450Z",
   "source": "ECMWF AIFS open data on AWS, 2 metre temperature",
   "requestedRange": {
     "startDate": "2021-01-01",
@@ -33,11 +33,11 @@
   "locations": 18,
   "requestedScoreRows": 5882,
   "expectedScoreRowsWhereAvailable": 2200,
-  "existingScoreRowsBeforeRun": 0,
-  "itemRowsAttemptedThisRun": 5,
-  "itemRowsCompletedThisRun": 5,
-  "finalScoreRows": 5,
-  "missingScoreRowsWhereAvailable": 2195,
+  "existingScoreRowsBeforeRun": 171,
+  "itemRowsAttemptedThisRun": 25,
+  "itemRowsCompletedThisRun": 25,
+  "finalScoreRows": 196,
+  "missingScoreRowsWhereAvailable": 2004,
   "unavailableBeforeFirstAifsIssueRows": 3682,
   "failures": [],
   "files": {
@@ -45,6 +45,6 @@
     "signalScores": "data/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
     "signalReturns": "data/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-returns.csv",
     "manifest": "data/qore/weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
-    "localBuilder": "../../Local%20Automations/QORE/data/qore/research/ecmwf-aifs-build-calendar.mjs"
+    "localBuilder": ".local/qore/research/ecmwf-aifs-build-calendar.mjs"
   }
 }

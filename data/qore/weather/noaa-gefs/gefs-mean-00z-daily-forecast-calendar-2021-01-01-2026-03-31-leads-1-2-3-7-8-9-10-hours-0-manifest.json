@@ -2,6 +2,11 @@
   "generatedAt": "2026-06-08T04:33:38.540Z",
   "source": "NOAA GEFS 0.25 degree ensemble mean forecast archive on AWS, TMP 2 m above ground",
   "forecastSource": "gefs-mean",
+  "strategyTestLabel": "GEFS mean (HGEFS substitute)",
+  "theoryModelSlot": "NCEP HGEFS 0.25 degree Ensemble Mean",
+  "substituteFor": "ncep-hgefs-0p25-ensemble-mean",
+  "exactHgefsRecovered": false,
+  "substituteRationale": "Exact HGEFS history for the requested 2021-01-01 through 2026-03-31 window was not recoverable from public NOMADS or AWS/NODD sources during the HGEFS source investigation. Use this complete NOAA GEFS 0.25 degree ensemble mean archive as the ensemble substitute, and label strategy results as GEFS mean rather than true HGEFS.",
   "range": {
     "startDate": "2021-01-01",
     "endDate": "2026-03-31"

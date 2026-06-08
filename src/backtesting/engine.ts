@@ -11,6 +11,15 @@ import type {
 } from '../types'
 import { strategies } from '../data/demoData'
 
+export {
+  arcticBlastNoLookaheadConvention,
+  expectedWindowIdForLead,
+  filterNoLookaheadSignalReturns,
+  summarizeSignalReturnTiming,
+  validateSignalReturnTiming,
+} from './timing'
+export type { SignalReturnRow, SignalReturnTimingReview, SignalReturnTimingSummary } from './timing'
+
 const TRADING_DAYS = 252
 
 export const defaultSettings: BacktestSettings = {
@@ -169,6 +178,7 @@ export function runBacktest(
     if (Math.abs(targetPosition - position) > 0.09) tradeCount += 1
 
     const previousEquity = equity
+    // Apply the current row's return before changing position so same-day signals cannot earn same-day closes.
     equity = Math.max(1, equity * (1 + position * point.dailyReturn) - tradingCost)
     peak = Math.max(peak, equity)
     const dailyPnlPct = previousEquity ? ((equity - previousEquity) / previousEquity) * 100 : 0
