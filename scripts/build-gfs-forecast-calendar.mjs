@@ -10,8 +10,9 @@ loadLocalEnv(repoDir)
 
 const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
 const forecastSource = process.env.QORE_FORECAST_SOURCE ?? 'gfs'
+const latestCompleteDate = addDays(new Date().toISOString().slice(0, 10), -1)
 const startDate = process.env.QORE_GFS_CALENDAR_START ?? process.env.QORE_TEST_START ?? '2021-01-01'
-const endDate = process.env.QORE_GFS_CALENDAR_END ?? process.env.QORE_TEST_END ?? '2026-03-31'
+const endDate = process.env.QORE_GFS_CALENDAR_END ?? process.env.QORE_TEST_END ?? latestCompleteDate
 const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
 const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
 const runHour = process.env.QORE_GFS_RUN_HOUR ?? '00'

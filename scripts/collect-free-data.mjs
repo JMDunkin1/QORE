@@ -9,11 +9,13 @@ loadLocalEnv(repoDir)
 const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
 const timeoutMs = Number(process.env.QORE_FETCH_TIMEOUT_MS ?? 15000)
 const weatherFailureLimit = Number(process.env.QORE_WEATHER_FAILURE_LIMIT ?? 8)
-const startDate = process.env.QORE_TEST_START ?? '2025-11-01'
-const endDate = process.env.QORE_TEST_END ?? '2026-03-31'
+const todayDate = new Date().toISOString().slice(0, 10)
+const latestCompleteDate = addDays(todayDate, -1)
+const startDate = process.env.QORE_TEST_START ?? '2021-01-01'
 const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
 const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
-const marketEndDate = process.env.QORE_MARKET_END ?? addDays(new Date().toISOString().slice(0, 10), 1)
+const marketEndDate = process.env.QORE_MARKET_END ?? addDays(todayDate, 1)
+const endDate = process.env.QORE_TEST_END ?? latestCompleteDate
 const yahooEndEpoch = Math.floor(new Date(`${marketEndDate}T00:00:00Z`).getTime() / 1000)
 const eiaApiKey = process.env.EIA_API_KEY ?? 'DEMO_KEY'
 const skipYahoo = truthy(process.env.QORE_SKIP_YAHOO)
@@ -923,13 +925,17 @@ async function maybeReadPreviousManifest() {
 }
 
 async function main() {
-  const profile = process.env.QORE_COLLECT_PROFILE ?? 'winter-2025-2026'
+  const profile = process.env.QORE_COLLECT_PROFILE ?? 'arctic-blast-history'
   const previousManifest = await maybeReadPreviousManifest()
+  const defaultSharedDataRoot = path.join(repoDir, 'data', 'qore')
+  const sharedDataRoot = path.resolve(dataRoot) === path.resolve(defaultSharedDataRoot)
   const manifest = {
     generatedAt: new Date().toISOString(),
     profile,
     dataRoot: path.relative(repoDir, dataRoot),
-    sourceNote: 'No-key/free data only. Files are local cache artifacts and are not committed because .local/ is ignored.',
+    sourceNote: sharedDataRoot
+      ? 'No-key/free data only. Files are shared research artifacts under data/qore.'
+      : 'No-key/free data only. Files are private scratch cache artifacts outside the shared data/qore root.',
     ranges: {
       testStart: startDate,
       testEnd: endDate,
