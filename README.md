@@ -62,6 +62,14 @@ npm run collect:free-data
 
 This writes no-key market and weather research data under `.local/qore/`. The cache is ignored by Git. Check `.local/qore/runs/free-data-manifest.json` to see which sources succeeded or failed.
 
+NOAA GFS forecast signal calendar:
+
+```bash
+npm run collect:gfs-calendar
+```
+
+This builds a resume-friendly daily GFS forecast calendar under `.local/qore/` for arctic-blast lead windows. Failed items make the command exit nonzero unless `QORE_GFS_ALLOW_PARTIAL=1` is set.
+
 ## What It Does
 
 - Generates deterministic demo weather and Henry Hub-style natural gas fixtures.

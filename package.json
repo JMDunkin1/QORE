@@ -12,6 +12,7 @@
     "dev:vite": "vite",
     "github-service": "node scripts/qore-git-service.mjs",
     "collect:free-data": "node scripts/collect-free-data.mjs",
+    "collect:gfs-calendar": "node scripts/build-gfs-forecast-calendar.mjs",
     "install:command": "node scripts/install-command.mjs",
     "install:launch-agent": "node scripts/install-macos-launch-agent.mjs",
     "test:github-service": "node scripts/test-qore-git-service.mjs",
@@ -20,6 +21,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mattnucc/gribberish": "^0.30.2",
     "lucide-react": "^1.17.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.6",
