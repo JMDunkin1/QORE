@@ -34,20 +34,21 @@ export type JoinedPoint = WeatherPoint &
     storageTrend: number
   }
 
-export type StrategyId =
-  | 'weather-stress-long'
-  | 'storage-fade'
-  | 'ml-ensemble'
-  | 'volatility-breakout'
-  | 'balanced-carry'
+export type BacktestSignalContext = {
+  points: JoinedPoint[]
+  index: number
+  settings: BacktestSettings
+  rollingVolatility: (lookback?: number) => number
+}
 
 export type Strategy = {
-  id: StrategyId
+  id: string
   name: string
   desk: string
   thesis: string
   riskLevel: 'Low' | 'Medium' | 'High'
   color: string
+  signal: (point: JoinedPoint, context: BacktestSignalContext) => number
 }
 
 export type BacktestSettings = {
@@ -110,28 +111,10 @@ export type WeatherModelMetrics = {
   calibrationScorePct: number
 }
 
-export type ModelRun = {
-  id: string
-  name: string
-  target: string
-  status: 'Candidate' | 'Champion' | 'Watch'
-  features: string[]
-  mae: number
-  directionalAccuracyPct: number
-  pnlLiftPct: number
-  lastRun: string
-}
-
-export type FeatureImportance = {
-  feature: string
-  importance: number
-  direction: 'Bullish gas' | 'Bearish gas' | 'Regime'
-}
-
 export type IntegrationConnector = {
   name: string
   category: 'Weather' | 'Market data' | 'Execution' | 'Storage' | 'ML'
-  status: 'Ready scaffold' | 'Free demo key' | 'Free email token' | 'Needs key' | 'Paper only' | 'Research'
+  status: 'Ready scaffold' | 'Free API key' | 'Free email token' | 'Needs key' | 'Paper only' | 'Research'
   purpose: string
   envVar: string
   sourceUrl: string

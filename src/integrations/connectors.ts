@@ -20,7 +20,7 @@ export const integrationConnectors: IntegrationConnector[] = [
   {
     name: 'EIA Open Data API',
     category: 'Market data',
-    status: 'Free demo key',
+    status: 'Free API key',
     purpose: 'Natural gas storage, prices, production, consumption, and regional fundamental series.',
     envVar: 'EIA_API_KEY',
     sourceUrl: 'https://www.eia.gov/opendata/documentation/APIv2.1.0.pdf',
@@ -63,7 +63,7 @@ export const integrationConnectors: IntegrationConnector[] = [
     name: 'Model Registry',
     category: 'ML',
     status: 'Ready scaffold',
-    purpose: 'Stores model runs, feature sets, champion/challenger status, and strategy promotion gates.',
+    purpose: 'Stores future model metadata, feature sets, review status, and strategy promotion gates.',
     envVar: 'QORE_MODEL_REGISTRY',
     sourceUrl: 'local://models',
   },

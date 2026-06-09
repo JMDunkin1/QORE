@@ -1,4 +1,4 @@
-import type { FeatureImportance, WeatherModelMetrics, WeatherPoint } from '../types'
+import type { WeatherModelMetrics, WeatherPoint } from '../types'
 
 function mean(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
@@ -52,13 +52,3 @@ export function evaluateWeatherModel(weather: WeatherPoint[]): WeatherModelMetri
     calibrationScorePct: round(Math.max(0, calibrationScorePct), 1),
   }
 }
-
-export const featureImportance: FeatureImportance[] = [
-  { feature: 'HDD forecast miss', importance: 0.31, direction: 'Bullish gas' },
-  { feature: 'Storage tightness', importance: 0.23, direction: 'Bullish gas' },
-  { feature: 'CDD forecast miss', importance: 0.14, direction: 'Bullish gas' },
-  { feature: 'Realized volatility', importance: 0.12, direction: 'Regime' },
-  { feature: 'Temperature anomaly', importance: 0.09, direction: 'Bearish gas' },
-  { feature: 'Weather confidence', importance: 0.07, direction: 'Regime' },
-  { feature: 'Volume impulse', importance: 0.04, direction: 'Regime' },
-]

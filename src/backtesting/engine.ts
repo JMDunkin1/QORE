@@ -2,14 +2,13 @@ import type {
   BacktestMetrics,
   BacktestResult,
   BacktestSettings,
+  BacktestSignalContext,
   EquityPoint,
   JoinedPoint,
   MarketBar,
   Strategy,
-  StrategyId,
   WeatherPoint,
 } from '../types'
-import { strategies } from '../data/demoData'
 
 export {
   arcticBlastNoLookaheadConvention,
@@ -90,32 +89,9 @@ export function joinMarketWeather(market: MarketBar[], weather: WeatherPoint[]):
     })
 }
 
-function rollingVolatility(points: JoinedPoint[], index: number) {
-  const slice = points.slice(Math.max(0, index - 20), index + 1).map((point) => point.dailyReturn)
+function rollingVolatility(points: JoinedPoint[], index: number, lookback = 20) {
+  const slice = points.slice(Math.max(0, index - lookback), index + 1).map((point) => point.dailyReturn)
   return std(slice)
-}
-
-function signalFor(strategyId: StrategyId, point: JoinedPoint, points: JoinedPoint[], index: number, settings: BacktestSettings) {
-  const previous = points[Math.max(0, index - 1)]
-  const momentum = previous?.close ? (point.close - previous.close) / previous.close : 0
-  const vol = rollingVolatility(points, index)
-  const storageTightness = clamp((3000 - point.storageBcf) / 340, -1.6, 1.6)
-  const weather = clamp(point.weatherSurprise / 8, -1.4, 1.4)
-  const confidence = clamp((point.confidence - 55) / 40, 0, 1)
-
-  switch (strategyId) {
-    case 'weather-stress-long':
-      return clamp(weather * 1.4 + Math.max(0, point.demandScore - 18) / 22 - Math.max(0, -momentum) * 2, -1, 1)
-    case 'storage-fade':
-      return clamp(storageTightness * settings.storageWeight + weather * settings.weatherWeight - momentum * 7, -1, 1)
-    case 'volatility-breakout':
-      return clamp(Math.sign(momentum || weather) * (Math.abs(weather) * 0.65 + vol * 31 + confidence * 0.15), -1, 1)
-    case 'balanced-carry':
-      return clamp((weather * 0.45 + storageTightness * 0.55 + Math.sign(momentum) * 0.15) * 0.72, -0.72, 0.72)
-    case 'ml-ensemble':
-    default:
-      return clamp(weather * settings.weatherWeight + storageTightness * settings.storageWeight + momentum * 5 + confidence * 0.12, -1, 1)
-  }
 }
 
 function computeMetrics(curve: EquityPoint[], settings: BacktestSettings, tradeCount: number): BacktestMetrics {
@@ -171,7 +147,13 @@ export function runBacktest(
   const curve: EquityPoint[] = []
 
   joined.forEach((point, index) => {
-    const rawSignal = signalFor(strategy.id, point, joined, index, settings)
+    const context: BacktestSignalContext = {
+      points: joined,
+      index,
+      settings,
+      rollingVolatility: (lookback?: number) => rollingVolatility(joined, index, lookback),
+    }
+    const rawSignal = clamp(strategy.signal(point, context), -1, 1)
     const targetPosition = clamp(rawSignal * settings.riskPerSignal, -settings.maxExposure, settings.maxExposure)
     const tradedNotional = Math.abs(targetPosition - position) * equity
     const tradingCost = tradedNotional * ((settings.slippageBps + settings.commissionBps) / 10000)
@@ -208,8 +190,13 @@ export function runBacktest(
   }
 }
 
-export function rankStrategies(market: MarketBar[], weather: WeatherPoint[], settings: BacktestSettings) {
-  return strategies
+export function rankStrategies(
+  market: MarketBar[],
+  weather: WeatherPoint[],
+  registeredStrategies: Strategy[],
+  settings: BacktestSettings = defaultSettings,
+) {
+  return registeredStrategies
     .map((strategy) => runBacktest(market, weather, strategy, settings))
     .sort((a, b) => b.metrics.sharpe - a.metrics.sharpe || b.metrics.totalReturnPct - a.metrics.totalReturnPct)
 }

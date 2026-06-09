@@ -77,12 +77,12 @@ These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS fore
 
 ## What It Does
 
-- Generates deterministic demo weather and Henry Hub-style natural gas fixtures.
-- Joins weather and market rows by `date`.
-- Runs five strategy templates with slippage, commission, position sizing, and max exposure controls.
-- Computes total return, CAGR, volatility, Sharpe, Sortino, max drawdown, Calmar, win rate, profit factor, exposure, turnover, VaR, and CVaR.
-- Tracks weather forecast quality with HDD/CDD MAE, RMSE, R2, directional accuracy, cold-surprise recall, and calibration.
-- Provides CSV import lanes for replacing demo data with local or external backtest data.
+- Opens on the tracked `data/qore` research catalog without bundled starter rows.
+- Shows source-backed market, weather, forecast-calendar, signal-score, and signal-return inventory.
+- Keeps the strategy layer empty until real strategy definitions are added.
+- Joins explicitly imported weather and market rows by `date` for session-only lab checks.
+- Tracks imported weather forecast quality with HDD/CDD MAE, RMSE, R2, directional accuracy, cold-surprise recall, and calibration.
+- Provides CSV import lanes for intentionally loading local or external backtest rows.
 
 ## CSV Contracts
 
@@ -111,9 +111,9 @@ For Arctic Blast strategy testing, use the `close-after-issue-v1` timing convent
 ## Integration Seams
 
 - `src/integrations/connectors.ts`: NOAA CDO, EIA API, CME/NYMEX metadata, IBKR paper execution, local project data, model registry.
-- `src/backtesting/engine.ts`: replace or extend strategy signal functions here.
+- `src/backtesting/engine.ts`: register real strategy signal functions here; none are bundled by default.
 - `src/backtesting/timing.ts`: no-lookahead timing checks for forecast signal-return rows.
-- `src/ml/evaluation.ts`: weather model scoring and feature importance.
+- `src/ml/evaluation.ts`: weather model scoring for imported rows.
 - `src/utils/importers.ts`: CSV parsers for dashboard ingestion.
 
 Live trading is deliberately not connected. The execution view is a paper-trading readiness layer for future broker adapters and risk controls.

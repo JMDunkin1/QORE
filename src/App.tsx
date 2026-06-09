@@ -2,7 +2,6 @@ import { type ChangeEvent, type ElementType, type ReactNode, useCallback, useEff
 import {
   Activity,
   AlertTriangle,
-  Bot,
   Brain,
   CheckCircle2,
   Clock3,
@@ -22,7 +21,6 @@ import {
   TrendingUp,
   Upload,
   UploadCloud,
-  Zap,
 } from 'lucide-react'
 import {
   Area,
@@ -43,16 +41,15 @@ import {
   YAxis,
 } from 'recharts'
 import './App.css'
-import { defaultSettings, rankStrategies } from './backtesting/engine'
-import { generateDemoData, modelRuns, strategies } from './data/demoData'
+import { defaultSettings, joinMarketWeather, rankStrategies } from './backtesting/engine'
+import { realDataCatalog, totalLocationRows, totalSignalReturns, totalSignalScores } from './data/realDataCatalog'
 import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
 import { adapterChecklist, executionVenues, integrationConnectors } from './integrations/connectors'
-import { evaluateWeatherModel, featureImportance } from './ml/evaluation'
-import type { ActiveView, BacktestSettings, MarketBar, StrategyId, WeatherPoint } from './types'
+import { evaluateWeatherModel } from './ml/evaluation'
+import { registeredStrategies } from './strategies/registry'
+import type { ActiveView, BacktestSettings, MarketBar, WeatherPoint } from './types'
 import { classForSigned, formatCompact, formatCurrency, formatNumber, signedPercent } from './utils/format'
 import { parseMarketCsv, parseWeatherCsv } from './utils/importers'
-
-const demoData = generateDemoData()
 
 const navItems: Array<{ id: ActiveView; label: string; icon: ElementType }> = [
   { id: 'overview', label: 'Command', icon: Gauge },
@@ -64,7 +61,6 @@ const navItems: Array<{ id: ActiveView; label: string; icon: ElementType }> = [
 ]
 
 const activeViews: ActiveView[] = ['overview', 'backtest', 'models', 'data', 'execution', 'github']
-
 const chartMargin = { top: 16, right: 18, bottom: 4, left: 0 }
 const tooltipStyle = {
   background: '#ffffff',
@@ -85,6 +81,23 @@ type MetricCardProps = {
   detail: string
   icon: ElementType
   tone?: 'positive' | 'negative' | 'neutral' | 'warning'
+}
+
+type DashboardChartPoint = {
+  date: string
+  equity: number | null
+  equityPct: number | null
+  dailyPnlPct: number | null
+  drawdownPct: number | null
+  close: number
+  weatherSurprise: number
+  hddError: number
+  position: number | null
+  signal: number | null
+  gasReturnPct: number
+  demandScore: number
+  storageBcf: number
+  closeScaled: number
 }
 
 function MetricCard({ label, value, detail, icon: Icon, tone = 'neutral' }: MetricCardProps) {
@@ -160,6 +173,24 @@ function RangeControl({
   )
 }
 
+function ChartEmptyOverlay({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="chart-empty-overlay">
+      <strong>{title}</strong>
+      <span>{detail}</span>
+    </div>
+  )
+}
+
+function EmptyList({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="empty-list">
+      <strong>{title}</strong>
+      <span>{detail}</span>
+    </div>
+  )
+}
+
 function formatTimestamp(value: string | null | undefined) {
   if (!value) return 'Never'
   const date = new Date(value)
@@ -197,12 +228,14 @@ function githubStatusMessage(status: GithubStatus) {
 
 function App() {
   const [activeView, setActiveViewState] = useState<ActiveView>(() => viewFromHash())
-  const [weather, setWeather] = useState<WeatherPoint[]>(demoData.weather)
-  const [market, setMarket] = useState<MarketBar[]>(demoData.market)
+  const [weather, setWeather] = useState<WeatherPoint[]>([])
+  const [market, setMarket] = useState<MarketBar[]>([])
   const [settings, setSettings] = useState<BacktestSettings>(defaultSettings)
-  const [selectedStrategyId, setSelectedStrategyId] = useState<StrategyId>('ml-ensemble')
-  const [dataLabel, setDataLabel] = useState('Demo fixture pack')
-  const [importLog, setImportLog] = useState('Ready for weather CSV, natural gas CSV, or QORE run artifacts.')
+  const [selectedStrategyId, setSelectedStrategyId] = useState(() => registeredStrategies[0]?.id ?? '')
+  const [dataLabel, setDataLabel] = useState('Blank strategy template')
+  const [importLog, setImportLog] = useState(
+    `Tracked real data is available under ${realDataCatalog.defaultDataRoot}; no session rows are loaded until import.`,
+  )
   const [githubStatus, setGithubStatus] = useState<GithubStatus | null>(null)
   const [githubError, setGithubError] = useState('')
   const [githubMessage, setGithubMessage] = useState('Checking GitHub.')
@@ -210,46 +243,72 @@ function App() {
   const [githubChecking, setGithubChecking] = useState(false)
   const [commitMessage, setCommitMessage] = useState('Update QORE dashboard')
 
-  const leaderboard = useMemo(() => rankStrategies(market, weather, settings), [market, weather, settings])
+  const joinedRows = useMemo(() => joinMarketWeather(market, weather), [market, weather])
+  const weatherMetrics = useMemo(() => (weather.length ? evaluateWeatherModel(weather) : null), [weather])
+  const leaderboard = useMemo(
+    () => (registeredStrategies.length && market.length && weather.length ? rankStrategies(market, weather, registeredStrategies, settings) : []),
+    [market, weather, settings],
+  )
   const selectedBacktest = useMemo(
-    () => leaderboard.find((result) => result.strategy.id === selectedStrategyId) ?? leaderboard[0],
+    () => leaderboard.find((result) => result.strategy.id === selectedStrategyId) ?? leaderboard[0] ?? null,
     [leaderboard, selectedStrategyId],
   )
-  const weatherMetrics = useMemo(() => evaluateWeatherModel(weather), [weather])
-  const latestPoint = selectedBacktest.joined.at(-1)
-  const chartData = selectedBacktest.curve.map((point, index) => ({
-    ...point,
-    gasReturnPct: (selectedBacktest.joined[index]?.dailyReturn ?? 0) * 100,
-    demandScore: selectedBacktest.joined[index]?.demandScore ?? 0,
-    storageBcf: selectedBacktest.joined[index]?.storageBcf ?? 0,
-    closeScaled: point.close * 1000,
-  }))
-  const scatterData = selectedBacktest.joined.map((point) => ({
+  const latestMarket = market.at(-1)
+  const latestPoint = selectedBacktest?.joined.at(-1) ?? joinedRows.at(-1)
+  const hasLabData = weather.length > 0 || market.length > 0
+  const chartData: DashboardChartPoint[] = selectedBacktest
+    ? selectedBacktest.curve.map((point, index) => ({
+        ...point,
+        gasReturnPct: (selectedBacktest.joined[index]?.dailyReturn ?? 0) * 100,
+        demandScore: selectedBacktest.joined[index]?.demandScore ?? 0,
+        storageBcf: selectedBacktest.joined[index]?.storageBcf ?? 0,
+        closeScaled: point.close * 1000,
+      }))
+    : joinedRows.map((point) => ({
+        date: point.date,
+        equity: null,
+        equityPct: null,
+        dailyPnlPct: null,
+        drawdownPct: null,
+        close: point.close,
+        weatherSurprise: point.weatherSurprise,
+        hddError: point.hddError,
+        position: null,
+        signal: null,
+        closeScaled: point.close * 1000,
+        gasReturnPct: point.dailyReturn * 100,
+        demandScore: point.demandScore,
+        storageBcf: point.storageBcf,
+      }))
+  const scatterData = joinedRows.map((point) => ({
     weatherSurprise: Number(point.weatherSurprise.toFixed(2)),
     returnPct: Number((point.dailyReturn * 100).toFixed(3)),
     storageBcf: point.storageBcf,
   }))
-  const weatherScoreBars = [
-    { name: 'HDD MAE', value: weatherMetrics.hddMae, color: '#2563eb' },
-    { name: 'HDD RMSE', value: weatherMetrics.hddRmse, color: '#0891b2' },
-    { name: 'CDD MAE', value: weatherMetrics.cddMae, color: '#f97316' },
-    { name: 'CDD RMSE', value: weatherMetrics.cddRmse, color: '#ef4444' },
-  ]
+  const weatherScoreBars = weatherMetrics
+    ? [
+        { name: 'HDD MAE', value: weatherMetrics.hddMae, color: '#2563eb' },
+        { name: 'HDD RMSE', value: weatherMetrics.hddRmse, color: '#0891b2' },
+        { name: 'CDD MAE', value: weatherMetrics.cddMae, color: '#f97316' },
+        { name: 'CDD RMSE', value: weatherMetrics.cddRmse, color: '#ef4444' },
+      ]
+    : []
   const strategyBars = leaderboard.map((result) => ({
-    name:
-      result.strategy.id === 'ml-ensemble'
-        ? 'ML'
-        : result.strategy.id === 'weather-stress-long'
-          ? 'Stress'
-          : result.strategy.id === 'storage-fade'
-            ? 'Storage'
-            : result.strategy.id === 'volatility-breakout'
-              ? 'Vol'
-              : 'Carry',
+    name: result.strategy.name,
     returnPct: result.metrics.totalReturnPct,
     sharpe: result.metrics.sharpe,
     color: result.strategy.color,
   }))
+  const emptyStats = [
+    ['CAGR', '-', 'Annualized return'],
+    ['Volatility', '-', 'Annualized variability'],
+    ['Win rate', '-', 'Positive daily PnL'],
+    ['Profit factor', '-', 'Gross wins / losses'],
+    ['Trades', '0', 'Position changes'],
+    ['Exposure', '-', 'Average absolute'],
+    ['Turnover', '-', 'Path churn'],
+    ['CVaR 95', '-', 'Tail daily loss'],
+  ]
 
   const updateSetting = (key: keyof BacktestSettings, value: number) => {
     setSettings((current) => ({ ...current, [key]: value }))
@@ -339,13 +398,13 @@ function App() {
         const rows = parseWeatherCsv(text)
         if (rows.length < 2) throw new Error('Weather CSV did not contain enough rows.')
         setWeather(rows)
-        setDataLabel(`${file.name} + ${market.length} market rows`)
+        setDataLabel(`${rows.length} weather rows loaded`)
         setImportLog(`Loaded ${rows.length} weather rows from ${file.name}.`)
       } else {
         const rows = parseMarketCsv(text)
         if (rows.length < 2) throw new Error('Market CSV did not contain enough rows.')
         setMarket(rows)
-        setDataLabel(`${weather.length} weather rows + ${file.name}`)
+        setDataLabel(`${rows.length} market rows loaded`)
         setImportLog(`Loaded ${rows.length} natural gas rows from ${file.name}.`)
       }
     } catch (error) {
@@ -355,11 +414,11 @@ function App() {
     }
   }
 
-  const resetDemoData = () => {
-    setWeather(demoData.weather)
-    setMarket(demoData.market)
-    setDataLabel('Demo fixture pack')
-    setImportLog('Demo weather and natural gas fixtures restored.')
+  const clearLabData = () => {
+    setWeather([])
+    setMarket([])
+    setDataLabel('Blank strategy template')
+    setImportLog('Cleared imported session rows. Shared data files were not changed.')
   }
 
   const handleGithubUpdate = async () => {
@@ -422,12 +481,12 @@ function App() {
     : isGithubChecking
       ? 'Checking'
       : githubStatus?.updateAvailable
-      ? 'Update ready'
-      : githubStatus?.dirty || (githubStatus?.ahead ?? 0) > 0
-        ? 'Local changes'
-        : githubStatus?.configured
-          ? 'Current'
-          : 'No remote'
+        ? 'Update ready'
+        : githubStatus?.dirty || (githubStatus?.ahead ?? 0) > 0
+          ? 'Local changes'
+          : githubStatus?.configured
+            ? 'Current'
+            : 'No remote'
 
   return (
     <div className="app-shell">
@@ -476,9 +535,9 @@ function App() {
               <RefreshCw size={17} aria-hidden="true" />
               {githubChecking ? 'Checking' : 'Refresh'}
             </button>
-            <button type="button" className="ghost-button" onClick={resetDemoData}>
-              <Zap size={17} aria-hidden="true" />
-              Demo data
+            <button type="button" className="ghost-button" disabled={!hasLabData} onClick={clearLabData}>
+              <Database size={17} aria-hidden="true" />
+              Clear lab
             </button>
             <button type="button" className="ghost-button" onClick={() => setActiveView('github')}>
               <GitBranch size={17} aria-hidden="true" />
@@ -495,30 +554,38 @@ function App() {
           <MetricCard
             icon={TrendingUp}
             label="Total return"
-            value={signedPercent(selectedBacktest.metrics.totalReturnPct)}
-            detail={`${selectedBacktest.strategy.name} on ${selectedBacktest.curve.length} sessions`}
-            tone={classForSigned(selectedBacktest.metrics.totalReturnPct)}
+            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.totalReturnPct) : '-'}
+            detail={selectedBacktest ? `${selectedBacktest.strategy.name} on ${selectedBacktest.curve.length} sessions` : 'No strategy registered yet'}
+            tone={selectedBacktest ? classForSigned(selectedBacktest.metrics.totalReturnPct) : 'warning'}
           />
           <MetricCard
             icon={Activity}
             label="Sharpe / Sortino"
-            value={`${formatNumber(selectedBacktest.metrics.sharpe)} / ${formatNumber(selectedBacktest.metrics.sortino)}`}
-            detail={`${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% vol`}
-            tone={selectedBacktest.metrics.sharpe > 1 ? 'positive' : 'neutral'}
+            value={
+              selectedBacktest
+                ? `${formatNumber(selectedBacktest.metrics.sharpe)} / ${formatNumber(selectedBacktest.metrics.sortino)}`
+                : '- / -'
+            }
+            detail={
+              selectedBacktest
+                ? `${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% vol`
+                : 'Ready for real strategy metrics'
+            }
+            tone={selectedBacktest && selectedBacktest.metrics.sharpe > 1 ? 'positive' : 'neutral'}
           />
           <MetricCard
             icon={ShieldCheck}
             label="Max drawdown"
-            value={signedPercent(selectedBacktest.metrics.maxDrawdownPct)}
-            detail={`${formatNumber(selectedBacktest.metrics.var95Pct)}% daily VaR 95`}
-            tone={selectedBacktest.metrics.maxDrawdownPct < -7 ? 'negative' : 'positive'}
+            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.maxDrawdownPct) : '-'}
+            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% daily VaR 95` : 'No risk path until a strategy runs'}
+            tone={selectedBacktest && selectedBacktest.metrics.maxDrawdownPct < -7 ? 'negative' : 'positive'}
           />
           <MetricCard
             icon={CloudSun}
             label="Weather accuracy"
-            value={`${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%`}
-            detail={`HDD MAE ${formatNumber(weatherMetrics.hddMae)} | R2 ${formatNumber(weatherMetrics.r2, 3)}`}
-            tone={weatherMetrics.directionalAccuracyPct > 60 ? 'positive' : 'warning'}
+            value={weatherMetrics ? `${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%` : '-'}
+            detail={weatherMetrics ? `HDD MAE ${formatNumber(weatherMetrics.hddMae)} | R2 ${formatNumber(weatherMetrics.r2, 3)}` : 'Import weather rows to score'}
+            tone={weatherMetrics && weatherMetrics.directionalAccuracyPct > 60 ? 'positive' : 'warning'}
           />
         </section>
 
@@ -568,6 +635,12 @@ function App() {
                       />
                     </ComposedChart>
                   </ResponsiveContainer>
+                  {!chartData.length && (
+                    <ChartEmptyOverlay
+                      title="No graph data yet"
+                      detail="Import market/weather rows and add real strategies; this chart is kept ready for the first real run."
+                    />
+                  )}
                 </div>
               </article>
 
@@ -576,28 +649,28 @@ function App() {
                 <dl>
                   <div>
                     <dt>Contract</dt>
-                    <dd>{latestPoint?.contract ?? 'NG'}</dd>
+                    <dd>{latestMarket?.contract ?? '-'}</dd>
                   </div>
                   <div>
                     <dt>Last close</dt>
-                    <dd>${formatNumber(latestPoint?.close ?? 0, 3)}</dd>
+                    <dd>{latestMarket ? `$${formatNumber(latestMarket.close, 3)}` : '-'}</dd>
                   </div>
                   <div>
                     <dt>Volume</dt>
-                    <dd>{formatCompact(latestPoint?.volume ?? 0)}</dd>
+                    <dd>{latestMarket ? formatCompact(latestMarket.volume) : '-'}</dd>
                   </div>
                   <div>
                     <dt>Storage</dt>
-                    <dd>{formatNumber(latestPoint?.storageBcf ?? 0, 1)} Bcf</dd>
+                    <dd>{latestMarket ? `${formatNumber(latestMarket.storageBcf, 1)} Bcf` : '-'}</dd>
                   </div>
                   <div>
                     <dt>HDD miss</dt>
-                    <dd className={classForSigned(latestPoint?.hddError ?? 0)}>{formatNumber(latestPoint?.hddError ?? 0)}</dd>
+                    <dd className={classForSigned(latestPoint?.hddError ?? 0)}>{latestPoint ? formatNumber(latestPoint.hddError) : '-'}</dd>
                   </div>
                   <div>
                     <dt>Weather surprise</dt>
                     <dd className={classForSigned(latestPoint?.weatherSurprise ?? 0)}>
-                      {formatNumber(latestPoint?.weatherSurprise ?? 0)}
+                      {latestPoint ? formatNumber(latestPoint.weatherSurprise) : '-'}
                     </dd>
                   </div>
                 </dl>
@@ -625,6 +698,9 @@ function App() {
                       <Scatter data={scatterData} fill="#0891b2" isAnimationActive={false} />
                     </ScatterChart>
                   </ResponsiveContainer>
+                  {!scatterData.length && (
+                    <ChartEmptyOverlay title="Awaiting joined rows" detail="This panel will populate after matching weather and market dates are loaded." />
+                  )}
                 </div>
               </article>
 
@@ -644,23 +720,13 @@ function App() {
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                  {!strategyBars.length && <ChartEmptyOverlay title="No strategies registered" detail="Real strategies will appear here as soon as they are added." />}
                 </div>
               </article>
 
               <article className="panel run-list">
-                <SectionHeading eyebrow="Champion" title="Model run ladder" />
-                {modelRuns.map((run) => (
-                  <button key={run.id} type="button" className="run-row" onClick={() => setActiveView('models')}>
-                    <span className={`status-dot ${run.status.toLowerCase()}`}></span>
-                    <div>
-                      <strong>{run.name}</strong>
-                      <span>
-                        {run.status} | {formatNumber(run.directionalAccuracyPct, 1)}% directional
-                      </span>
-                    </div>
-                    <em>{signedPercent(run.pnlLiftPct, 1)}</em>
-                  </button>
-                ))}
+                <SectionHeading eyebrow="Registry" title="Model run ladder" />
+                <EmptyList title="No model runs registered" detail="Removed placeholder model runs; real runs can occupy this same ladder." />
               </article>
             </div>
           </section>
@@ -673,12 +739,16 @@ function App() {
                 <SectionHeading eyebrow="Controls" title="Backtest lab" />
                 <label className="select-control">
                   <span>Strategy</span>
-                  <select value={selectedStrategyId} onChange={(event) => setSelectedStrategyId(event.currentTarget.value as StrategyId)}>
-                    {strategies.map((strategy) => (
-                      <option key={strategy.id} value={strategy.id}>
-                        {strategy.name}
-                      </option>
-                    ))}
+                  <select value={selectedStrategyId} disabled={!registeredStrategies.length} onChange={(event) => setSelectedStrategyId(event.currentTarget.value)}>
+                    {registeredStrategies.length ? (
+                      registeredStrategies.map((strategy) => (
+                        <option key={strategy.id} value={strategy.id}>
+                          {strategy.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No registered strategies</option>
+                    )}
                   </select>
                 </label>
                 <RangeControl
@@ -735,11 +805,13 @@ function App() {
 
               <article className="panel chart-panel wide">
                 <SectionHeading
-                  eyebrow={selectedBacktest.strategy.desk}
-                  title={selectedBacktest.strategy.name}
-                  action={<span className={`risk-pill ${selectedBacktest.strategy.riskLevel.toLowerCase()}`}>{selectedBacktest.strategy.riskLevel}</span>}
+                  eyebrow={selectedBacktest?.strategy.desk ?? 'Strategy lab'}
+                  title={selectedBacktest?.strategy.name ?? 'No registered strategies'}
+                  action={<span className="repo-pill warning">Pending</span>}
                 />
-                <p className="thesis">{selectedBacktest.strategy.thesis}</p>
+                <p className="thesis">
+                  {selectedBacktest?.strategy.thesis ?? 'No placeholder strategy is active. This panel is ready for the real strategy you plug in next.'}
+                </p>
                 <div className="chart-frame tall">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={chartMargin}>
@@ -777,21 +849,30 @@ function App() {
                       />
                     </LineChart>
                   </ResponsiveContainer>
+                  {!selectedBacktest && (
+                    <ChartEmptyOverlay
+                      title="Nothing is being backtested by default"
+                      detail="The lab is blank on purpose until real strategy code is registered."
+                    />
+                  )}
                 </div>
               </article>
             </div>
 
             <div className="stat-grid">
-              {[
-                ['CAGR', signedPercent(selectedBacktest.metrics.cagrPct), 'Annualized return'],
-                ['Volatility', `${formatNumber(selectedBacktest.metrics.annualVolPct)}%`, 'Annualized variability'],
-                ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive daily PnL'],
-                ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
-                ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Position changes'],
-                ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Average absolute'],
-                ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Path churn'],
-                ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail daily loss'],
-              ].map(([label, value, detail]) => (
+              {(selectedBacktest
+                ? [
+                    ['CAGR', signedPercent(selectedBacktest.metrics.cagrPct), 'Annualized return'],
+                    ['Volatility', `${formatNumber(selectedBacktest.metrics.annualVolPct)}%`, 'Annualized variability'],
+                    ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive daily PnL'],
+                    ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
+                    ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Position changes'],
+                    ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Average absolute'],
+                    ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Path churn'],
+                    ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail daily loss'],
+                  ]
+                : emptyStats
+              ).map(([label, value, detail]) => (
                 <article key={label} className="stat-tile">
                   <span>{label}</span>
                   <strong>{value}</strong>
@@ -815,19 +896,28 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {leaderboard.map((result, index) => (
-                      <tr key={result.strategy.id} onClick={() => setSelectedStrategyId(result.strategy.id)}>
-                        <td>
-                          <strong>#{index + 1} {result.strategy.name}</strong>
-                          <span>{result.strategy.desk}</span>
+                    {leaderboard.length ? (
+                      leaderboard.map((result, index) => (
+                        <tr key={result.strategy.id} onClick={() => setSelectedStrategyId(result.strategy.id)}>
+                          <td>
+                            <strong>#{index + 1} {result.strategy.name}</strong>
+                            <span>{result.strategy.desk}</span>
+                          </td>
+                          <td className={classForSigned(result.metrics.totalReturnPct)}>{signedPercent(result.metrics.totalReturnPct)}</td>
+                          <td>{formatNumber(result.metrics.sharpe)}</td>
+                          <td className="negative">{signedPercent(result.metrics.maxDrawdownPct)}</td>
+                          <td>{formatNumber(result.metrics.winRatePct, 1)}%</td>
+                          <td>{result.metrics.tradeCount}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6}>
+                          <strong>No registered strategies</strong>
+                          <span>Real strategy results will populate this table.</span>
                         </td>
-                        <td className={classForSigned(result.metrics.totalReturnPct)}>{signedPercent(result.metrics.totalReturnPct)}</td>
-                        <td>{formatNumber(result.metrics.sharpe)}</td>
-                        <td className="negative">{signedPercent(result.metrics.maxDrawdownPct)}</td>
-                        <td>{formatNumber(result.metrics.winRatePct, 1)}%</td>
-                        <td>{result.metrics.tradeCount}</td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -854,28 +944,35 @@ function App() {
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                  {!weatherScoreBars.length && <ChartEmptyOverlay title="No imported weather rows" detail="The model QA chart is ready for real imported rows." />}
                 </div>
               </article>
               <article className="panel model-score">
                 <SectionHeading eyebrow="Champion gates" title="Weather edge" />
-                <div className="score-ring">
-                  <strong>{formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%</strong>
-                  <span>Directional accuracy</span>
-                </div>
-                <dl>
-                  <div>
-                    <dt>Cold recall</dt>
-                    <dd>{formatNumber(weatherMetrics.coldSurpriseRecallPct, 1)}%</dd>
-                  </div>
-                  <div>
-                    <dt>Calibration</dt>
-                    <dd>{formatNumber(weatherMetrics.calibrationScorePct, 1)}%</dd>
-                  </div>
-                  <div>
-                    <dt>R2</dt>
-                    <dd>{formatNumber(weatherMetrics.r2, 3)}</dd>
-                  </div>
-                </dl>
+                {weatherMetrics ? (
+                  <>
+                    <div className="score-ring">
+                      <strong>{formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%</strong>
+                      <span>Directional accuracy</span>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>Cold recall</dt>
+                        <dd>{formatNumber(weatherMetrics.coldSurpriseRecallPct, 1)}%</dd>
+                      </div>
+                      <div>
+                        <dt>Calibration</dt>
+                        <dd>{formatNumber(weatherMetrics.calibrationScorePct, 1)}%</dd>
+                      </div>
+                      <div>
+                        <dt>R2</dt>
+                        <dd>{formatNumber(weatherMetrics.r2, 3)}</dd>
+                      </div>
+                    </dl>
+                  </>
+                ) : (
+                  <EmptyList title="No model edge scored" detail="Real imported forecast rows will populate these gates." />
+                )}
               </article>
             </div>
 
@@ -894,35 +991,41 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {modelRuns.map((run) => (
-                        <tr key={run.id}>
-                          <td>
-                            <strong>{run.name}</strong>
-                            <span>{run.lastRun} | {run.status}</span>
-                          </td>
-                          <td>{run.target}</td>
-                          <td>{formatNumber(run.mae)}</td>
-                          <td>{formatNumber(run.directionalAccuracyPct, 1)}%</td>
-                          <td className={classForSigned(run.pnlLiftPct)}>{signedPercent(run.pnlLiftPct, 1)}</td>
-                        </tr>
-                      ))}
+                      <tr>
+                        <td colSpan={5}>
+                          <strong>No model runs registered</strong>
+                          <span>Placeholder runs were removed; real model runs can use this table.</span>
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </article>
 
               <article className="panel chart-panel">
-                <SectionHeading eyebrow="Features" title="Importance" />
+                <SectionHeading eyebrow="Dataset" title="Real sources" />
                 <div className="feature-list">
-                  {featureImportance.map((feature) => (
-                    <div key={feature.feature} className="feature-row">
-                      <span>{feature.feature}</span>
-                      <div className="feature-bar">
-                        <i style={{ width: `${feature.importance * 100}%` }}></i>
-                      </div>
-                      <em>{feature.direction}</em>
+                  <div className="feature-row">
+                    <span>Forecast scores</span>
+                    <div className="feature-bar">
+                      <i style={{ width: '100%' }}></i>
                     </div>
-                  ))}
+                    <em>{formatCompact(totalSignalScores)}</em>
+                  </div>
+                  <div className="feature-row">
+                    <span>Signal returns</span>
+                    <div className="feature-bar">
+                      <i style={{ width: '100%' }}></i>
+                    </div>
+                    <em>{formatCompact(totalSignalReturns)}</em>
+                  </div>
+                  <div className="feature-row">
+                    <span>Location rows</span>
+                    <div className="feature-bar">
+                      <i style={{ width: '100%' }}></i>
+                    </div>
+                    <em>{formatCompact(totalLocationRows)}</em>
+                  </div>
                 </div>
               </article>
             </div>
@@ -945,9 +1048,9 @@ function App() {
                     Natural gas CSV
                     <input type="file" accept=".csv,text/csv" onChange={handleFile('market')} />
                   </label>
-                  <button type="button" className="ghost-button" onClick={resetDemoData}>
-                    <Zap size={17} aria-hidden="true" />
-                    Reset fixtures
+                  <button type="button" className="ghost-button" disabled={!hasLabData} onClick={clearLabData}>
+                    <Database size={17} aria-hidden="true" />
+                    Clear lab
                   </button>
                 </div>
                 <p className="import-log">{importLog}</p>
@@ -976,15 +1079,53 @@ function App() {
                   </div>
                   <div>
                     <dt>Joined rows</dt>
-                    <dd>{selectedBacktest.joined.length}</dd>
+                    <dd>{joinedRows.length}</dd>
                   </div>
                   <div>
                     <dt>Capital base</dt>
                     <dd>{formatCurrency(settings.initialCapital)}</dd>
                   </div>
+                  <div>
+                    <dt>Catalog root</dt>
+                    <dd>{realDataCatalog.defaultDataRoot}</dd>
+                  </div>
                 </dl>
               </article>
             </div>
+
+            <article className="panel table-panel">
+              <SectionHeading eyebrow="Shared data" title="Forecast calendar files" />
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Calendar</th>
+                      <th>Issue dates</th>
+                      <th>Score rows</th>
+                      <th>Return rows</th>
+                      <th>Return file</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {realDataCatalog.forecastCalendars.map((calendar) => (
+                      <tr key={calendar.id}>
+                        <td>
+                          <strong>{calendar.label}</strong>
+                        </td>
+                        <td>
+                          {calendar.issueDateStart} to {calendar.issueDateEnd}
+                        </td>
+                        <td>{formatCompact(calendar.scoreRows)}</td>
+                        <td>{formatCompact(calendar.returnRows)}</td>
+                        <td>
+                          <code>{calendar.signalReturnsPath}</code>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
 
             <article className="panel connector-panel">
               <SectionHeading eyebrow="Infrastructure" title="Provider adapters" />
@@ -1057,7 +1198,7 @@ function App() {
               <article className="panel execution-card">
                 <SectionHeading eyebrow="Adapter" title="IBKR bridge" />
                 <div className="execution-status">
-                  <Bot size={36} aria-hidden="true" />
+                  <RadioTower size={36} aria-hidden="true" />
                   <strong>Paper mode first</strong>
                   <span>Orders are intentionally not connected in this build.</span>
                 </div>

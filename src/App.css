@@ -340,6 +340,7 @@ button {
 }
 
 .chart-frame {
+  position: relative;
   height: 278px;
   min-width: 0;
 }
@@ -375,56 +376,45 @@ dd {
   font-weight: 800;
 }
 
+.chart-empty-overlay {
+  position: absolute;
+  inset: 52px 26px 30px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.chart-empty-overlay strong,
+.empty-list strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.chart-empty-overlay span,
+.empty-list span {
+  color: var(--soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .run-list {
   display: grid;
   align-content: start;
   gap: 10px;
 }
 
-.run-row {
-  width: 100%;
-  text-align: left;
-  gap: 10px;
-  padding: 12px;
+.empty-list {
+  min-height: 178px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  text-align: center;
   border: 1px solid var(--line);
-  background: #f8fafc;
   border-radius: 8px;
-}
-
-.run-row > div {
-  flex: 1;
-  min-width: 0;
-}
-
-.run-row strong {
-  display: block;
-  font-size: 14px;
-}
-
-.run-row em {
-  font-style: normal;
-  font-weight: 900;
-  color: #0f766e;
-}
-
-.status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 99px;
-  background: #94a3b8;
-  flex: 0 0 auto;
-}
-
-.status-dot.champion {
-  background: #0f766e;
-}
-
-.status-dot.candidate {
-  background: #2563eb;
-}
-
-.status-dot.watch {
-  background: #f97316;
+  background: #f8fafc;
+  padding: 18px;
 }
 
 .control-panel {
@@ -706,6 +696,67 @@ code {
   font-style: normal;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.data-card {
+  display: grid;
+  align-content: start;
+}
+
+.data-list {
+  display: grid;
+  gap: 12px;
+}
+
+.data-list div {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.data-list strong {
+  font-size: 14px;
+}
+
+.data-list span {
+  color: var(--soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.empty-state {
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 18px;
+}
+
+.empty-state.roomy {
+  min-height: 320px;
+}
+
+.empty-state svg {
+  color: #2563eb;
+}
+
+.empty-state strong {
+  display: block;
+  font-size: 22px;
+}
+
+.empty-state span {
+  max-width: 560px;
+  color: var(--soft);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .readiness-grid {
