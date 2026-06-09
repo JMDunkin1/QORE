@@ -405,6 +405,46 @@ dd {
   gap: 10px;
 }
 
+.run-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.run-row {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.run-row strong,
+.run-row em {
+  display: block;
+}
+
+.run-row em {
+  margin-top: 5px;
+  color: var(--soft);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.run-metrics {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-width: 82px;
+}
+
+.run-metrics strong {
+  font-size: 18px;
+}
+
 .empty-list {
   min-height: 178px;
   display: grid;
@@ -785,6 +825,12 @@ code {
 
 .readiness-row p {
   margin: 0;
+}
+
+.readiness-row p strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
 }
 
 .execution-card {

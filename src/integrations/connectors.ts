@@ -1,4 +1,5 @@
 import type { ExecutionVenue, IntegrationConnector } from '../types'
+import { dryRunGatewayProfile } from '../execution'
 
 export const integrationConnectors: IntegrationConnector[] = [
   {
@@ -44,12 +45,20 @@ export const integrationConnectors: IntegrationConnector[] = [
     sourceUrl: 'https://www.eia.gov/dnav/ng/ng_pri_fut_s1_d.htm',
   },
   {
-    name: 'IBKR Gateway / TWS API',
+    name: dryRunGatewayProfile.label,
     category: 'Execution',
-    status: 'Paper only',
-    purpose: 'Paper-trade futures orders first, then graduate to broker-approved live routing with kill switches.',
-    envVar: 'IBKR_ACCOUNT_ID',
-    sourceUrl: 'https://ibkrcampus.com/campus/ibkr-api-page/getting-started/',
+    status: 'Dry run only',
+    purpose: dryRunGatewayProfile.purpose,
+    envVar: 'QORE_EXECUTION_MODE',
+    sourceUrl: 'local://execution/dry-run-paper-gateway',
+  },
+  {
+    name: 'Broker execution adapter',
+    category: 'Execution',
+    status: 'Not connected',
+    purpose: 'Explicitly absent. A future trader-owned adapter must be built separately and approved before routing orders.',
+    envVar: 'BROKER_ADAPTER_DISABLED',
+    sourceUrl: 'local://execution/not-connected',
   },
   {
     name: 'QORE Local Data',
@@ -98,8 +107,8 @@ export const executionVenues: ExecutionVenue[] = [
 
 export const adapterChecklist = [
   'Normalize market bars and weather features before modeling.',
-  'Run every strategy in paper mode before enabling any live order path.',
+  'Run every strategy in dry-run paper mode; live routing is intentionally absent.',
   'Require max-loss, max-position, contract-expiry, and stale-data guards.',
   'Record every signal, model version, order intent, fill, and rejected trade.',
-  'Separate research credentials from broker execution credentials.',
+  'Separate research code from any future trader-owned broker adapter.',
 ]

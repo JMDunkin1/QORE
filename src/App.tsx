@@ -43,10 +43,11 @@ import {
 import './App.css'
 import { defaultSettings, joinMarketWeather, rankStrategies } from './backtesting/engine'
 import { realDataCatalog, totalLocationRows, totalSignalReturns, totalSignalScores } from './data/realDataCatalog'
+import { defaultDryRunRiskPolicy, dryRunGatewayProfile, paperExecutionReadinessGates } from './execution'
 import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
-import { adapterChecklist, executionVenues, integrationConnectors } from './integrations/connectors'
+import { executionVenues, integrationConnectors } from './integrations/connectors'
 import { evaluateWeatherModel } from './ml/evaluation'
-import { registeredStrategies } from './strategies/registry'
+import { registeredStrategies, researchStrategyRegistry } from './strategies/registry'
 import type { ActiveView, BacktestSettings, MarketBar, WeatherPoint } from './types'
 import { classForSigned, formatCompact, formatCurrency, formatNumber, signedPercent } from './utils/format'
 import { parseMarketCsv, parseWeatherCsv } from './utils/importers'
@@ -248,6 +249,10 @@ function App() {
   const leaderboard = useMemo(
     () => (registeredStrategies.length && market.length && weather.length ? rankStrategies(market, weather, registeredStrategies, settings) : []),
     [market, weather, settings],
+  )
+  const topResearchStrategy = useMemo(
+    () => [...researchStrategyRegistry].sort((a, b) => b.metrics.totalReturnPct - a.metrics.totalReturnPct)[0] ?? null,
+    [],
   )
   const selectedBacktest = useMemo(
     () => leaderboard.find((result) => result.strategy.id === selectedStrategyId) ?? leaderboard[0] ?? null,
@@ -554,9 +559,9 @@ function App() {
           <MetricCard
             icon={TrendingUp}
             label="Total return"
-            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.totalReturnPct) : '-'}
-            detail={selectedBacktest ? `${selectedBacktest.strategy.name} on ${selectedBacktest.curve.length} sessions` : 'No strategy registered yet'}
-            tone={selectedBacktest ? classForSigned(selectedBacktest.metrics.totalReturnPct) : 'warning'}
+            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.totalReturnPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.totalReturnPct) : '-'}
+            detail={selectedBacktest ? `${selectedBacktest.strategy.name} on ${selectedBacktest.curve.length} sessions` : topResearchStrategy ? `${topResearchStrategy.name} research baseline` : 'No strategy registered yet'}
+            tone={selectedBacktest ? classForSigned(selectedBacktest.metrics.totalReturnPct) : topResearchStrategy ? classForSigned(topResearchStrategy.metrics.totalReturnPct) : 'warning'}
           />
           <MetricCard
             icon={Activity}
@@ -564,21 +569,25 @@ function App() {
             value={
               selectedBacktest
                 ? `${formatNumber(selectedBacktest.metrics.sharpe)} / ${formatNumber(selectedBacktest.metrics.sortino)}`
-                : '- / -'
+                : topResearchStrategy
+                  ? `${formatNumber(topResearchStrategy.metrics.sharpe)} / ${formatNumber(topResearchStrategy.metrics.sortino)}`
+                  : '- / -'
             }
             detail={
               selectedBacktest
                 ? `${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% vol`
-                : 'Ready for real strategy metrics'
+                : topResearchStrategy
+                  ? `${signedPercent(topResearchStrategy.metrics.cagrPct)} CAGR in event-row optimizer`
+                  : 'Ready for real strategy metrics'
             }
-            tone={selectedBacktest && selectedBacktest.metrics.sharpe > 1 ? 'positive' : 'neutral'}
+            tone={(selectedBacktest?.metrics.sharpe ?? topResearchStrategy?.metrics.sharpe ?? 0) > 1 ? 'positive' : 'neutral'}
           />
           <MetricCard
             icon={ShieldCheck}
             label="Max drawdown"
-            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.maxDrawdownPct) : '-'}
-            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% daily VaR 95` : 'No risk path until a strategy runs'}
-            tone={selectedBacktest && selectedBacktest.metrics.maxDrawdownPct < -7 ? 'negative' : 'positive'}
+            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.maxDrawdownPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.maxDrawdownPct) : '-'}
+            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% daily VaR 95` : topResearchStrategy ? `${topResearchStrategy.metrics.tradeCount} optimized event trades` : 'No risk path until a strategy runs'}
+            tone={(selectedBacktest?.metrics.maxDrawdownPct ?? topResearchStrategy?.metrics.maxDrawdownPct ?? 0) < -15 ? 'negative' : 'positive'}
           />
           <MetricCard
             icon={CloudSun}
@@ -726,7 +735,22 @@ function App() {
 
               <article className="panel run-list">
                 <SectionHeading eyebrow="Registry" title="Model run ladder" />
-                <EmptyList title="No model runs registered" detail="Removed placeholder model runs; real runs can occupy this same ladder." />
+                <div className="run-stack">
+                  {researchStrategyRegistry.map((strategy) => (
+                    <article key={strategy.id} className="run-row">
+                      <div>
+                        <span>{strategy.family}</span>
+                        <strong>{strategy.name}</strong>
+                        <em>{strategy.directionPolicy}</em>
+                      </div>
+                      <div className="run-metrics">
+                        <strong className={classForSigned(strategy.metrics.totalReturnPct)}>{signedPercent(strategy.metrics.totalReturnPct)}</strong>
+                        <span>{formatNumber(strategy.metrics.sharpe)} Sharpe</span>
+                        <span>{strategy.metrics.tradeCount} trades</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </article>
             </div>
           </section>
@@ -1184,23 +1208,27 @@ function App() {
 
             <div className="split-layout">
               <article className="panel readiness-panel wide">
-                <SectionHeading eyebrow="Controls" title="Paper-trading gate" />
+                <SectionHeading eyebrow="Controls" title="Dry-run paper gate" />
                 <div className="readiness-grid">
-                  {adapterChecklist.map((item, index) => (
-                    <div key={item} className="readiness-row">
+                  {paperExecutionReadinessGates.map((gate, index) => (
+                    <div key={gate.id} className="readiness-row">
                       <span>{index + 1}</span>
-                      <p>{item}</p>
+                      <p>
+                        <strong>{gate.label}</strong>
+                        {gate.detail}
+                      </p>
                     </div>
                   ))}
                 </div>
               </article>
 
               <article className="panel execution-card">
-                <SectionHeading eyebrow="Adapter" title="IBKR bridge" />
+                <SectionHeading eyebrow="Adapter" title={dryRunGatewayProfile.label} />
                 <div className="execution-status">
                   <RadioTower size={36} aria-hidden="true" />
-                  <strong>Paper mode first</strong>
-                  <span>Orders are intentionally not connected in this build.</span>
+                  <strong>Live routing disabled</strong>
+                  <span>{dryRunGatewayProfile.purpose}</span>
+                  <code>{defaultDryRunRiskPolicy.id}: max ${formatCompact(defaultDryRunRiskPolicy.maxNotionalUsd)} notional, {defaultDryRunRiskPolicy.maxHoldingDays}d hold cap</code>
                 </div>
                 <button type="button" className="primary-button" onClick={() => setActiveView('data')}>
                   <SlidersHorizontal size={17} aria-hidden="true" />

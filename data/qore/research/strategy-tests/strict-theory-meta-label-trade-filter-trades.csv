@@ -1,0 +1,9 @@
+strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,leadDays,direction,weightedAnomalyF,coveragePct,extremeCount,grossReturnPct,netReturnPct,rank
+strict-theory-meta-label-trade-filter,strict-theory,2024-11-23,2024-12-03,2024-11-25,2024-12-03,gfs,rumor,10,long,-10.095,0.745,1,-10.747,-10.811,1.85182
+strict-theory-meta-label-trade-filter,strict-theory,2025-01-11,2025-01-21,2025-01-13,2025-01-21,gfs,rumor,10,long,-8.3,0.585,1,-2.753,-2.817,1.10708
+strict-theory-meta-label-trade-filter,strict-theory,2025-02-09,2025-02-18,2025-02-10,2025-02-18,gfs,rumor,9,long,-15.049,0.84,7,14.983,14.919,3.0074
+strict-theory-meta-label-trade-filter,strict-theory,2025-11-27,2025-12-04,2025-11-28,2025-12-04,gem-global,rumor,7,long,-8.986,0.764,2,6.25,6.186,1.1496
+strict-theory-meta-label-trade-filter,strict-theory,2025-12-06,2025-12-15,2025-12-08,2025-12-15,gefs-mean,rumor,9,long,-9.257,0.764,1,-17.383,-17.447,1.09627
+strict-theory-meta-label-trade-filter,strict-theory,2026-01-18,2026-01-27,2026-01-20,2026-01-27,gfs,rumor,9,long,-11.576,0.868,3,18.772,18.708,2.14089
+strict-theory-meta-label-trade-filter,strict-theory,2026-02-21,2026-02-24,2026-02-23,2026-02-24,gem-global,selloff,3,short,-9.061,0.623,5,-2.321,-2.385,1.7537
+strict-theory-meta-label-trade-filter,strict-theory,2026-03-15,2026-03-18,2026-03-16,2026-03-18,gem-global,selloff,3,short,-13.259,0.858,8,3.831,3.767,2.95127
