@@ -1,0 +1,6 @@
+strategyId,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,sourceGroup,windowId,thesisKind,leadDays,direction,probability,threshold,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,grossReturnPct,netReturnPct,rank
+worker2-strict-theory-regularized-logistic-regression-validation,2025-01-09,2025-01-16,2025-01-10,2025-01-16,gem-global,gem,rumor,cold-long,7,long,0.91878,0.5,-12.484,0.689,0.689,0,7,8.252,8.188,0.91878
+worker2-strict-theory-regularized-logistic-regression-validation,2025-01-26,2025-02-03,2025-01-27,2025-02-03,gefs-mean,ncep,rumor,warm-short,8,short,0.68531,0.5,9.789,0.736,0,0.736,3,-2.857,-2.921,0.68531
+worker2-strict-theory-regularized-logistic-regression-validation,2025-02-09,2025-02-18,2025-02-10,2025-02-18,gfs,ncep,rumor,cold-long,9,long,0.90559,0.5,-15.049,0.84,0.84,0,7,15.047,14.983,0.90559
+worker2-strict-theory-regularized-logistic-regression-validation,2025-03-02,2025-03-12,2025-03-03,2025-03-12,gefs-mean,ncep,rumor,warm-short,10,short,0.86202,0.5,13.588,0.896,0,0.896,10,1.367,1.303,0.86202
+worker2-strict-theory-regularized-logistic-regression-validation,2025-03-16,2025-03-24,2025-03-17,2025-03-24,ecmwf-ifs,ecmwf,rumor,warm-short,8,short,0.98004,0.5,10.573,0.83,0,0.83,2,2.639,2.575,0.98004

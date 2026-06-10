@@ -1,0 +1,14 @@
+strategyId,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,sourceGroup,thesisKind,direction,leadDays,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,expectedReturnPct,grossReturnPct,netReturnPct
+baseline-reproduction,2026-01-19,2026-01-26,2026-01-20,2026-01-26,gem-global,gem,cold-long,long,7,-25.792,1,1,0,18,3.0264,19.887,19.823
+baseline-reproduction,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,ncep,warm-short,short,10,12.472,0.632,0,0.632,9,1.0856,4.37,4.306
+baseline-reproduction,2026-02-28,2026-03-09,2026-03-02,2026-03-09,gfs,ncep,warm-short,short,9,15.013,0.962,0,0.962,10,3.4147,-2.583,-2.647
+baseline-reproduction,2026-03-21,2026-03-31,2026-03-23,2026-03-31,aigfs,ncep,warm-short,short,10,12.207,0.849,0,0.849,9,6.4718,0,-0.064
+best-combined-by-cv,2026-01-19,2026-01-26,2026-01-20,2026-01-26,gem-global,gem,cold-long,long,7,-25.792,1,1,0,18,3.0264,19.887,19.823
+best-combined-by-cv,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,ncep,warm-short,short,10,12.472,0.632,0,0.632,9,1.0856,4.37,4.306
+best-combined-by-cv,2026-02-28,2026-03-09,2026-03-02,2026-03-09,gfs,ncep,warm-short,short,9,15.013,0.962,0,0.962,10,3.4147,-2.583,-2.647
+best-combined-by-cv,2026-03-21,2026-03-31,2026-03-23,2026-03-31,aigfs,ncep,warm-short,short,10,12.207,0.849,0,0.849,9,6.4718,0,-0.064
+two-sleeve-side-specific,2025-12-07,2025-12-15,2025-12-08,2025-12-15,graphcastgfs,ncep,cold-long,long,8,-17.608,1,1,0,11,5.5931,-17.319,-17.383
+two-sleeve-side-specific,2026-01-19,2026-01-26,2026-01-20,2026-01-26,gefs-mean,ncep,cold-long,long,7,-13.719,1,1,0,8,21.5223,19.887,19.823
+two-sleeve-side-specific,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,ncep,warm-short,short,10,12.472,0.632,0,0.632,9,0.6868,4.37,4.306
+two-sleeve-side-specific,2026-02-28,2026-03-10,2026-03-02,2026-03-10,aigfs,ncep,warm-short,short,10,14.808,0.811,0,0.811,12,2.3412,-2.25,-2.314
+two-sleeve-side-specific,2026-03-21,2026-03-31,2026-03-23,2026-03-31,aigfs,ncep,warm-short,short,10,12.207,0.849,0,0.849,9,7.2193,0,-0.064

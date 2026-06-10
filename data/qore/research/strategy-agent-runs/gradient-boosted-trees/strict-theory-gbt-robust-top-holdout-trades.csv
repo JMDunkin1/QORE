@@ -1,0 +1,1 @@
+strategyId,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,sourceGroup,sourceFamily,windowId,thesisKind,leadDays,direction,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,sourceCount,sourceGroups,sourceFamilies,predictedTheoryReturnPct,grossReturnPct,netReturnPct,rank

@@ -1,0 +1,10 @@
+strategy,season,totalReturnPct,maxDrawdownPct,sharpe,winRatePct,profitFactor,tradeCount
+baseline-reproduction,2023-2024,7.13,-5.82,1.65,50,2.36,2
+baseline-reproduction,2024-2025,-8.72,-27.26,-0.42,44.4,0.81,9
+baseline-reproduction,2025-2026,7.27,-20.75,0.58,44.4,1.41,9
+best-train-ranked,2023-2024,7.13,-5.82,1.65,50,2.36,2
+best-train-ranked,2024-2025,-8.72,-27.26,-0.42,44.4,0.81,9
+best-train-ranked,2025-2026,7.27,-20.75,0.58,44.4,1.41,9
+best-robust-validation,2023-2024,7.13,-5.82,1.65,50,2.36,2
+best-robust-validation,2024-2025,-8.72,-27.26,-0.42,44.4,0.81,9
+best-robust-validation,2025-2026,7.27,-20.75,0.58,44.4,1.41,9

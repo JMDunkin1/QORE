@@ -1,0 +1,7 @@
+strategyId,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,sourceGroup,thesisKind,leadDays,direction,weightedAnomalyF,coveragePct,extremeCount,acceptProbability,grossReturnPct,netReturnPct,rank
+combined__ncep-gem-cross-provider__fixed-theory-gate__lambda008-threshold055,2026-01-19,2026-01-26,2026-01-20,2026-01-26,gem-global,gem,cold-long,7,long,-25.792,1,18,0.99555,19.887,19.823,5.20552
+combined__ncep-gem-cross-provider__fixed-theory-gate__lambda008-threshold055,2026-02-08,2026-02-18,2026-02-09,2026-02-18,gfs,ncep,warm-short,10,short,17.398,0.84,11,0.62316,2.465,2.401,2.21264
+combined__ncep-gem-cross-provider__fixed-theory-gate__lambda008-threshold055,2026-03-01,2026-03-10,2026-03-02,2026-03-10,gfs,ncep,warm-short,9,short,22.098,1,17,0.83683,-2.25,-2.314,3.89519
+combined__ncep-gem-cross-provider__fixed-theory-gate__lambda008-threshold055,2026-03-21,2026-03-31,2026-03-23,2026-03-31,gfs,ncep,warm-short,10,short,15.987,0.906,10,0.93834,0,-0.064,3.23467
+warm-short__long-history-cross-provider__broader-coverage__lambda008-threshold055,2026-03-01,2026-03-11,2026-03-02,2026-03-11,ecmwf-ifs,ecmwf,warm-short,10,short,24.594,1,18,0.95445,-7.333,-7.397,4.81911
+warm-short__long-history-cross-provider__broader-coverage__lambda008-threshold055,2026-03-21,2026-03-31,2026-03-23,2026-03-31,gfs,ncep,warm-short,10,short,15.987,0.906,10,0.98449,0,-0.064,3.39376
