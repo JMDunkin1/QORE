@@ -9,19 +9,22 @@ const MANIFEST_PATH = path.join(DATA_ROOT, 'dataset-manifest.json')
 const OUTPUT_DIR = path.join(DATA_ROOT, 'research/strategy-tests')
 const ROUND_TRIP_COST_PCT = 0.064
 const MIN_TRADES_FOR_PRIMARY_RANK = 8
-const TRAIN_CUTOFF = '2024-01-01'
+const TRAIN_CUTOFF = '2025-11-01'
+const COLD_RUMOR_MAX_WEIGHTED_ANOMALY_F = -8
+const COLD_RUMOR_MIN_COVERAGE_PCT = 0.55
+const WARM_RUMOR_MIN_WEIGHTED_ANOMALY_F = 8
+const WARM_RUMOR_MIN_COVERAGE_PCT = 0.6
+const WARM_COVERAGE_MIN_ANOMALY_F = 8
+const WARM_EXTREME_ANOMALY_F = 14
+const WINTER_THESIS_MIN_SOURCE_GROUPS = 2
+const WINTER_THESIS_MIN_MODEL_FAMILIES = 2
 const VARIANTS = [
   {
     id: 'strict-theory',
-    label: 'Strict Theory',
-    universe: 'Only score-qualified Arctic Blast rows; rumor window is long UNG and selloff window is short UNG.',
+    label: 'Winter Weather Demand',
+    universe:
+      'Only winter 7-10 day UNG rumor-window rows where severe broad cold or significant broad warmth is confirmed by at least two independent forecast source groups.',
     strictTheory: true,
-  },
-  {
-    id: 'experimental',
-    label: 'Experimental',
-    universe: 'All no-lookahead UNG forecast-return rows; model direction and thresholds may discover non-Arctic patterns.',
-    strictTheory: false,
   },
 ]
 
@@ -72,6 +75,79 @@ function dayOfYear(isoDate) {
   return Math.floor((date.getTime() - start.getTime()) / 86400000) + 1
 }
 
+function monthFromIsoDate(isoDate) {
+  return Number(isoDate.slice(5, 7))
+}
+
+function isHeatingSeasonIssue(isoDate) {
+  const month = monthFromIsoDate(isoDate)
+  return month <= 3 || month >= 11
+}
+
+function isColdRumorWindow(score) {
+  return score.windowId === 'rumor' && score.leadDays >= 7 && score.leadDays <= 10
+}
+
+function isWarmRumorWindow(score) {
+  return score.windowId === 'rumor' && score.leadDays >= 7 && score.leadDays <= 10
+}
+
+function sourceFamilyFor(sourceId) {
+  if (sourceId === 'ecmwf-ifs') return 'ecmwf-ifs'
+  if (sourceId === 'ecmwf-aifs') return 'ecmwf-aifs'
+  if (sourceId === 'gefs-mean') return 'gefs'
+  if (sourceId === 'graphcastgfs') return 'graphcastgfs'
+  if (sourceId === 'gfs') return 'gfs'
+  if (sourceId === 'aigfs') return 'aigfs'
+  if (sourceId === 'gem-global') return 'gem-global'
+  return sourceId
+}
+
+function sourceGroupFor(sourceId) {
+  const family = sourceFamilyFor(sourceId)
+  if (['gfs', 'gefs', 'graphcastgfs', 'aigfs'].includes(family)) return 'ncep'
+  if (['ecmwf-ifs', 'ecmwf-aifs'].includes(family)) return 'ecmwf'
+  if (family === 'gem-global') return 'gem'
+  return family
+}
+
+function winterThesisForScore(score) {
+  if (!isHeatingSeasonIssue(score.issueDate)) return null
+
+  if (
+    isColdRumorWindow(score) &&
+    score.weightedAnomalyF <= COLD_RUMOR_MAX_WEIGHTED_ANOMALY_F &&
+    score.coldCoveragePct >= COLD_RUMOR_MIN_COVERAGE_PCT
+  ) {
+    return {
+      kind: 'cold-long',
+      direction: 1,
+      coveragePct: score.coldCoveragePct,
+      extremeCount: score.coldExtremeCount,
+    }
+  }
+
+  if (isWarmRumorWindow(score) && score.weightedAnomalyF >= WARM_RUMOR_MIN_WEIGHTED_ANOMALY_F && score.warmCoveragePct >= WARM_RUMOR_MIN_COVERAGE_PCT) {
+    return {
+      kind: 'warm-short',
+      direction: -1,
+      coveragePct: score.warmCoveragePct,
+      extremeCount: score.warmExtremeCount,
+    }
+  }
+
+  return null
+}
+
+function winterThesisKey(issueDate, thesisKind) {
+  return `${issueDate}|${thesisKind}`
+}
+
+function signalStrength(row) {
+  if (row.thesisKind === 'warm-short') return Math.max(0, row.weightedAnomalyF)
+  return Math.max(0, -row.weightedAnomalyF)
+}
+
 function expectedWindowIdForLead(leadDays) {
   if (leadDays >= 7 && leadDays <= 10) return 'rumor'
   if (leadDays >= 1 && leadDays <= 3) return 'selloff'
@@ -89,7 +165,7 @@ function isTradable(row) {
 }
 
 function isStrictTheoryRow(row) {
-  return row.scoreQualifies
+  return row.confirmedWinterThesis
 }
 
 function rowsForVariant(rows, variant) {
@@ -124,10 +200,10 @@ function variantParams(variant, params = {}) {
   return {
     variant: variant.id,
     universe: variant.universe,
-    theoryAlignment: variant.strictTheory ? 'strict to theory.md' : 'experimental / not theory-constrained',
-    samplePolicy: variant.strictTheory
-      ? 'Score-qualified pre-2024 Arctic Blast rows are sparse; read strict-theory results as smaller-universe research, with reduced ML sample minimums where needed.'
-      : 'Standard ML sample minimums for the wider no-lookahead forecast-return universe.',
+    theoryAlignment:
+      'Winter Weather Demand: long UNG when broad 7-10 day cold is independently confirmed; short UNG when broad 7-10 day warmth is independently confirmed.',
+    samplePolicy:
+      'Winter rows only; cold and warm sides use fixed anomaly, side-specific coverage, and independent-source confirmation gates before ranking.',
     ...params,
   }
 }
@@ -136,35 +212,116 @@ function scoreKey(row) {
   return [row.issueDate, row.targetDate, row.leadDays, row.windowId, row.modelId].join('|')
 }
 
+function consensusKey(row) {
+  return [row.issueDate, row.targetDate, row.leadDays, row.windowId].join('|')
+}
+
+function locationBreadthByScore(filePath) {
+  const grouped = new Map()
+
+  for (const row of parseCsv(filePath)) {
+    const key = scoreKey(row)
+    const current =
+      grouped.get(key) ?? {
+        sampledWeight: 0,
+        warmWeight: 0,
+        warmExtremeCount: 0,
+      }
+    const weight = numberFrom(row.weight)
+    const anomalyF = numberFrom(row.forecastAnomalyF, Number.NaN)
+    current.sampledWeight += weight
+    if (Number.isFinite(anomalyF) && anomalyF >= WARM_COVERAGE_MIN_ANOMALY_F) current.warmWeight += weight
+    if (Number.isFinite(anomalyF) && anomalyF >= WARM_EXTREME_ANOMALY_F) current.warmExtremeCount += 1
+    grouped.set(key, current)
+  }
+
+  return new Map(
+    [...grouped.entries()].map(([key, value]) => [
+      key,
+      {
+        warmCoveragePct: value.sampledWeight ? value.warmWeight / value.sampledWeight : 0,
+        warmExtremeCount: value.warmExtremeCount,
+      },
+    ]),
+  )
+}
+
 function loadRows() {
   const manifest = JSON.parse(readText(MANIFEST_PATH))
   const rows = []
   const sourceIds = []
   const inputFiles = []
+  const parsedCalendars = []
+  const allScores = []
 
   for (const calendar of manifest.forecastCalendars) {
     sourceIds.push(calendar.id)
     const scoresPath = path.join(DATA_ROOT, calendar.files.signalScores)
     const returnsPath = path.join(DATA_ROOT, calendar.files.signalReturns)
-    inputFiles.push(path.relative(REPO_ROOT, scoresPath), path.relative(REPO_ROOT, returnsPath))
+    const locationsPath = path.join(DATA_ROOT, calendar.files.locationAnomalies)
+    inputFiles.push(path.relative(REPO_ROOT, scoresPath), path.relative(REPO_ROOT, returnsPath), path.relative(REPO_ROOT, locationsPath))
+    const breadthByScore = locationBreadthByScore(locationsPath)
     const scores = new Map()
 
     for (const score of parseCsv(scoresPath)) {
-      scores.set(scoreKey(score), {
+      const breadth = breadthByScore.get(scoreKey(score))
+      const parsedScore = {
+        sourceId: calendar.id,
+        sourceLabel: calendar.label,
+        sourceFamily: sourceFamilyFor(calendar.id),
+        sourceGroup: sourceGroupFor(calendar.id),
+        issueDate: score.issueDate,
+        targetDate: score.targetDate,
+        leadDays: numberFrom(score.leadDays),
+        windowId: score.windowId,
+        modelId: score.modelId,
         weightedAnomalyF: numberFrom(score.weightedAnomalyF),
-        coveragePct: numberFrom(score.coveragePct),
-        extremeCount: numberFrom(score.extremeCount),
+        coldCoveragePct: numberFrom(score.coveragePct),
+        coldExtremeCount: numberFrom(score.extremeCount),
+        warmCoveragePct: breadth?.warmCoveragePct ?? 0,
+        warmExtremeCount: breadth?.warmExtremeCount ?? 0,
         sampledWeight: numberFrom(score.sampledWeight),
         locationCount: numberFrom(score.locationCount),
         qualifies: boolFrom(score.qualifies),
-      })
+      }
+      scores.set(scoreKey(score), parsedScore)
+      allScores.push(parsedScore)
     }
 
-    for (const ret of parseCsv(returnsPath)) {
+    parsedCalendars.push({ calendar, returns: parseCsv(returnsPath), scores })
+  }
+
+  const thesisCandidatesBySignal = new Map()
+  for (const score of allScores) {
+    const thesis = winterThesisForScore(score)
+    if (!thesis) continue
+    const key = winterThesisKey(consensusKey(score), thesis.kind)
+    thesisCandidatesBySignal.set(key, [...(thesisCandidatesBySignal.get(key) ?? []), score])
+  }
+
+  const confirmationBySignal = new Map()
+  for (const [key, candidates] of thesisCandidatesBySignal) {
+    const sourceGroups = [...new Set(candidates.map((score) => score.sourceGroup))].sort()
+    const sourceFamilies = [...new Set(candidates.map((score) => score.sourceFamily))].sort()
+    if (
+      sourceGroups.length >= WINTER_THESIS_MIN_SOURCE_GROUPS &&
+      sourceFamilies.length >= WINTER_THESIS_MIN_MODEL_FAMILIES
+    ) {
+      confirmationBySignal.set(key, { sourceGroups, sourceFamilies })
+    }
+  }
+
+  for (const { calendar, returns, scores } of parsedCalendars) {
+    for (const ret of returns) {
       const score = scores.get(scoreKey(ret))
+      const thesis = score ? winterThesisForScore(score) : null
+      const confirmation = score && thesis ? confirmationBySignal.get(winterThesisKey(consensusKey(score), thesis.kind)) : null
+      const confirmedWinterThesis = Boolean(score && thesis && confirmation)
       const joined = {
         sourceId: calendar.id,
         sourceLabel: calendar.label,
+        sourceFamily: sourceFamilyFor(calendar.id),
+        sourceGroup: sourceGroupFor(calendar.id),
         issueDate: ret.issueDate,
         targetDate: ret.targetDate,
         leadDays: numberFrom(ret.leadDays),
@@ -176,12 +333,21 @@ function loadRows() {
         targetTradeDate: ret.targetTradeDate,
         returnPct: numberFrom(ret.returnPctEntryCloseToTarget, Number.NaN),
         priorReturnPct: numberFrom(ret.returnPctPriorCloseToTarget, Number.NaN),
-        scoreQualifies: score?.qualifies ?? boolFrom(ret.qualifies),
+        scoreQualifies: confirmedWinterThesis,
         weightedAnomalyF: score?.weightedAnomalyF ?? 0,
-        coveragePct: score?.coveragePct ?? 0,
-        extremeCount: score?.extremeCount ?? 0,
+        coveragePct: thesis?.coveragePct ?? 0,
+        extremeCount: thesis?.extremeCount ?? 0,
+        coldCoveragePct: score?.coldCoveragePct ?? 0,
+        warmCoveragePct: score?.warmCoveragePct ?? 0,
+        coldExtremeCount: score?.coldExtremeCount ?? 0,
+        warmExtremeCount: score?.warmExtremeCount ?? 0,
         sampledWeight: score?.sampledWeight ?? 0,
         locationCount: score?.locationCount ?? 0,
+        thesisKind: thesis?.kind ?? 'none',
+        thesisDirection: thesis?.direction ?? 0,
+        confirmedWinterThesis,
+        confirmedSourceGroups: confirmation?.sourceGroups ?? [],
+        confirmedSourceFamilies: confirmation?.sourceFamilies ?? [],
       }
 
       if (score && isTradable(joined)) rows.push(joined)
@@ -204,22 +370,40 @@ function sourceSubsets(sourceIds) {
     subset('ecmwf-ifs-only', ['ecmwf-ifs']),
     subset('graphcast-only', ['graphcastgfs']),
     subset('recent-open-meteo', ['graphcastgfs', 'gem-global', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs']),
-  ].filter((entry) => entry.sourceIds.length)
+  ].filter((entry) => {
+    const sourceGroups = new Set(entry.sourceIds.map(sourceGroupFor))
+    const sourceFamilies = new Set(entry.sourceIds.map(sourceFamilyFor))
+    return sourceGroups.size >= WINTER_THESIS_MIN_SOURCE_GROUPS && sourceFamilies.size >= WINTER_THESIS_MIN_MODEL_FAMILIES
+  })
+}
+
+function subsetsForVariant(subsets, variant) {
+  if (!variant.strictTheory) return subsets
+  return [subsets.find((entry) => entry.id === 'all') ?? subsets[0]].filter(Boolean)
 }
 
 function featureNames(sourceIds) {
   return [
     'leadDays',
     'coldStrength',
+    'warmStrength',
+    'thesisStrength',
     'weightedAnomalyF',
     'coveragePct',
     'extremeCount',
+    'coldCoveragePct',
+    'warmCoveragePct',
+    'coldExtremeCount',
+    'warmExtremeCount',
     'sampledWeight',
     'locationCount',
     'qualifies',
     'isRumor',
     'isSelloff',
-    'coverageCold',
+    'isColdThesis',
+    'isWarmThesis',
+    'thesisDirection',
+    'coverageStrength',
     'extremeCoverage',
     'doySin',
     'doyCos',
@@ -229,19 +413,30 @@ function featureNames(sourceIds) {
 
 function rawFeatures(row, sourceIds) {
   const coldStrength = Math.max(0, -row.weightedAnomalyF)
+  const warmStrength = Math.max(0, row.weightedAnomalyF)
+  const thesisStrength = signalStrength(row)
   const doy = dayOfYear(row.issueDate)
   return [
     row.leadDays,
     coldStrength,
+    warmStrength,
+    thesisStrength,
     row.weightedAnomalyF,
     row.coveragePct,
     row.extremeCount,
+    row.coldCoveragePct,
+    row.warmCoveragePct,
+    row.coldExtremeCount,
+    row.warmExtremeCount,
     row.sampledWeight,
     row.locationCount,
     row.scoreQualifies ? 1 : 0,
     row.windowId === 'rumor' ? 1 : 0,
     row.windowId === 'selloff' ? 1 : 0,
-    row.coveragePct * coldStrength,
+    row.thesisKind === 'cold-long' ? 1 : 0,
+    row.thesisKind === 'warm-short' ? 1 : 0,
+    row.thesisDirection,
+    row.coveragePct * thesisStrength,
     row.coveragePct * row.extremeCount,
     Math.sin((2 * Math.PI * doy) / 365.25),
     Math.cos((2 * Math.PI * doy) / 365.25),
@@ -456,8 +651,8 @@ function coefficientSummary(model, names, count = 8) {
 function candidateDirection(row, mode, score = null) {
   if (mode === 'long') return 1
   if (mode === 'short') return -1
-  if (mode === 'theory') return row.windowId === 'selloff' ? -1 : 1
-  if (mode === 'contrarian-theory') return row.windowId === 'selloff' ? 1 : -1
+  if (mode === 'theory') return row.thesisDirection || 0
+  if (mode === 'contrarian-theory') return row.thesisDirection ? -row.thesisDirection : 0
   if (mode === 'signed-model') return score >= 0 ? 1 : -1
   return 0
 }
@@ -641,6 +836,7 @@ function formatTrade(trade) {
     entryTradeDate: trade.row.entryTradeDate,
     targetTradeDate: trade.row.targetTradeDate,
     windowId: trade.row.windowId,
+    thesisKind: trade.row.thesisKind,
     sourceId: trade.row.sourceId,
     leadDays: trade.row.leadDays,
     direction: trade.direction === 1 ? 'long' : 'short',
@@ -649,20 +845,54 @@ function formatTrade(trade) {
     rank: round(trade.rank, 4),
     weightedAnomalyF: round(trade.row.weightedAnomalyF, 3),
     coveragePct: round(trade.row.coveragePct, 3),
+    coldCoveragePct: round(trade.row.coldCoveragePct, 3),
+    warmCoveragePct: round(trade.row.warmCoveragePct, 3),
     extremeCount: trade.row.extremeCount,
   }
 }
 
 function optimizeRuleBaseline(rows, subsets, variant) {
   let best = null
-  const windowsGrid = [['rumor'], ['selloff'], ['rumor', 'selloff']]
-  const anomalyGrid = variant.strictTheory ? [-8, -10, -12, -14, -16] : [-2, -4, -6, -8, -10, -12, -14, -16]
-  const coverageGrid = variant.strictTheory ? [0.55, 0.7, 0.85] : [0, 0.1, 0.25, 0.4, 0.55, 0.7, 0.85]
+  if (variant.strictTheory) {
+    const subset = subsets.find((entry) => entry.id === 'all') ?? subsets[0]
+    const baseRows = sourceFilteredRows(rowsForVariant(rows, variant), subset.sourceIds)
+    const candidates = baseRows.map((row) => {
+      return {
+        row,
+        direction: candidateDirection(row, 'theory'),
+        rank: signalStrength(row) * (0.5 + row.coveragePct) + row.extremeCount * 0.2,
+      }
+    })
+    return summarizeStrategy(
+      strategyId('rule-arctic-threshold', variant),
+      'Winter Weather Demand fixed-rule baseline',
+      variantParams(variant, {
+        subset: subset.id,
+        sourceIds: subset.sourceIds,
+        windows: ['rumor'],
+        coldMaxWeightedAnomalyF: COLD_RUMOR_MAX_WEIGHTED_ANOMALY_F,
+        coldMinCoveragePct: COLD_RUMOR_MIN_COVERAGE_PCT,
+        warmMinWeightedAnomalyF: WARM_RUMOR_MIN_WEIGHTED_ANOMALY_F,
+        warmMinCoveragePct: WARM_RUMOR_MIN_COVERAGE_PCT,
+        warmCoverageMinAnomalyF: WARM_COVERAGE_MIN_ANOMALY_F,
+        minSourceGroups: WINTER_THESIS_MIN_SOURCE_GROUPS,
+        minModelFamilies: WINTER_THESIS_MIN_MODEL_FAMILIES,
+        directionMode: 'weather-fixed two-sided',
+        optimizerPolicy: 'fixed winter demand rule; no threshold optimization',
+        overlapPolicy: 'one best-ranked trade per entry date; no overlapping holding windows',
+      }),
+      resolveTrades(candidates),
+    )
+  }
+
+  const windowsGrid = [['rumor']]
+  const anomalyGrid = [COLD_RUMOR_MAX_WEIGHTED_ANOMALY_F, -10, -12, -14, -16]
+  const coverageGrid = [COLD_RUMOR_MIN_COVERAGE_PCT, 0.7, 0.85]
   const extremeGrid = [0, 1, 2, 4, 6, 8]
-  const directionModes = variant.strictTheory ? ['theory'] : ['long', 'short', 'theory', 'contrarian-theory']
+  const directionModes = ['theory']
   const variantRows = rowsForVariant(rows, variant)
 
-  for (const subset of subsets) {
+  for (const subset of subsetsForVariant(subsets, variant)) {
     const sourceRows = sourceFilteredRows(variantRows, subset.sourceIds)
     for (const windows of windowsGrid) {
       const scopedRows = windowFilteredRows(sourceRows, windows)
@@ -693,6 +923,8 @@ function optimizeRuleBaseline(rows, subsets, variant) {
                 maxWeightedAnomalyF,
                 minCoveragePct,
                 minExtremeCount,
+                minSourceGroups: WINTER_THESIS_MIN_SOURCE_GROUPS,
+                minModelFamilies: WINTER_THESIS_MIN_MODEL_FAMILIES,
                 directionMode,
                 overlapPolicy: 'one best-ranked trade per entry date; no overlapping holding windows',
               }), trades)
@@ -713,35 +945,35 @@ function trainTestRows(rows) {
 }
 
 function minModelSamples(variant) {
-  return variant.strictTheory ? { train: 20, test: 20 } : { train: 200, test: 40 }
+  return variant.strictTheory ? { train: 40, test: 20 } : { train: 200, test: 40 }
 }
 
 function minMetaSamples(variant) {
-  return variant.strictTheory ? { train: 12, test: 8 } : { train: 80, test: 20 }
+  return variant.strictTheory ? { train: 24, test: 10 } : { train: 80, test: 20 }
 }
 
 function minTreeLeaf(trainLength, variant) {
-  return variant.strictTheory ? Math.max(4, Math.floor(trainLength * 0.08)) : Math.max(12, Math.floor(trainLength * 0.012))
+  return variant.strictTheory ? Math.max(10, Math.floor(trainLength * 0.1)) : Math.max(12, Math.floor(trainLength * 0.012))
 }
 
 function optimizeLogistic(rows, subsets, variant) {
   let best = null
   const namesBySubset = new Map(subsets.map((subset) => [subset.id, featureNames(subset.sourceIds)]))
-  const lambdaGrid = [0, 0.0005, 0.002, 0.008, 0.03]
-  const l1RatioGrid = [0, 0.25, 0.7]
-  const longThresholdGrid = [0.52, 0.56, 0.6, 0.65, 0.7]
+  const lambdaGrid = variant.strictTheory ? [0.008] : [0, 0.0005, 0.002, 0.008, 0.03]
+  const l1RatioGrid = variant.strictTheory ? [0.25] : [0, 0.25, 0.7]
+  const longThresholdGrid = variant.strictTheory ? [0.55] : [0.52, 0.56, 0.6, 0.65, 0.7]
   const shortThresholdGrid = [0.3, 0.35, 0.4, 0.44, 0.48]
   const directionModes = ['long-probability', 'signed-probability']
   const variantRows = rowsForVariant(rows, variant)
 
-  for (const subset of subsets) {
+  for (const subset of subsetsForVariant(subsets, variant)) {
     const scopedRows = sourceFilteredRows(variantRows, subset.sourceIds)
     const { train, test } = trainTestRows(scopedRows)
     const minSamples = minModelSamples(variant)
     if (train.length < minSamples.train || test.length < minSamples.test) continue
     for (const lambda of lambdaGrid) {
       for (const l1Ratio of l1RatioGrid) {
-        for (const classBalance of [false, true]) {
+        for (const classBalance of variant.strictTheory ? [true] : [false, true]) {
           const params = { lambda, l1Ratio, classBalance, learningRate: 0.08, iterations: 280 }
           const model = trainLogistic(modelTrainingRows(train, variant), subset.sourceIds, params)
           const scored = test.map((row) => ({ row, probability: model.predict(row) }))
@@ -758,7 +990,7 @@ function optimizeLogistic(rows, subsets, variant) {
                 testRows: test.length,
                 acceptThreshold,
                 directionMode: 'theory-fixed',
-                target: 'theory-aligned returnPctEntryCloseToTarget > roundTripCostPct',
+                target: 'theory-aligned returnPctEntryCloseToTarget net of round-trip cost',
                 overlapPolicy: 'one best-ranked trade per entry date; no overlapping holding windows',
               })
               const trades = resolveTrades(probabilityCandidates(scored, variant, strategyParams))
@@ -811,13 +1043,13 @@ function optimizeLogistic(rows, subsets, variant) {
 function optimizeElasticNet(rows, subsets, variant) {
   let best = null
   const namesBySubset = new Map(subsets.map((subset) => [subset.id, featureNames(subset.sourceIds)]))
-  const alphaGrid = [0, 0.0005, 0.002, 0.008, 0.03]
-  const l1RatioGrid = [0, 0.25, 0.5, 0.8]
-  const longThresholdGrid = [0.15, 0.3, 0.5, 0.8, 1.2]
+  const alphaGrid = variant.strictTheory ? [0.008] : [0, 0.0005, 0.002, 0.008, 0.03]
+  const l1RatioGrid = variant.strictTheory ? [0.25] : [0, 0.25, 0.5, 0.8]
+  const longThresholdGrid = variant.strictTheory ? [ROUND_TRIP_COST_PCT] : [0.15, 0.3, 0.5, 0.8, 1.2]
   const shortThresholdGrid = [-0.15, -0.3, -0.5, -0.8, -1.2]
   const variantRows = rowsForVariant(rows, variant)
 
-  for (const subset of subsets) {
+  for (const subset of subsetsForVariant(subsets, variant)) {
     const scopedRows = sourceFilteredRows(variantRows, subset.sourceIds)
     const { train, test } = trainTestRows(scopedRows)
     const minSamples = minModelSamples(variant)
@@ -839,7 +1071,7 @@ function optimizeElasticNet(rows, subsets, variant) {
               testRows: test.length,
               minExpectedTheoryReturnPct,
               directionMode: 'theory-fixed',
-              target: 'theory-aligned returnPctEntryCloseToTarget',
+              target: 'positive theory-aligned expected return after round-trip cost',
               overlapPolicy: 'one best-ranked trade per entry date; no overlapping holding windows',
             })
             const trades = resolveTrades(expectedReturnCandidates(scored, variant, strategyParams))
@@ -886,14 +1118,14 @@ function optimizeElasticNet(rows, subsets, variant) {
 
 function optimizeGradientBoostedTrees(rows, subsets, variant) {
   let best = null
-  const estimatorGrid = [20, 45, 75]
-  const depthGrid = [1, 2, 3]
-  const learningRateGrid = [0.04, 0.08, 0.14]
-  const longThresholdGrid = [0.1, 0.25, 0.5, 0.8, 1.2]
+  const estimatorGrid = variant.strictTheory ? [20] : [20, 45, 75]
+  const depthGrid = variant.strictTheory ? [1] : [1, 2, 3]
+  const learningRateGrid = variant.strictTheory ? [0.06] : [0.04, 0.08, 0.14]
+  const longThresholdGrid = variant.strictTheory ? [0.25] : [0.1, 0.25, 0.5, 0.8, 1.2]
   const shortThresholdGrid = [-0.1, -0.25, -0.5, -0.8, -1.2]
   const variantRows = rowsForVariant(rows, variant)
 
-  for (const subset of subsets) {
+  for (const subset of subsetsForVariant(subsets, variant)) {
     const scopedRows = sourceFilteredRows(variantRows, subset.sourceIds)
     const { train, test } = trainTestRows(scopedRows)
     const minSamples = minModelSamples(variant)
@@ -918,7 +1150,7 @@ function optimizeGradientBoostedTrees(rows, subsets, variant) {
                 testRows: test.length,
                 minExpectedTheoryReturnPct,
                 directionMode: 'theory-fixed',
-                target: 'theory-aligned returnPctEntryCloseToTarget',
+                target: 'positive theory-aligned expected return with a fixed 0.25 percentage-point cushion',
                 overlapPolicy: 'one best-ranked trade per entry date; no overlapping holding windows',
               })
               const trades = resolveTrades(expectedReturnCandidates(scored, variant, strategyParams))
@@ -968,17 +1200,19 @@ function optimizeGradientBoostedTrees(rows, subsets, variant) {
 
 function baseMetaCandidates(rows, params) {
   const scoped = windowFilteredRows(rows, params.windows)
+  const thesisKinds = new Set(params.thesisKinds)
   return scoped
     .filter(
       (row) =>
-        row.weightedAnomalyF <= params.maxWeightedAnomalyF &&
+        (!thesisKinds.size || thesisKinds.has(row.thesisKind)) &&
+        signalStrength(row) >= params.minSignalStrengthF &&
         row.coveragePct >= params.minCoveragePct &&
         row.extremeCount >= params.minExtremeCount,
     )
     .map((row) => ({
       row,
       baseDirection: candidateDirection(row, params.directionMode),
-      baseRank: Math.max(0, -row.weightedAnomalyF) * (0.5 + row.coveragePct) + row.extremeCount * 0.2,
+      baseRank: signalStrength(row) * (0.5 + row.coveragePct) + row.extremeCount * 0.2,
       baseProfitPct: candidateDirection(row, params.directionMode) * row.returnPct - ROUND_TRIP_COST_PCT,
     }))
     .filter((candidate) => candidate.baseDirection)
@@ -986,26 +1220,21 @@ function baseMetaCandidates(rows, params) {
 
 function optimizeMetaLabel(rows, subsets, variant) {
   let best = null
-  const baseParamGrid = variant.strictTheory
-    ? [
-        { windows: ['rumor', 'selloff'], directionMode: 'theory', maxWeightedAnomalyF: -8, minCoveragePct: 0.55, minExtremeCount: 0 },
-        { windows: ['rumor', 'selloff'], directionMode: 'theory', maxWeightedAnomalyF: -10, minCoveragePct: 0.55, minExtremeCount: 0 },
-        { windows: ['rumor', 'selloff'], directionMode: 'theory', maxWeightedAnomalyF: -8, minCoveragePct: 0.7, minExtremeCount: 0 },
-        { windows: ['rumor'], directionMode: 'theory', maxWeightedAnomalyF: -8, minCoveragePct: 0.55, minExtremeCount: 0 },
-        { windows: ['selloff'], directionMode: 'theory', maxWeightedAnomalyF: -8, minCoveragePct: 0.55, minExtremeCount: 0 },
-      ]
-    : [
-        { windows: ['rumor', 'selloff'], directionMode: 'theory', maxWeightedAnomalyF: -2, minCoveragePct: 0, minExtremeCount: 0 },
-        { windows: ['rumor', 'selloff'], directionMode: 'theory', maxWeightedAnomalyF: -4, minCoveragePct: 0.1, minExtremeCount: 0 },
-        { windows: ['rumor', 'selloff'], directionMode: 'theory', maxWeightedAnomalyF: -6, minCoveragePct: 0.25, minExtremeCount: 1 },
-        { windows: ['rumor'], directionMode: 'long', maxWeightedAnomalyF: -4, minCoveragePct: 0.1, minExtremeCount: 0 },
-        { windows: ['selloff'], directionMode: 'short', maxWeightedAnomalyF: -4, minCoveragePct: 0.1, minExtremeCount: 0 },
-      ]
-  const lambdaGrid = [0, 0.002, 0.008, 0.03]
-  const acceptThresholdGrid = [0.5, 0.55, 0.6, 0.65, 0.7]
+  const baseParamGrid = [
+    {
+      windows: ['rumor'],
+      thesisKinds: ['cold-long', 'warm-short'],
+      directionMode: 'theory',
+      minSignalStrengthF: 8,
+      minCoveragePct: COLD_RUMOR_MIN_COVERAGE_PCT,
+      minExtremeCount: 0,
+    },
+  ]
+  const lambdaGrid = variant.strictTheory ? [0.008] : [0, 0.002, 0.008, 0.03]
+  const acceptThresholdGrid = variant.strictTheory ? [0.55] : [0.5, 0.55, 0.6, 0.65, 0.7]
   const variantRows = rowsForVariant(rows, variant)
 
-  for (const subset of subsets) {
+  for (const subset of subsetsForVariant(subsets, variant)) {
     const scopedRows = sourceFilteredRows(variantRows, subset.sourceIds)
     for (const baseParams of baseParamGrid) {
       const candidates = baseMetaCandidates(scopedRows, baseParams)
@@ -1054,7 +1283,7 @@ function optimizeMetaLabel(rows, subsets, variant) {
             trainRows: train.length,
             testRows: test.length,
             acceptThreshold,
-            target: 'base candidate net return > 0',
+            target: 'accept fixed-direction winter demand candidates whose theory-aligned net return is positive',
             overlapPolicy: 'one best-ranked accepted trade per entry date; no overlapping holding windows',
           }), trades, {
             coefficients: coefficientSummary(model, featureNames(subset.sourceIds)),
@@ -1083,10 +1312,13 @@ function writeTradeCsv(strategy) {
     targetTradeDate: trade.row.targetTradeDate,
     sourceId: trade.row.sourceId,
     windowId: trade.row.windowId,
+    thesisKind: trade.row.thesisKind,
     leadDays: trade.row.leadDays,
     direction: trade.direction === 1 ? 'long' : 'short',
     weightedAnomalyF: round(trade.row.weightedAnomalyF, 3),
     coveragePct: round(trade.row.coveragePct, 3),
+    coldCoveragePct: round(trade.row.coldCoveragePct, 3),
+    warmCoveragePct: round(trade.row.warmCoveragePct, 3),
     extremeCount: trade.row.extremeCount,
     grossReturnPct: round(trade.grossReturnPct, 4),
     netReturnPct: round(trade.netReturnPct, 4),
@@ -1101,10 +1333,13 @@ function writeTradeCsv(strategy) {
     targetTradeDate: '',
     sourceId: '',
     windowId: '',
+    thesisKind: '',
     leadDays: '',
     direction: '',
     weightedAnomalyF: '',
     coveragePct: '',
+    coldCoveragePct: '',
+    warmCoveragePct: '',
     extremeCount: '',
     grossReturnPct: '',
     netReturnPct: '',
@@ -1204,7 +1439,8 @@ function main() {
   const summaryCsvPath = writeSummaryCsv(strippedStrategies)
   const summary = {
     generatedAt: new Date().toISOString(),
-    theory: 'Arctic Blast forecast windows for UNG: buy the 7-10 day rumor, test the 1-3 day selloff/fade window.',
+    theory:
+      'Winter Weather Demand: buy UNG when severe broad 7-10 day cold is independently confirmed; short UNG when significant broad 7-10 day warmth is independently confirmed.',
     dataRoot: path.relative(REPO_ROOT, DATA_ROOT),
     inputFiles: [...new Set(inputFiles)].sort(),
     timingContract: {
@@ -1215,10 +1451,11 @@ function main() {
     },
     optimizationNotes: [
       'Each strategy was optimized on the shared forecast signal-score plus signal-return rows.',
-      'Strict Theory variants only trade score-qualified Arctic Blast rows and fix direction to the theory.md thesis: long the 7-10 day rumor window and short the 1-3 day selloff window.',
-      'Experimental variants keep the previous unconstrained search space and may include non-Arctic or non-theory trades.',
-      'ML strategies train before 2024-01-01 and report post-cutoff trades to reduce lookahead during model fitting.',
-      'The grid search ranks realized strategy returns, so treat these as optimized research baselines rather than clean out-of-sample production proof.',
+      'Strict variants only trade winter 7-10 day rumor-window UNG rows that pass fixed cold-long or warm-short severity, side-specific breadth, and independent-source confirmation gates.',
+      'Warm breadth is derived from location anomaly files because the legacy coveragePct score is cold-breadth only.',
+      'The previous experimental variants were removed because they searched outside the theory-constrained winter demand setup.',
+      `ML strategies train before ${TRAIN_CUTOFF} and report post-cutoff trades to reduce lookahead during model fitting.`,
+      'Strict ML strategy thresholds and core regularization are fixed instead of optimized against post-cutoff strategy PnL.',
       'Trade selection permits one best-ranked trade per entry date and rejects overlapping holding windows.',
       `Round-trip friction is ${ROUND_TRIP_COST_PCT}% per trade.`,
       'These are first-pass research baselines on UNG ETF history, not futures-grade Henry Hub contract results.',
@@ -1234,6 +1471,30 @@ function main() {
       firstIssueDate: rows.map((row) => row.issueDate).sort()[0] ?? null,
       lastIssueDate: rows.map((row) => row.issueDate).sort().at(-1) ?? null,
       strictTheoryRows: rows.filter(isStrictTheoryRow).length,
+      strictTheorySideCounts: rows.filter(isStrictTheoryRow).reduce(
+        (counts, row) => ({
+          ...counts,
+          [row.thesisKind]: (counts[row.thesisKind] ?? 0) + 1,
+        }),
+        {},
+      ),
+      winterWeatherDemandRules: {
+        leadDays: '7-10',
+        windowId: 'rumor',
+        coldLong: {
+          maxWeightedAnomalyF: COLD_RUMOR_MAX_WEIGHTED_ANOMALY_F,
+          minCoveragePct: COLD_RUMOR_MIN_COVERAGE_PCT,
+          direction: 'long UNG',
+        },
+        warmShort: {
+          minWeightedAnomalyF: WARM_RUMOR_MIN_WEIGHTED_ANOMALY_F,
+          minCoveragePct: WARM_RUMOR_MIN_COVERAGE_PCT,
+          warmCoverageMinAnomalyF: WARM_COVERAGE_MIN_ANOMALY_F,
+          direction: 'short UNG',
+        },
+        minSourceGroups: WINTER_THESIS_MIN_SOURCE_GROUPS,
+        minModelFamilies: WINTER_THESIS_MIN_MODEL_FAMILIES,
+      },
     },
     summaryCsv: summaryCsvPath,
     strategies: strippedStrategies,

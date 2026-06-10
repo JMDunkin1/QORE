@@ -108,13 +108,13 @@ issueDate,targetDate,leadDays,windowId,modelId,symbol,priorTradeDate,entryTradeD
 
 For Arctic Blast strategy testing, use the `close-after-issue-v1` timing convention from `src/backtesting/timing.ts`: treat the forecast score as available only after the `issueDate` close, enter at the first market close strictly after `issueDate`, and exit at the first market close on or after `targetDate` and strictly after entry. Use `returnPctEntryCloseToTarget`; `returnPctPriorCloseToTarget` is diagnostic only because it starts before the signal is known.
 
-Optimize the first Arctic Blast strategy baselines:
+Optimize the Winter Weather Demand strict strategy baselines:
 
 ```bash
 npm run optimize:arctic-strategies
 ```
 
-This reads the shared forecast score/return rows, filters to no-lookahead `UNG` trades, and writes ten strategy variants under `data/qore/research/strategy-tests/`: five `strict-theory` versions that only trade score-qualified Arctic Blast rows in the `theory.md` direction, plus five `experimental` versions that preserve the wider unconstrained search space.
+This reads the shared forecast score/return/location rows, filters to no-lookahead `UNG` trades, and writes five `strict-theory` variants under `data/qore/research/strategy-tests/`. The variants only trade winter 7-10 day rumor-window rows: long for severe broad cold, short for significant broad warmth, with at least two independent forecast source groups confirming the same event.
 
 ## Non-Live Execution Architecture
 

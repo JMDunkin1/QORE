@@ -349,6 +349,54 @@ button {
   height: 362px;
 }
 
+.strategy-chart-key {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.strategy-chart-key div {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+
+.strategy-chart-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.strategy-chart-key i {
+  width: 8px;
+  height: 18px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.strategy-chart-key strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.strategy-chart-key em {
+  color: var(--soft);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .market-tape dl,
 .source-health dl,
 .model-score dl {
@@ -463,14 +511,12 @@ dd {
   gap: 15px;
 }
 
-.select-control,
-.range-control {
+.select-control {
   display: grid;
   gap: 7px;
 }
 
-.select-control span,
-.range-control span {
+.select-control span {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -488,9 +534,33 @@ dd {
   color: var(--ink);
 }
 
-.range-control input {
-  width: 100%;
-  accent-color: #0f766e;
+.artifact-summary {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.artifact-summary div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.artifact-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.artifact-summary dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .risk-pill {

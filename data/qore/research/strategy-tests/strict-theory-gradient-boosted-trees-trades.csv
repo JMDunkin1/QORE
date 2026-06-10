@@ -1,12 +1,5 @@
-strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,leadDays,direction,weightedAnomalyF,coveragePct,extremeCount,grossReturnPct,netReturnPct,rank
-strict-theory-gradient-boosted-trees,strict-theory,2024-11-24,2024-12-03,2024-11-25,2024-12-03,ecmwf-ifs,rumor,9,long,-15.338,0.896,12,-10.683,-10.747,12.73788
-strict-theory-gradient-boosted-trees,strict-theory,2024-12-15,2024-12-23,2024-12-16,2024-12-23,ecmwf-ifs,rumor,8,long,-13.278,0.868,9,12.043,11.979,7.54023
-strict-theory-gradient-boosted-trees,strict-theory,2024-12-29,2025-01-08,2024-12-30,2025-01-08,ecmwf-ifs,rumor,10,long,-17.237,0.849,9,-5.103,-5.167,5.75096
-strict-theory-gradient-boosted-trees,strict-theory,2025-01-12,2025-01-22,2025-01-13,2025-01-22,ecmwf-ifs,rumor,10,long,-15.353,0.858,13,1.756,1.692,2.35084
-strict-theory-gradient-boosted-trees,strict-theory,2025-02-09,2025-02-18,2025-02-10,2025-02-18,ecmwf-ifs,rumor,9,long,-11.975,0.821,5,15.047,14.983,7.86708
-strict-theory-gradient-boosted-trees,strict-theory,2025-11-09,2025-11-11,2025-11-10,2025-11-11,ecmwf-ifs,selloff,2,short,-8.318,0.604,4,-3.262,-3.326,8.21264
-strict-theory-gradient-boosted-trees,strict-theory,2025-11-27,2025-12-04,2025-11-28,2025-12-04,gem-global,rumor,7,long,-8.986,0.764,2,6.314,6.25,8.26844
-strict-theory-gradient-boosted-trees,strict-theory,2025-12-07,2025-12-16,2025-12-08,2025-12-16,graphcastgfs,rumor,9,long,-14.682,0.906,9,-19.708,-19.772,13.90049
-strict-theory-gradient-boosted-trees,strict-theory,2026-01-19,2026-01-29,2026-01-20,2026-01-29,ecmwf-ifs,rumor,10,long,-17.579,0.896,13,21.746,21.682,8.20422
-strict-theory-gradient-boosted-trees,strict-theory,2026-02-21,2026-02-24,2026-02-23,2026-02-24,gem-global,selloff,3,short,-9.061,0.623,5,2.385,2.321,1.7344
-strict-theory-gradient-boosted-trees,strict-theory,2026-03-08,2026-03-18,2026-03-09,2026-03-18,graphcastgfs,rumor,10,long,-8.996,0.585,4,2.924,2.86,3.77556
+strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,thesisKind,leadDays,direction,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,grossReturnPct,netReturnPct,rank
+strict-theory-gradient-boosted-trees,strict-theory,2026-02-01,2026-02-11,2026-02-02,2026-02-11,ecmwf-ifs,rumor,warm-short,10,short,11.267,0.717,0,0.717,8,2.992,2.928,0.68708
+strict-theory-gradient-boosted-trees,strict-theory,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,rumor,warm-short,10,short,12.472,0.632,0,0.632,9,4.37,4.306,0.68708
+strict-theory-gradient-boosted-trees,strict-theory,2026-03-01,2026-03-11,2026-03-02,2026-03-11,gfs,rumor,warm-short,10,short,18.862,0.745,0,0.745,14,-7.333,-7.397,0.68708
+strict-theory-gradient-boosted-trees,strict-theory,2026-03-21,2026-03-31,2026-03-23,2026-03-31,gfs,rumor,warm-short,10,short,15.987,0.906,0,0.906,10,0,-0.064,0.68708

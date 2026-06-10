@@ -1,9 +1,7 @@
-strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,leadDays,direction,weightedAnomalyF,coveragePct,extremeCount,grossReturnPct,netReturnPct,rank
-strict-theory-regularized-logistic-regression,strict-theory,2024-11-23,2024-12-03,2024-11-25,2024-12-03,gfs,rumor,10,long,-10.095,0.745,1,-10.683,-10.747,0.86917
-strict-theory-regularized-logistic-regression,strict-theory,2025-01-11,2025-01-21,2025-01-13,2025-01-21,gfs,rumor,10,long,-8.3,0.585,1,-2.689,-2.753,0.65465
-strict-theory-regularized-logistic-regression,strict-theory,2025-02-09,2025-02-18,2025-02-10,2025-02-18,gefs-mean,rumor,9,long,-8.856,0.642,0,15.047,14.983,0.9876
-strict-theory-regularized-logistic-regression,strict-theory,2025-11-27,2025-12-04,2025-11-28,2025-12-04,gem-global,rumor,7,long,-8.986,0.764,2,6.314,6.25,0.58151
-strict-theory-regularized-logistic-regression,strict-theory,2025-12-06,2025-12-15,2025-12-08,2025-12-15,gefs-mean,rumor,9,long,-9.257,0.764,1,-17.319,-17.383,0.55308
-strict-theory-regularized-logistic-regression,strict-theory,2026-01-18,2026-01-27,2026-01-20,2026-01-27,gfs,rumor,9,long,-11.576,0.868,3,18.836,18.772,0.87508
-strict-theory-regularized-logistic-regression,strict-theory,2026-02-21,2026-02-24,2026-02-23,2026-02-24,gem-global,selloff,3,short,-9.061,0.623,5,2.385,2.321,0.88204
-strict-theory-regularized-logistic-regression,strict-theory,2026-03-08,2026-03-18,2026-03-09,2026-03-18,graphcastgfs,rumor,10,long,-8.996,0.585,4,2.924,2.86,0.9996
+strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,thesisKind,leadDays,direction,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,grossReturnPct,netReturnPct,rank
+strict-theory-regularized-logistic-regression,strict-theory,2025-12-07,2025-12-15,2025-12-08,2025-12-15,graphcastgfs,rumor,cold-long,8,long,-17.608,1,1,0,11,-17.319,-17.383,0.67477
+strict-theory-regularized-logistic-regression,strict-theory,2026-01-19,2026-01-26,2026-01-20,2026-01-26,gem-global,rumor,cold-long,7,long,-25.792,1,1,0,18,19.887,19.823,0.92006
+strict-theory-regularized-logistic-regression,strict-theory,2026-02-01,2026-02-11,2026-02-02,2026-02-11,aigfs,rumor,warm-short,10,short,10.981,0.651,0,0.651,7,2.992,2.928,0.56997
+strict-theory-regularized-logistic-regression,strict-theory,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,rumor,warm-short,10,short,12.472,0.632,0,0.632,9,4.37,4.306,0.73408
+strict-theory-regularized-logistic-regression,strict-theory,2026-02-28,2026-03-09,2026-03-02,2026-03-09,gfs,rumor,warm-short,9,short,15.013,0.962,0,0.962,10,-2.583,-2.647,0.85847
+strict-theory-regularized-logistic-regression,strict-theory,2026-03-21,2026-03-31,2026-03-23,2026-03-31,gfs,rumor,warm-short,10,short,15.987,0.906,0,0.906,10,0,-0.064,0.92229

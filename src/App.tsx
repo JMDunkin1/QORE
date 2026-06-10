@@ -41,14 +41,14 @@ import {
   YAxis,
 } from 'recharts'
 import './App.css'
-import { defaultSettings, joinMarketWeather, rankStrategies } from './backtesting/engine'
+import { defaultSettings, joinMarketWeather } from './backtesting/engine'
 import { realDataCatalog, totalLocationRows, totalSignalReturns, totalSignalScores } from './data/realDataCatalog'
 import { defaultDryRunRiskPolicy, dryRunGatewayProfile, paperExecutionReadinessGates } from './execution'
 import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
 import { executionVenues, integrationConnectors } from './integrations/connectors'
 import { evaluateWeatherModel } from './ml/evaluation'
-import { registeredStrategies, researchStrategyRegistry } from './strategies/registry'
-import type { ActiveView, BacktestSettings, MarketBar, WeatherPoint } from './types'
+import { researchBacktestResults, researchStrategyRegistry } from './strategies/registry'
+import type { ActiveView, MarketBar, WeatherPoint } from './types'
 import { classForSigned, formatCompact, formatCurrency, formatNumber, signedPercent } from './utils/format'
 import { parseMarketCsv, parseWeatherCsv } from './utils/importers'
 
@@ -63,6 +63,16 @@ const navItems: Array<{ id: ActiveView; label: string; icon: ElementType }> = [
 
 const activeViews: ActiveView[] = ['overview', 'backtest', 'models', 'data', 'execution', 'github']
 const chartMargin = { top: 16, right: 18, bottom: 4, left: 0 }
+const strategyChartMargin = { top: 16, right: 18, bottom: 12, left: 0 }
+const primaryRankMinTrades = 8
+const researchRankScore = (result: (typeof researchBacktestResults)[number]) => {
+  const samplePenalty = result.metrics.tradeCount >= primaryRankMinTrades ? 0 : -10000
+  return samplePenalty + result.metrics.totalReturnPct + result.metrics.sharpe * 2 + result.metrics.maxDrawdownPct * 0.25
+}
+const sortResearchResults = (a: (typeof researchBacktestResults)[number], b: (typeof researchBacktestResults)[number]) =>
+  researchRankScore(b) - researchRankScore(a) || b.metrics.totalReturnPct - a.metrics.totalReturnPct || b.metrics.sharpe - a.metrics.sharpe
+const defaultSelectedStrategyId =
+  [...researchBacktestResults].sort(sortResearchResults)[0]?.strategy.id ?? ''
 const tooltipStyle = {
   background: '#ffffff',
   border: '1px solid #d8dde4',
@@ -98,7 +108,7 @@ type DashboardChartPoint = {
   gasReturnPct: number
   demandScore: number
   storageBcf: number
-  closeScaled: number
+  closeScaled: number | null
 }
 
 function MetricCard({ label, value, detail, icon: Icon, tone = 'neutral' }: MetricCardProps) {
@@ -133,44 +143,6 @@ function SectionHeading({
       </div>
       {action}
     </div>
-  )
-}
-
-function RangeControl({
-  label,
-  value,
-  min,
-  max,
-  step,
-  suffix = '',
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  suffix?: string
-  onChange: (value: number) => void
-}) {
-  return (
-    <label className="range-control">
-      <span>
-        {label}
-        <strong>
-          {formatNumber(value, step < 1 ? 2 : 0)}
-          {suffix}
-        </strong>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.currentTarget.value))}
-      />
-    </label>
   )
 }
 
@@ -231,11 +203,11 @@ function App() {
   const [activeView, setActiveViewState] = useState<ActiveView>(() => viewFromHash())
   const [weather, setWeather] = useState<WeatherPoint[]>([])
   const [market, setMarket] = useState<MarketBar[]>([])
-  const [settings, setSettings] = useState<BacktestSettings>(defaultSettings)
-  const [selectedStrategyId, setSelectedStrategyId] = useState(() => registeredStrategies[0]?.id ?? '')
-  const [dataLabel, setDataLabel] = useState('Blank strategy template')
+  const settings = defaultSettings
+  const [selectedStrategyId, setSelectedStrategyId] = useState(defaultSelectedStrategyId)
+  const [dataLabel, setDataLabel] = useState(`${researchStrategyRegistry.length} research strategies loaded`)
   const [importLog, setImportLog] = useState(
-    `Tracked real data is available under ${realDataCatalog.defaultDataRoot}; no session rows are loaded until import.`,
+    `Tracked real data is available under ${realDataCatalog.defaultDataRoot}; ${researchStrategyRegistry.length} research strategies are loaded from strategy-test artifacts.`,
   )
   const [githubStatus, setGithubStatus] = useState<GithubStatus | null>(null)
   const [githubError, setGithubError] = useState('')
@@ -246,12 +218,13 @@ function App() {
 
   const joinedRows = useMemo(() => joinMarketWeather(market, weather), [market, weather])
   const weatherMetrics = useMemo(() => (weather.length ? evaluateWeatherModel(weather) : null), [weather])
-  const leaderboard = useMemo(
-    () => (registeredStrategies.length && market.length && weather.length ? rankStrategies(market, weather, registeredStrategies, settings) : []),
-    [market, weather, settings],
-  )
+  const leaderboard = useMemo(() => [...researchBacktestResults].sort(sortResearchResults), [])
   const topResearchStrategy = useMemo(
-    () => [...researchStrategyRegistry].sort((a, b) => b.metrics.totalReturnPct - a.metrics.totalReturnPct)[0] ?? null,
+    () => leaderboard[0]?.strategy ?? [...researchStrategyRegistry].sort((a, b) => b.metrics.totalReturnPct - a.metrics.totalReturnPct)[0] ?? null,
+    [leaderboard],
+  )
+  const needsValidationCount = useMemo(
+    () => researchStrategyRegistry.filter((strategy) => strategy.promotionStatus === 'needs-more-validation').length,
     [],
   )
   const selectedBacktest = useMemo(
@@ -259,15 +232,15 @@ function App() {
     [leaderboard, selectedStrategyId],
   )
   const latestMarket = market.at(-1)
-  const latestPoint = selectedBacktest?.joined.at(-1) ?? joinedRows.at(-1)
+  const latestPoint = selectedBacktest?.curve.at(-1) ?? joinedRows.at(-1)
   const hasLabData = weather.length > 0 || market.length > 0
   const chartData: DashboardChartPoint[] = selectedBacktest
-    ? selectedBacktest.curve.map((point, index) => ({
+    ? selectedBacktest.curve.map((point) => ({
         ...point,
-        gasReturnPct: (selectedBacktest.joined[index]?.dailyReturn ?? 0) * 100,
-        demandScore: selectedBacktest.joined[index]?.demandScore ?? 0,
-        storageBcf: selectedBacktest.joined[index]?.storageBcf ?? 0,
-        closeScaled: point.close * 1000,
+        gasReturnPct: point.gasReturnPct,
+        demandScore: point.demandScore,
+        storageBcf: point.storageBcf,
+        closeScaled: point.closeScaled,
       }))
     : joinedRows.map((point) => ({
         date: point.date,
@@ -285,11 +258,21 @@ function App() {
         demandScore: point.demandScore,
         storageBcf: point.storageBcf,
       }))
-  const scatterData = joinedRows.map((point) => ({
-    weatherSurprise: Number(point.weatherSurprise.toFixed(2)),
-    returnPct: Number((point.dailyReturn * 100).toFixed(3)),
-    storageBcf: point.storageBcf,
-  }))
+  const scatterData = joinedRows.length
+    ? joinedRows.map((point) => ({
+        date: point.date,
+        weatherSurprise: Number(point.weatherSurprise.toFixed(2)),
+        returnPct: Number((point.dailyReturn * 100).toFixed(3)),
+        storageBcf: point.storageBcf,
+      }))
+    : hasLabData
+      ? []
+      : (selectedBacktest?.curve.map((point) => ({
+          date: point.date,
+          weatherSurprise: Number(point.weatherSurprise.toFixed(2)),
+          returnPct: Number(point.gasReturnPct.toFixed(3)),
+          strategy: selectedBacktest.strategy.name,
+        })) ?? [])
   const weatherScoreBars = weatherMetrics
     ? [
         { name: 'HDD MAE', value: weatherMetrics.hddMae, color: '#2563eb' },
@@ -298,12 +281,16 @@ function App() {
         { name: 'CDD RMSE', value: weatherMetrics.cddRmse, color: '#ef4444' },
       ]
     : []
-  const strategyBars = leaderboard.map((result) => ({
+  const strategyBars = leaderboard.map((result, index) => ({
+    rankLabel: `#${index + 1}`,
     name: result.strategy.name,
     returnPct: result.metrics.totalReturnPct,
     sharpe: result.metrics.sharpe,
     color: result.strategy.color,
   }))
+  const secondaryChartSeries = selectedBacktest
+    ? { dataKey: 'gasReturnPct', name: 'Trade return %' }
+    : { dataKey: 'closeScaled', name: 'Gas px x1000' }
   const emptyStats = [
     ['CAGR', '-', 'Annualized return'],
     ['Volatility', '-', 'Annualized variability'],
@@ -314,10 +301,6 @@ function App() {
     ['Turnover', '-', 'Path churn'],
     ['CVaR 95', '-', 'Tail daily loss'],
   ]
-
-  const updateSetting = (key: keyof BacktestSettings, value: number) => {
-    setSettings((current) => ({ ...current, [key]: value }))
-  }
 
   const loadGithubStatus = useCallback(async (refresh = false) => {
     if (refresh) {
@@ -422,8 +405,8 @@ function App() {
   const clearLabData = () => {
     setWeather([])
     setMarket([])
-    setDataLabel('Blank strategy template')
-    setImportLog('Cleared imported session rows. Shared data files were not changed.')
+    setDataLabel(`${researchStrategyRegistry.length} research strategies loaded`)
+    setImportLog('Cleared imported session rows. Shared strategy and data files were not changed.')
   }
 
   const handleGithubUpdate = async () => {
@@ -560,7 +543,7 @@ function App() {
             icon={TrendingUp}
             label="Total return"
             value={selectedBacktest ? signedPercent(selectedBacktest.metrics.totalReturnPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.totalReturnPct) : '-'}
-            detail={selectedBacktest ? `${selectedBacktest.strategy.name} on ${selectedBacktest.curve.length} sessions` : topResearchStrategy ? `${topResearchStrategy.name} research baseline` : 'No strategy registered yet'}
+            detail={selectedBacktest ? `${selectedBacktest.strategy.name} on ${selectedBacktest.metrics.tradeCount} trades` : topResearchStrategy ? `${topResearchStrategy.name} research baseline` : 'No research strategies loaded'}
             tone={selectedBacktest ? classForSigned(selectedBacktest.metrics.totalReturnPct) : topResearchStrategy ? classForSigned(topResearchStrategy.metrics.totalReturnPct) : 'warning'}
           />
           <MetricCard
@@ -586,7 +569,7 @@ function App() {
             icon={ShieldCheck}
             label="Max drawdown"
             value={selectedBacktest ? signedPercent(selectedBacktest.metrics.maxDrawdownPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.maxDrawdownPct) : '-'}
-            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% daily VaR 95` : topResearchStrategy ? `${topResearchStrategy.metrics.tradeCount} optimized event trades` : 'No risk path until a strategy runs'}
+            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% trade VaR 95` : topResearchStrategy ? `${topResearchStrategy.metrics.tradeCount} optimized event trades` : 'No risk path until a strategy runs'}
             tone={(selectedBacktest?.metrics.maxDrawdownPct ?? topResearchStrategy?.metrics.maxDrawdownPct ?? 0) < -15 ? 'negative' : 'positive'}
           />
           <MetricCard
@@ -625,8 +608,8 @@ function App() {
                       <Line
                         yAxisId="right"
                         type="monotone"
-                        dataKey="closeScaled"
-                        name="Gas px x1000"
+                        dataKey={secondaryChartSeries.dataKey}
+                        name={secondaryChartSeries.name}
                         stroke="#f97316"
                         dot={false}
                         strokeWidth={2}
@@ -647,7 +630,7 @@ function App() {
                   {!chartData.length && (
                     <ChartEmptyOverlay
                       title="No graph data yet"
-                      detail="Import market/weather rows and add real strategies; this chart is kept ready for the first real run."
+                      detail="Research strategy artifacts are loaded, but no trade curve could be built."
                     />
                   )}
                 </div>
@@ -708,7 +691,14 @@ function App() {
                     </ScatterChart>
                   </ResponsiveContainer>
                   {!scatterData.length && (
-                    <ChartEmptyOverlay title="Awaiting joined rows" detail="This panel will populate after matching weather and market dates are loaded." />
+                    <ChartEmptyOverlay
+                      title={hasLabData ? 'No matched dates' : 'No research curve'}
+                      detail={
+                        hasLabData
+                          ? 'Imported weather and market rows need overlapping dates before this panel can plot.'
+                          : 'Research strategy artifacts need trade rows before this panel can plot.'
+                      }
+                    />
                   )}
                 </div>
               </article>
@@ -717,11 +707,14 @@ function App() {
                 <SectionHeading eyebrow="Strategy board" title="Return by strategy" />
                 <div className="chart-frame">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={strategyBars} margin={chartMargin}>
+                    <BarChart data={strategyBars} margin={strategyChartMargin}>
                       <CartesianGrid stroke="#e7ebef" strokeDasharray="3 3" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} />
+                      <XAxis dataKey="rankLabel" tick={{ fontSize: 11 }} interval={0} tickLine={false} />
                       <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip contentStyle={tooltipStyle} />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        labelFormatter={(label) => strategyBars.find((entry) => entry.rankLabel === String(label))?.name ?? label}
+                      />
                       <Bar dataKey="returnPct" name="Return %" isAnimationActive={false}>
                         {strategyBars.map((entry) => (
                           <Cell key={entry.name} fill={entry.color} />
@@ -731,10 +724,32 @@ function App() {
                   </ResponsiveContainer>
                   {!strategyBars.length && <ChartEmptyOverlay title="No strategies registered" detail="Real strategies will appear here as soon as they are added." />}
                 </div>
+                {!!strategyBars.length && (
+                  <div className="strategy-chart-key" aria-label="Strategy chart key">
+                    {strategyBars.map((entry) => (
+                      <div key={entry.name}>
+                        <span>
+                          <i style={{ background: entry.color }} />
+                          {entry.rankLabel}
+                        </span>
+                        <strong>{entry.name}</strong>
+                        <em>{signedPercent(entry.returnPct)}</em>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </article>
 
               <article className="panel run-list">
-                <SectionHeading eyebrow="Registry" title="Model run ladder" />
+                <SectionHeading
+                  eyebrow="Registry"
+                  title="Model run ladder"
+                  action={
+                    <span className={`repo-pill ${needsValidationCount ? 'warning' : 'positive'}`}>
+                      {needsValidationCount ? `${needsValidationCount} thin-sample` : 'Validated sample'}
+                    </span>
+                  }
+                />
                 <div className="run-stack">
                   {researchStrategyRegistry.map((strategy) => (
                     <article key={strategy.id} className="run-row">
@@ -760,81 +775,61 @@ function App() {
           <section className="view-stack">
             <div className="lab-layout">
               <aside className="panel control-panel">
-                <SectionHeading eyebrow="Controls" title="Backtest lab" />
+                <SectionHeading eyebrow="Research" title="Artifact selector" />
                 <label className="select-control">
                   <span>Strategy</span>
-                  <select value={selectedStrategyId} disabled={!registeredStrategies.length} onChange={(event) => setSelectedStrategyId(event.currentTarget.value)}>
-                    {registeredStrategies.length ? (
-                      registeredStrategies.map((strategy) => (
-                        <option key={strategy.id} value={strategy.id}>
-                          {strategy.name}
+                  <select value={selectedStrategyId} disabled={!leaderboard.length} onChange={(event) => setSelectedStrategyId(event.currentTarget.value)}>
+                    {leaderboard.length ? (
+                      leaderboard.map((result) => (
+                        <option key={result.strategy.id} value={result.strategy.id}>
+                          {result.strategy.name}
                         </option>
                       ))
                     ) : (
-                      <option value="">No registered strategies</option>
+                      <option value="">No research strategies</option>
                     )}
                   </select>
                 </label>
-                <RangeControl
-                  label="Risk per signal"
-                  value={settings.riskPerSignal}
-                  min={0.05}
-                  max={1.25}
-                  step={0.05}
-                  onChange={(value) => updateSetting('riskPerSignal', value)}
-                />
-                <RangeControl
-                  label="Max exposure"
-                  value={settings.maxExposure}
-                  min={0.25}
-                  max={2}
-                  step={0.05}
-                  onChange={(value) => updateSetting('maxExposure', value)}
-                />
-                <RangeControl
-                  label="Weather weight"
-                  value={settings.weatherWeight}
-                  min={0}
-                  max={1.2}
-                  step={0.05}
-                  onChange={(value) => updateSetting('weatherWeight', value)}
-                />
-                <RangeControl
-                  label="Storage weight"
-                  value={settings.storageWeight}
-                  min={0}
-                  max={1.2}
-                  step={0.05}
-                  onChange={(value) => updateSetting('storageWeight', value)}
-                />
-                <RangeControl
-                  label="Slippage"
-                  value={settings.slippageBps}
-                  min={0}
-                  max={12}
-                  step={0.5}
-                  suffix=" bps"
-                  onChange={(value) => updateSetting('slippageBps', value)}
-                />
-                <RangeControl
-                  label="Commission"
-                  value={settings.commissionBps}
-                  min={0}
-                  max={6}
-                  step={0.25}
-                  suffix=" bps"
-                  onChange={(value) => updateSetting('commissionBps', value)}
-                />
+                <dl className="artifact-summary">
+                  <div>
+                    <dt>Variant</dt>
+                    <dd>{selectedBacktest?.strategy.variant ?? '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Trades</dt>
+                    <dd>{selectedBacktest?.metrics.tradeCount ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>Period</dt>
+                    <dd>
+                      {selectedBacktest
+                        ? `${selectedBacktest.researchMetrics.firstEntry} to ${selectedBacktest.researchMetrics.lastExit}`
+                        : '-'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Sources</dt>
+                    <dd>{selectedBacktest?.strategy.sourceUniverse.join(', ') || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Capital</dt>
+                    <dd>{formatCurrency(settings.initialCapital)}</dd>
+                  </div>
+                </dl>
               </aside>
 
               <article className="panel chart-panel wide">
                 <SectionHeading
                   eyebrow={selectedBacktest?.strategy.desk ?? 'Strategy lab'}
-                  title={selectedBacktest?.strategy.name ?? 'No registered strategies'}
-                  action={<span className="repo-pill warning">Pending</span>}
+                  title={selectedBacktest?.strategy.name ?? 'No research strategies'}
+                  action={
+                    <span className={`repo-pill ${selectedBacktest?.strategy.promotionStatus === 'paper-candidate' ? 'positive' : 'warning'}`}>
+                      {selectedBacktest?.strategy.promotionStatus ?? 'Pending'}
+                    </span>
+                  }
                 />
                 <p className="thesis">
-                  {selectedBacktest?.strategy.thesis ?? 'No placeholder strategy is active. This panel is ready for the real strategy you plug in next.'}
+                  {selectedBacktest?.strategy.thesis ?? 'No research strategy is active.'}
                 </p>
                 <div className="chart-frame tall">
                   <ResponsiveContainer width="100%" height="100%">
@@ -875,8 +870,8 @@ function App() {
                   </ResponsiveContainer>
                   {!selectedBacktest && (
                     <ChartEmptyOverlay
-                      title="Nothing is being backtested by default"
-                      detail="The lab is blank on purpose until real strategy code is registered."
+                      title="No research strategy selected"
+                      detail="Strategy-test artifacts will populate this chart when available."
                     />
                   )}
                 </div>
@@ -888,12 +883,12 @@ function App() {
                 ? [
                     ['CAGR', signedPercent(selectedBacktest.metrics.cagrPct), 'Annualized return'],
                     ['Volatility', `${formatNumber(selectedBacktest.metrics.annualVolPct)}%`, 'Annualized variability'],
-                    ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive daily PnL'],
+                    ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive trades'],
                     ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
-                    ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Position changes'],
-                    ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Average absolute'],
-                    ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Path churn'],
-                    ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail daily loss'],
+                    ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Completed trades'],
+                    ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Estimated time in trade'],
+                    ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Trade count proxy'],
+                    ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail trade loss'],
                   ]
                 : emptyStats
               ).map(([label, value, detail]) => (
@@ -937,8 +932,8 @@ function App() {
                     ) : (
                       <tr>
                         <td colSpan={6}>
-                          <strong>No registered strategies</strong>
-                          <span>Real strategy results will populate this table.</span>
+                          <strong>No research strategies</strong>
+                          <span>Research strategy results will populate this table.</span>
                         </td>
                       </tr>
                     )}
@@ -1007,20 +1002,28 @@ function App() {
                   <table className="compact-table">
                     <thead>
                       <tr>
-                        <th>Run</th>
-                        <th>Target</th>
-                        <th>MAE</th>
-                        <th>Direction</th>
-                        <th>PnL lift</th>
+                        <th>Calendar</th>
+                        <th>Issue dates</th>
+                        <th>Scores</th>
+                        <th>Returns</th>
+                        <th>Locations</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr>
-                        <td colSpan={5}>
-                          <strong>No model runs registered</strong>
-                          <span>Placeholder runs were removed; real model runs can use this table.</span>
-                        </td>
-                      </tr>
+                      {realDataCatalog.forecastCalendars.map((calendar) => (
+                        <tr key={calendar.id}>
+                          <td>
+                            <strong>{calendar.label}</strong>
+                            <span>{calendar.id}</span>
+                          </td>
+                          <td>
+                            {calendar.issueDateStart} to {calendar.issueDateEnd}
+                          </td>
+                          <td>{formatCompact(calendar.scoreRows)}</td>
+                          <td>{formatCompact(calendar.returnRows)}</td>
+                          <td>{formatCompact(calendar.locationRows)}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1104,6 +1107,10 @@ function App() {
                   <div>
                     <dt>Joined rows</dt>
                     <dd>{joinedRows.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Research strategies</dt>
+                    <dd>{researchStrategyRegistry.length}</dd>
                   </div>
                   <div>
                     <dt>Capital base</dt>
