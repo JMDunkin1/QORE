@@ -626,6 +626,46 @@ function sideMetrics(trades) {
   }
 }
 
+function decisionDetails(best, baseline, robustTop, diagnosticTopHoldout, summaries) {
+  const bySide = ['all', 'cold-long', 'warm-short'].reduce((counts, sideScope) => {
+    const sideSummaries = summaries.filter((summary) => summary.params.sideScope === sideScope)
+    counts[sideScope] = {
+      configsWithValidation: sideSummaries.length,
+      maxValidationTrades: Math.max(0, ...sideSummaries.map((summary) => summary.validationMetrics.tradeCount)),
+      maxHoldoutTrades: Math.max(0, ...sideSummaries.map((summary) => summary.holdout?.metrics.tradeCount ?? 0)),
+      bestValidationReturnPct: round(Math.max(0, ...sideSummaries.map((summary) => summary.validationMetrics.totalReturnPct)), 2),
+      bestHoldoutReturnPct: round(Math.max(0, ...sideSummaries.map((summary) => summary.holdout?.metrics.totalReturnPct ?? 0)), 2),
+    }
+    return counts
+  }, {})
+  const topDiagnostic = diagnosticTopHoldout[0] ?? null
+
+  return {
+    verdict: 'demote',
+    baselineAction: 'Do not replace the shared strict-theory-gradient-boosted-trees baseline with any candidate from this lane.',
+    splitSleeveAction: 'Do not split GBT into cold/warm sleeves yet: cold-only has no walk-forward-valid configs, and warm-only has too few validation trades with non-positive holdout behavior.',
+    replacementAction: 'Do not replace GBT with the top holdout diagnostic; its apparent gain depends on two validation trades and one cold-long holdout winner.',
+    recommendedIntegrationAction:
+      'Mark strict-theory-gradient-boosted-trees as research-only/demoted in shared strategy integration, keep it out of default recommended-strategy charts, and wait for additional winter out-of-sample evidence before promotion.',
+    evidence: {
+      sharedBaseline: baseline,
+      selectedValidation: best.validationMetrics,
+      selectedHoldout: best.holdout?.metrics ?? null,
+      selectedHoldoutSides: best.holdout?.sideMetrics ?? null,
+      robustCandidateCount: robustTop.length,
+      topDiagnostic: topDiagnostic
+        ? {
+            id: topDiagnostic.id,
+            validationMetrics: topDiagnostic.validationMetrics,
+            holdoutMetrics: topDiagnostic.holdout?.metrics ?? null,
+            holdoutSideMetrics: topDiagnostic.holdout?.sideMetrics ?? null,
+          }
+        : null,
+      bySide,
+    },
+  }
+}
+
 function evaluatePeriod(rows, params, trainEnd, testStart, testEnd = null) {
   const scopedRows = sideFilter(sourceFilter(rows, params.sourcePolicy), params.sideScope)
   const train = scopedRows.filter((row) => row.issueDate < trainEnd)
@@ -896,7 +936,7 @@ function tradeHeaders(strategyId) {
   return Object.keys(tradeRow({ row: {}, sourceGroups: [], sourceFamilies: [], direction: 1 }, strategyId))
 }
 
-function reportMarkdown(best, baseline, robustTop, diagnosticTopHoldout, dataset) {
+function reportMarkdown(best, baseline, robustTop, diagnosticTopHoldout, dataset, decision) {
   const topHoldout = diagnosticTopHoldout[0]
   const lines = [
     '# Strict-Theory Gradient Boosted Trees Run',
@@ -930,6 +970,12 @@ function reportMarkdown(best, baseline, robustTop, diagnosticTopHoldout, dataset
     '',
     `- Current strict-theory GBT baseline: total=${baseline.totalReturnPct}%, sharpe=${baseline.sharpe}, drawdown=${baseline.maxDrawdownPct}%, trades=${baseline.tradeCount}`,
     '',
+    '## Sleeve Check',
+    '',
+    `- Cold-only GBT configs with validation: ${decision.evidence.bySide['cold-long'].configsWithValidation}; max validation trades=${decision.evidence.bySide['cold-long'].maxValidationTrades}; max holdout trades=${decision.evidence.bySide['cold-long'].maxHoldoutTrades}.`,
+    `- Warm-only GBT configs with validation: ${decision.evidence.bySide['warm-short'].configsWithValidation}; max validation trades=${decision.evidence.bySide['warm-short'].maxValidationTrades}; max holdout trades=${decision.evidence.bySide['warm-short'].maxHoldoutTrades}.`,
+    `- All-side GBT max validation trades=${decision.evidence.bySide.all.maxValidationTrades}; max holdout trades=${decision.evidence.bySide.all.maxHoldoutTrades}.`,
+    '',
     '## Robust Top Candidates',
     '',
     ...(robustTop.length
@@ -947,9 +993,12 @@ function reportMarkdown(best, baseline, robustTop, diagnosticTopHoldout, dataset
     '',
     '## Recommendation',
     '',
-    best.holdout && best.holdout.metrics.tradeCount >= 6 && best.validationMetrics.tradeCount >= 6 && best.validationWorstFoldReturnPct > -8
-      ? 'Use this only as an informing candidate, not an automatic replacement, until it survives a larger post-cutoff window or futures-grade NG validation. It improves the current GBT holdout but still depends on a short 2025-26 out-of-sample season.'
-      : 'Do not replace the baseline. The GBT lane either lacks enough robust trades or relies too heavily on a short holdout pocket; demote it unless future winters add confirming evidence.',
+    `Verdict: ${decision.verdict}.`,
+    '',
+    `- Baseline: ${decision.baselineAction}`,
+    `- Split sleeves: ${decision.splitSleeveAction}`,
+    `- Replacement: ${decision.replacementAction}`,
+    `- Integration: ${decision.recommendedIntegrationAction}`,
     '',
   ]
   return `${lines.join('\n').replace(/\n+$/, '')}\n`
@@ -1000,6 +1049,7 @@ function main() {
     .sort((a, b) => b.holdout.metrics.totalReturnPct - a.holdout.metrics.totalReturnPct)
     .slice(0, 10)
   const baseline = readSharedGbtBaseline()
+  const decision = decisionDetails(best, baseline, robustTop, diagnosticTopHoldout, summaries)
 
   const summaryRows = sorted.map(flattenSummary)
   writeCsv(path.join(OUTPUT_DIR, 'strict-theory-gbt-grid-summary.csv'), summaryRows, Object.keys(summaryRows[0] ?? {}))
@@ -1023,6 +1073,7 @@ function main() {
       entryRule: 'entryTradeDate > issueDate',
       targetRule: 'targetTradeDate >= targetDate and targetTradeDate > entryTradeDate',
     },
+    decision,
     dataset,
     currentSharedBaseline: baseline,
     selectedByWalkForwardRank: {
@@ -1040,7 +1091,7 @@ function main() {
   }
 
   fs.writeFileSync(path.join(OUTPUT_DIR, 'strict-theory-gbt-summary.json'), `${JSON.stringify(details, null, 2)}\n`)
-  fs.writeFileSync(path.join(OUTPUT_DIR, 'strict-theory-gbt-report.md'), reportMarkdown(best, baseline, robustTop, diagnosticTopHoldout, dataset))
+  fs.writeFileSync(path.join(OUTPUT_DIR, 'strict-theory-gbt-report.md'), reportMarkdown(best, baseline, robustTop, diagnosticTopHoldout, dataset, decision))
 
   console.log(`evaluated=${summaries.length}`)
   console.log(`best=${best.id}`)

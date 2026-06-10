@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-07T20:30:34.525Z",
+  "generatedAt": "2026-06-10T16:19:51.579Z",
   "profile": "winter-2025-2026",
   "dataRoot": "data/qore",
   "sourceNote": "No-key/free data only. Files are shared research artifacts committed under data/qore.",
@@ -8,8 +8,8 @@
     "testEnd": "2026-03-31",
     "normalStart": "1991-01-01",
     "normalEnd": "2020-12-31",
-    "marketEnd": "2026-06-08",
-    "marketEndEpoch": 1780876800
+    "marketEnd": "2026-06-11",
+    "marketEndEpoch": 1781136000
   },
   "previousManifestGeneratedAt": "2026-06-07T20:29:50.740Z",
   "market": [
@@ -37,6 +37,72 @@
         "data/qore/market/yahoo/NG-F-daily.csv",
         "data/qore/market/yahoo/NG-F-qore-market.csv",
         "data/qore/market/yahoo/NG-F-daily.raw.json"
+      ]
+    },
+    {
+      "status": "ok",
+      "symbol": "SPY",
+      "label": "SPDR S&P 500 ETF Trust",
+      "rows": 8398,
+      "firstDate": "1993-01-29",
+      "lastDate": "2026-06-10",
+      "files": [
+        "data/qore/market/yahoo/SPY-daily.csv",
+        "data/qore/market/yahoo/SPY-qore-market.csv"
+      ]
+    },
+    {
+      "status": "ok",
+      "symbol": "DIA",
+      "label": "SPDR Dow Jones Industrial Average ETF Trust",
+      "rows": 7142,
+      "firstDate": "1998-01-20",
+      "lastDate": "2026-06-10",
+      "files": [
+        "data/qore/market/yahoo/DIA-daily.csv",
+        "data/qore/market/yahoo/DIA-qore-market.csv"
+      ]
+    },
+    {
+      "status": "ok",
+      "symbol": "QQQ",
+      "label": "Invesco QQQ Trust",
+      "rows": 6856,
+      "firstDate": "1999-03-10",
+      "lastDate": "2026-06-10",
+      "files": [
+        "data/qore/market/yahoo/QQQ-daily.csv",
+        "data/qore/market/yahoo/QQQ-qore-market.csv"
+      ]
+    },
+    {
+      "status": "ok",
+      "symbol": "IWM",
+      "label": "iShares Russell 2000 ETF",
+      "rows": 6544,
+      "firstDate": "2000-06-02",
+      "lastDate": "2026-06-10",
+      "files": [
+        "data/qore/market/yahoo/IWM-daily.csv",
+        "data/qore/market/yahoo/IWM-qore-market.csv"
+      ]
+    },
+    {
+      "status": "ok",
+      "symbol": "US-INDEX-BASKET",
+      "label": "Equal-weight US index ETF basket",
+      "source": "Derived equal-weight basket of Yahoo adjusted-close ETF histories.",
+      "components": [
+        "SPY",
+        "DIA",
+        "QQQ",
+        "IWM"
+      ],
+      "rows": 6544,
+      "firstDate": "2000-06-02",
+      "lastDate": "2026-06-10",
+      "files": [
+        "data/qore/market/yahoo/US-INDEX-BASKET-qore-market.csv"
       ]
     }
   ],

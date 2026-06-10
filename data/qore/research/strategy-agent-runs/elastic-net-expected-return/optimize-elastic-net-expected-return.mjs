@@ -866,6 +866,32 @@ function markdownTable(rows, headers) {
   return lines.join('\n')
 }
 
+function buildReplacementFailureReasons(bestCombined, bestCold, bestWarm, twoSleeve, baseline) {
+  const reasons = []
+  if (baseline) {
+    if (baseline.config.featureMode === 'source-id') {
+      reasons.push('Baseline reproduction depends on exact source-id features instead of source-robust weather/source-group features.')
+    }
+    if (baseline.test.metrics.tradeCount < 8) {
+      reasons.push(`Baseline reproduction has only ${baseline.test.metrics.tradeCount} post-cutoff trades versus the 8-trade combined minimum.`)
+    }
+    const coldTrades = metricsForSide(baseline.test.trades, 'cold-long').tradeCount
+    const warmTrades = metricsForSide(baseline.test.trades, 'warm-short').tradeCount
+    reasons.push(`Post-cutoff baseline mix is ${coldTrades} cold-long and ${warmTrades} warm-short trades, so the 21.6% headline return is not broad evidence.`)
+  }
+  if (bestCombined && !bestCombined.replacementEligible) {
+    reasons.push(`Best combined walk-forward candidate is not replacement-eligible: ${bestCombined.test.metrics.tradeCount} post-cutoff trades, ${bestCombined.test.metrics.totalReturnPct}% total return, ${bestCombined.test.metrics.maxDrawdownPct}% max drawdown.`)
+  }
+  if (bestCold) {
+    reasons.push(`Cold-long sleeve selected by walk-forward validation loses ${bestCold.test.metrics.totalReturnPct}% post-cutoff over ${bestCold.test.metrics.tradeCount} trades.`)
+  }
+  if (bestWarm) {
+    reasons.push(`Warm-short sleeve is only ${bestWarm.test.metrics.totalReturnPct}% post-cutoff over ${bestWarm.test.metrics.tradeCount} trades with ${bestWarm.test.metrics.winRatePct}% win rate.`)
+  }
+  reasons.push(`Cold/warm two-sleeve split falls to ${twoSleeve.metrics.totalReturnPct}% post-cutoff over ${twoSleeve.metrics.tradeCount} trades with ${twoSleeve.metrics.maxDrawdownPct}% max drawdown.`)
+  return reasons
+}
+
 function writeReport(summary, bestCombined, bestCold, bestWarm, twoSleeve, baseline) {
   const topRows = []
   if (baseline) {
@@ -924,12 +950,14 @@ Generated at ${summary.generatedAt}.
 - PnL: returnPctEntryCloseToTarget, with entryTradeDate > issueDate, targetTradeDate >= targetDate, and targetTradeDate > entryTradeDate.
 - Cost: ${ROUND_TRIP_COST_PCT}% round trip per trade.
 
-## Commands
+## Commands And Inputs Checked
 
-- node scripts/optimize-arctic-strategies.mjs
-- node data/qore/research/strategy-agent-runs/elastic-net-expected-return/optimize-elastic-net-expected-return.mjs
+- Inspected theory.md.
+- Inspected scripts/optimize-arctic-strategies.mjs read-only; not rerun here because it writes shared strategy-tests artifacts.
+- Inspected data/qore/research/strategy-tests/arctic-blast-strategy-baselines.csv and arctic-blast-strategy-baselines.json.
+- Ran node data/qore/research/strategy-agent-runs/elastic-net-expected-return/optimize-elastic-net-expected-return.mjs.
 
-## Changed Files
+## Lane Output Files
 
 - data/qore/research/strategy-agent-runs/elastic-net-expected-return/optimize-elastic-net-expected-return.mjs
 - data/qore/research/strategy-agent-runs/elastic-net-expected-return/candidate-metrics.csv
@@ -949,6 +977,14 @@ ${markdownTable(topRows, ['candidate', 'features', 'threshold', 'cvTrades', 'cvR
 ## Recommendation
 
 ${summary.recommendation}
+
+## Integration Action
+
+${summary.integrationAction}
+
+## Why Not Promote
+
+${summary.replacementFailureReasons.map((reason) => `- ${reason}`).join('\n')}
 `
   const outPath = path.join(OUT_DIR, 'report.md')
   fs.writeFileSync(outPath, body)
@@ -983,7 +1019,11 @@ function main() {
 
   const recommendation = replacement
     ? 'Use this as a candidate for a paper-trading shadow baseline, not live replacement yet; post-cutoff trade count clears the minimum but the data window is still one winter.'
-    : 'Do not replace the current baseline. The best-looking holdout returns are still dominated by too few post-cutoff trades, and the side-specific checks show the warm-short sleeve is not independently robust.'
+    : 'Demote elastic-net expected-return to a diagnostic/shadow lane. Do not replace the current baseline, and do not split it into cold/warm sleeves yet; the best-looking holdout returns are still dominated by too few post-cutoff trades.'
+  const integrationAction = replacement
+    ? 'Keep strict-theory-elastic-net-expected-return out of live/primary ranking; add it only as a paper-trading shadow candidate until another winter confirms the walk-forward result.'
+    : 'Remove strict-theory-elastic-net-expected-return from any primary recommended-strategy slot. Keep the fixed strict-theory rule baseline as the conservative anchor, treat elastic-net selected trades as diagnostics only, and revisit promotion only after it clears source-robust features plus at least 8 post-cutoff trades with acceptable drawdown.'
+  const replacementFailureReasons = buildReplacementFailureReasons(bestCombined, bestCold, bestWarm, twoSleeve, baseline)
 
   const metricsCsv = writeCsv(
     'candidate-metrics.csv',
@@ -1146,6 +1186,8 @@ function main() {
       reportMd: path.relative(REPO_ROOT, path.join(OUT_DIR, 'report.md')),
     },
     recommendation,
+    integrationAction,
+    replacementFailureReasons,
   }
 
   const summaryPath = path.join(OUT_DIR, 'run-summary.json')

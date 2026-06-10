@@ -1,6 +1,6 @@
 # Strict-Theory Gradient Boosted Trees Run
 
-Generated: 2026-06-10T03:56:22.288Z
+Generated: 2026-06-10T04:04:43.054Z
 
 ## Contract
 
@@ -29,6 +29,12 @@ Generated: 2026-06-10T03:56:22.288Z
 
 - Current strict-theory GBT baseline: total=-0.64%, sharpe=-0.06, drawdown=-7.46%, trades=4
 
+## Sleeve Check
+
+- Cold-only GBT configs with validation: 0; max validation trades=0; max holdout trades=0.
+- Warm-only GBT configs with validation: 2400; max validation trades=1; max holdout trades=2.
+- All-side GBT max validation trades=2; max holdout trades=4.
+
 ## Robust Top Candidates
 
 - None met the minimum robustness bar of 6 validation trades plus at least 3 holdout trades.
@@ -39,4 +45,9 @@ Generated: 2026-06-10T03:56:22.288Z
 
 ## Recommendation
 
-Do not replace the baseline. The GBT lane either lacks enough robust trades or relies too heavily on a short holdout pocket; demote it unless future winters add confirming evidence.
+Verdict: demote.
+
+- Baseline: Do not replace the shared strict-theory-gradient-boosted-trees baseline with any candidate from this lane.
+- Split sleeves: Do not split GBT into cold/warm sleeves yet: cold-only has no walk-forward-valid configs, and warm-only has too few validation trades with non-positive holdout behavior.
+- Replacement: Do not replace GBT with the top holdout diagnostic; its apparent gain depends on two validation trades and one cold-long holdout winner.
+- Integration: Mark strict-theory-gradient-boosted-trees as research-only/demoted in shared strategy integration, keep it out of default recommended-strategy charts, and wait for additional winter out-of-sample evidence before promotion.

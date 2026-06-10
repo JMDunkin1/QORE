@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-10T03:24:55.884Z",
+  "generatedAt": "2026-06-10T04:01:41.271Z",
   "strategyLane": "strict-theory-regularized-logistic-regression",
   "dataRoot": "data/qore",
   "outputDir": "data/qore/research/strategy-agent-runs/regularized-logistic-regression",
@@ -1075,6 +1075,15 @@
       }
     ],
     "replacementConsideration": true
+  },
+  "decision": {
+    "verdict": "demote logistic to diagnostics/watchlist",
+    "integrationAction": "Do not change shared strategy-tests from this lane. Do not replace the baseline and do not add cold/warm production sleeves; mark strict-theory-regularized-logistic-regression as diagnostic/watchlist until another winter validates it.",
+    "baselineAction": "Demote the strict logistic baseline from any primary/hero ranking because its six-trade post-cutoff result is fragile and driven by one large cold loss plus one large cold recovery.",
+    "coldSleeveAction": "Do not promote cold-long: post-cutoff has only 2 trades, with one -17.38% net loss and one +19.82% net gain.",
+    "warmSleeveAction": "Do not promote warm-short as production: post-cutoff is better controlled at 4 trades, +4.45% total return, and -2.71% max drawdown, but validation was only 3 warm trades and +0.88%.",
+    "demoteReason": "The validation curve looks strong, but the post-cutoff sample is only 6 trades, the cold side is unstable, and the 0.50 threshold improvement over 0.55 is mostly threshold sensitivity rather than robust model evidence.",
+    "recommendation": "Do not replace or split the shared baseline yet. Use this run only as threshold calibration and side-diagnostic evidence; the least overfit integration is to demote logistic to a watchlist/diagnostic strategy until more out-of-sample winter rows arrive."
   },
   "topValidationCandidates": [
     {
@@ -2466,5 +2475,5 @@
       }
     }
   ],
-  "recommendation": "Do not replace the shared baseline yet. Use this run to inform threshold calibration and side diagnostics; the post-cutoff sample is too small or the validation/post stability is not strong enough for a real baseline change."
+  "recommendation": "Do not replace or split the shared baseline yet. Use this run only as threshold calibration and side-diagnostic evidence; the least overfit integration is to demote logistic to a watchlist/diagnostic strategy until more out-of-sample winter rows arrive."
 }

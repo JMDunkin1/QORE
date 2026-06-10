@@ -14,7 +14,7 @@ The main forecast calendars are stored as:
 
 The score files are the best entry point for strategy testing. The location files preserve the 18-city eastern-CONUS basket that produced each score, and the return files join each forecast signal to `UNG` and `NG=F`.
 
-Market-data label: `UNG` rows are ETF history. `NG=F` rows are Yahoo continuous front-month proxy history. These are useful for first-pass strategy research, but they are not futures-grade Henry Hub NG contract performance. See `market/futures/henry-hub-ng-readiness.md` for the missing contract, expiry, and roll dataset.
+Market-data label: `UNG` rows are ETF history. `NG=F` rows are Yahoo continuous front-month proxy history. `SPY`, `DIA`, `QQQ`, and `IWM` rows are broad US equity ETF proxies used to derive the equal-weight `US-INDEX-BASKET` benchmark. These are useful for first-pass strategy research, but they are not futures-grade Henry Hub NG contract performance. See `market/futures/henry-hub-ng-readiness.md` for the missing contract, expiry, and roll dataset.
 
 Timing contract for the return files:
 

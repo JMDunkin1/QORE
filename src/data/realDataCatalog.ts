@@ -19,10 +19,10 @@ export type SupportDatasetSummary = {
 }
 
 export const realDataCatalog = {
-  generatedAt: '2026-06-08T06:59:50.682Z',
+  generatedAt: '2026-06-10T16:19:51.579Z',
   defaultDataRoot: 'data/qore',
-  fileCount: 117,
-  totalBytes: 90277336,
+  fileCount: 173,
+  totalBytes: 103030868,
   forecastCalendars: [
     {
       id: 'gfs',
@@ -148,7 +148,7 @@ export const realDataCatalog = {
     {
       label: 'Yahoo market history',
       path: 'market/yahoo',
-      detail: 'UNG ETF bars and Yahoo NG=F continuous front-month proxy bars.',
+      detail: 'UNG, NG=F, broad US equity ETF proxies, and the derived US index basket benchmark.',
     },
     {
       label: 'EIA storage',

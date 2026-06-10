@@ -1,6 +1,6 @@
 # Strategy Agent Runs - 2026-06-10
 
-Five isolated worker lanes tested the existing strict-theory Arctic Blast algorithms against the shared `data/qore` dataset. Each worker wrote and executed its own code under a lane-specific folder so the lanes could run without touching the shared optimizer or each other.
+Six isolated worker lanes tested QORE strategy ideas against the shared `data/qore` dataset. Each worker wrote and executed its own code under a lane-specific folder so the lanes could run without touching the shared optimizer or each other.
 
 ## Shared Validation Contract
 
@@ -12,7 +12,7 @@ Five isolated worker lanes tested the existing strict-theory Arctic Blast algori
 
 ## Verdict
 
-No lane produced a replacement-grade improvement. The higher-return candidates were mostly too trade-sparse, depended on one large cold-long win, or failed when checked by side and walk-forward validation. The shared baselines should stay unchanged for now.
+Among the five strict-theory weather lanes, no lane produced a replacement-grade improvement. The higher-return candidates were mostly too trade-sparse, depended on one large cold-long win, or failed when checked by side and walk-forward validation. The shared weather baselines should stay unchanged for now.
 
 | Lane | Current baseline | Best useful finding | Promotion decision |
 | --- | ---: | --- | --- |
@@ -29,6 +29,14 @@ No lane produced a replacement-grade improvement. The higher-return candidates w
 - The ML lanes should require more winters, more post-cutoff trades, or a rolling paper ledger before any dashboard promotion status changes.
 - Future optimization should prioritize side-sleeve validation and drawdown control before searching larger hyperparameter grids.
 
+## Sixth Lane
+
+The new `volatility-mean-reversion/` lane is intentionally separate from the five strict-theory weather models. It uses UNG daily market data instead of Arctic Blast forecast rows, enters at the next session open, exits at that session close, and trades only winter signal dates after volatility-normalized moves.
+
+| Lane | Selected rule | Main evidence | Promotion decision |
+| --- | --- | --- | --- |
+| Volatility mean reversion | 35% notional; 40-session volatility lookback; abs(previous close-to-close return / volatility) >= 0.8; volatility between 2.5% and 6%; contrarian next-session open-to-close trade. | 496 full-sample trades, 462 train trades, 34 post-cutoff trades; full 68.97% total, -6.33% maxDD, Sharpe 0.68, Sortino 1.12; holdout 6.38% total, -2.08% maxDD, Sharpe 1.74. | Promote as sixth research baseline, not broker-ready. This improves the risk-adjusted shape while keeping the model a winter UNG volatility-reversion lane rather than a weather-forecast-following Arctic Blast model. |
+
 ## Artifacts
 
 - `rule-arctic-threshold/`
@@ -36,3 +44,4 @@ No lane produced a replacement-grade improvement. The higher-return candidates w
 - `elastic-net-expected-return/`
 - `gradient-boosted-trees/`
 - `meta-label-trade-filter/`
+- `volatility-mean-reversion/`

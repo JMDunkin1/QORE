@@ -87,6 +87,19 @@ const LANES = [
   { id: 'warm-short', thesisKinds: ['warm-short'], minValidationTrades: 2, minTestTrades: 3 },
 ]
 
+const INTEGRATION_RECOMMENDATION = {
+  action: 'Demote strict-theory-meta-label-trade-filter from the primary strategy shortlist; keep it as a diagnostic research lane only.',
+  baselineDecision: 'Do not replace the shared meta-label baseline with the four-trade selected candidate.',
+  sleeveDecision: 'Do not integrate separate cold-long or warm-short sleeves yet.',
+  rationale: [
+    'The selected combined candidate improves the post-cutoff report card by shrinking to four trades, below the fixed six-trade minimum used for primary ranking.',
+    'The best six-trade combined candidate is only modestly positive and still carries the December cold-long drawdown.',
+    'Cold-long has no validation-usable independent sleeve, while the selected warm-short sleeve loses post-cutoff.',
+  ],
+  nextProofRequired:
+    'Require a longer walk-forward window or at least another winter with six or more non-overlapping post-cutoff trades before promotion.',
+}
+
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8')
 }
@@ -993,6 +1006,14 @@ function writeReport({ laneResults, sideSeparate, baseline, timingAudit, manifes
       ? `Best combined candidate that clears the fixed six-trade post-cutoff minimum: ${formatMetrics(bestMinimumTradeCombined.test.metrics)}.`
       : 'No combined candidate cleared the fixed six-trade post-cutoff minimum.',
     '',
+    '## Integration recommendation',
+    '',
+    `- Action: ${INTEGRATION_RECOMMENDATION.action}`,
+    `- Baseline decision: ${INTEGRATION_RECOMMENDATION.baselineDecision}`,
+    `- Sleeve decision: ${INTEGRATION_RECOMMENDATION.sleeveDecision}`,
+    ...INTEGRATION_RECOMMENDATION.rationale.map((entry) => `- Evidence: ${entry}`),
+    `- Promotion gate: ${INTEGRATION_RECOMMENDATION.nextProofRequired}`,
+    '',
     '## Selected lanes',
     '',
     markdownTable(selectedRows, ['lane', 'selected', 'validation', 'test', 'sourceIds']),
@@ -1152,6 +1173,7 @@ function main() {
         inputFiles,
         timingAudit,
         baseline,
+        integrationRecommendation: INTEGRATION_RECOMMENDATION,
         laneResults,
         minimumTradeEligibleSelections: Object.fromEntries(
           laneResults.map((laneResult) => [laneResult.lane, minimumTradeEligibleRecord(laneResult)?.id ?? null]),

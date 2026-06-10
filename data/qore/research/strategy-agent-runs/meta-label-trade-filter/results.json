@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-10T03:53:34.980Z",
+  "generatedAt": "2026-06-10T04:02:13.788Z",
   "theory": "Strict winter 7-10 day UNG weather demand thesis: cold-long and warm-short evaluated separately and together.",
   "trainCutoff": "2025-11-01",
   "validationCutoff": "2025-01-01",
@@ -49,6 +49,17 @@
     "winRatePct": 33.3,
     "firstEntry": "2025-12-08",
     "lastExit": "2026-03-31"
+  },
+  "integrationRecommendation": {
+    "action": "Demote strict-theory-meta-label-trade-filter from the primary strategy shortlist; keep it as a diagnostic research lane only.",
+    "baselineDecision": "Do not replace the shared meta-label baseline with the four-trade selected candidate.",
+    "sleeveDecision": "Do not integrate separate cold-long or warm-short sleeves yet.",
+    "rationale": [
+      "The selected combined candidate improves the post-cutoff report card by shrinking to four trades, below the fixed six-trade minimum used for primary ranking.",
+      "The best six-trade combined candidate is only modestly positive and still carries the December cold-long drawdown.",
+      "Cold-long has no validation-usable independent sleeve, while the selected warm-short sleeve loses post-cutoff."
+    ],
+    "nextProofRequired": "Require a longer walk-forward window or at least another winter with six or more non-overlapping post-cutoff trades before promotion."
   },
   "laneResults": [
     {

@@ -1,11 +1,197 @@
 {
-  "generatedAt": "2026-06-10T03:56:22.280Z",
+  "generatedAt": "2026-06-10T04:04:43.050Z",
   "trainCutoff": "2025-11-01",
   "roundTripCostPct": 0.064,
   "timingContract": {
     "pnlColumn": "returnPctEntryCloseToTarget",
     "entryRule": "entryTradeDate > issueDate",
     "targetRule": "targetTradeDate >= targetDate and targetTradeDate > entryTradeDate"
+  },
+  "decision": {
+    "verdict": "demote",
+    "baselineAction": "Do not replace the shared strict-theory-gradient-boosted-trees baseline with any candidate from this lane.",
+    "splitSleeveAction": "Do not split GBT into cold/warm sleeves yet: cold-only has no walk-forward-valid configs, and warm-only has too few validation trades with non-positive holdout behavior.",
+    "replacementAction": "Do not replace GBT with the top holdout diagnostic; its apparent gain depends on two validation trades and one cold-long holdout winner.",
+    "recommendedIntegrationAction": "Mark strict-theory-gradient-boosted-trees as research-only/demoted in shared strategy integration, keep it out of default recommended-strategy charts, and wait for additional winter out-of-sample evidence before promotion.",
+    "evidence": {
+      "sharedBaseline": {
+        "totalReturnPct": -0.64,
+        "sharpe": -0.06,
+        "maxDrawdownPct": -7.46,
+        "tradeCount": 4
+      },
+      "selectedValidation": {
+        "totalReturnPct": 17.94,
+        "cagrPct": 320.07,
+        "sharpe": 4.17,
+        "sortino": 0,
+        "maxDrawdownPct": 0,
+        "winRatePct": 100,
+        "profitFactor": 99,
+        "tradeCount": 2,
+        "averageTradeReturnPct": 8.78,
+        "averageHoldDays": 7.5,
+        "firstEntry": "2025-02-10",
+        "lastExit": "2025-03-24"
+      },
+      "selectedHoldout": {
+        "totalReturnPct": -5.23,
+        "cagrPct": -32.48,
+        "sharpe": -1.55,
+        "sortino": -1.52,
+        "maxDrawdownPct": -7.46,
+        "winRatePct": 33.3,
+        "profitFactor": 0.32,
+        "tradeCount": 3,
+        "averageTradeReturnPct": -1.69,
+        "averageHoldDays": 8.7,
+        "firstEntry": "2026-02-09",
+        "lastExit": "2026-03-31"
+      },
+      "selectedHoldoutSides": {
+        "all": {
+          "totalReturnPct": -5.23,
+          "cagrPct": -32.48,
+          "sharpe": -1.55,
+          "sortino": -1.52,
+          "maxDrawdownPct": -7.46,
+          "winRatePct": 33.3,
+          "profitFactor": 0.32,
+          "tradeCount": 3,
+          "averageTradeReturnPct": -1.69,
+          "averageHoldDays": 8.7,
+          "firstEntry": "2026-02-09",
+          "lastExit": "2026-03-31"
+        },
+        "coldLong": {
+          "totalReturnPct": 0,
+          "cagrPct": 0,
+          "sharpe": 0,
+          "sortino": 0,
+          "maxDrawdownPct": 0,
+          "winRatePct": 0,
+          "profitFactor": 0,
+          "tradeCount": 0,
+          "averageTradeReturnPct": 0,
+          "averageHoldDays": 0,
+          "firstEntry": null,
+          "lastExit": null
+        },
+        "warmShort": {
+          "totalReturnPct": -5.23,
+          "cagrPct": -32.48,
+          "sharpe": -1.55,
+          "sortino": -1.52,
+          "maxDrawdownPct": -7.46,
+          "winRatePct": 33.3,
+          "profitFactor": 0.32,
+          "tradeCount": 3,
+          "averageTradeReturnPct": -1.69,
+          "averageHoldDays": 8.7,
+          "firstEntry": "2026-02-09",
+          "lastExit": "2026-03-31"
+        }
+      },
+      "robustCandidateCount": 0,
+      "topDiagnostic": {
+        "id": "strict-theory-gbt__all__consensus__longHistoryCore__weatherOnly__e20__d2__lr0.06__lf0.1__sig8__cov0.55__ex0__thr0.25",
+        "validationMetrics": {
+          "totalReturnPct": 17.94,
+          "cagrPct": 320.07,
+          "sharpe": 4.17,
+          "sortino": 0,
+          "maxDrawdownPct": 0,
+          "winRatePct": 100,
+          "profitFactor": 99,
+          "tradeCount": 2,
+          "averageTradeReturnPct": 8.78,
+          "averageHoldDays": 7.5,
+          "firstEntry": "2025-02-10",
+          "lastExit": "2025-03-24"
+        },
+        "holdoutMetrics": {
+          "totalReturnPct": 14.65,
+          "cagrPct": 104.07,
+          "sharpe": 1.62,
+          "sortino": 3.44,
+          "maxDrawdownPct": -7.46,
+          "winRatePct": 50,
+          "profitFactor": 3.09,
+          "tradeCount": 4,
+          "averageTradeReturnPct": 3.9,
+          "averageHoldDays": 8.3,
+          "firstEntry": "2026-01-20",
+          "lastExit": "2026-03-31"
+        },
+        "holdoutSideMetrics": {
+          "all": {
+            "totalReturnPct": 14.65,
+            "cagrPct": 104.07,
+            "sharpe": 1.62,
+            "sortino": 3.44,
+            "maxDrawdownPct": -7.46,
+            "winRatePct": 50,
+            "profitFactor": 3.09,
+            "tradeCount": 4,
+            "averageTradeReturnPct": 3.9,
+            "averageHoldDays": 8.3,
+            "firstEntry": "2026-01-20",
+            "lastExit": "2026-03-31"
+          },
+          "coldLong": {
+            "totalReturnPct": 18.77,
+            "cagrPct": 791441,
+            "sharpe": 0,
+            "sortino": 0,
+            "maxDrawdownPct": 0,
+            "winRatePct": 100,
+            "profitFactor": 99,
+            "tradeCount": 1,
+            "averageTradeReturnPct": 18.77,
+            "averageHoldDays": 7,
+            "firstEntry": "2026-01-20",
+            "lastExit": "2026-01-27"
+          },
+          "warmShort": {
+            "totalReturnPct": -3.47,
+            "cagrPct": -26.45,
+            "sharpe": -0.91,
+            "sortino": -1.04,
+            "maxDrawdownPct": -7.46,
+            "winRatePct": 33.3,
+            "profitFactor": 0.58,
+            "tradeCount": 3,
+            "averageTradeReturnPct": -1.05,
+            "averageHoldDays": 8.7,
+            "firstEntry": "2026-02-17",
+            "lastExit": "2026-03-31"
+          }
+        }
+      },
+      "bySide": {
+        "all": {
+          "configsWithValidation": 2400,
+          "maxValidationTrades": 2,
+          "maxHoldoutTrades": 4,
+          "bestValidationReturnPct": 17.94,
+          "bestHoldoutReturnPct": 14.65
+        },
+        "cold-long": {
+          "configsWithValidation": 0,
+          "maxValidationTrades": 0,
+          "maxHoldoutTrades": 0,
+          "bestValidationReturnPct": 0,
+          "bestHoldoutReturnPct": 0
+        },
+        "warm-short": {
+          "configsWithValidation": 2400,
+          "maxValidationTrades": 1,
+          "maxHoldoutTrades": 2,
+          "bestValidationReturnPct": 2.57,
+          "bestHoldoutReturnPct": 0
+        }
+      }
+    }
   },
   "dataset": {
     "strictTheoryRows": 231,

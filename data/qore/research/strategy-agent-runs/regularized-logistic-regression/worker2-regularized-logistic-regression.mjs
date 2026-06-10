@@ -806,6 +806,7 @@ function reportMarkdown(summary) {
   const validation = selected.validation.metrics
   const baseline = summary.existingBaseline
   const thresholdAudit = summary.thresholdAudit
+  const decision = summary.decision
 
   return `# Worker 2 Regularized Logistic Regression
 
@@ -832,6 +833,14 @@ Generated: ${summary.generatedAt}
 - Train rows before ${TRAIN_CUTOFF}: ${summary.samples.trainRows}
 - Post-cutoff rows: ${summary.samples.testRows}
 
+## Verdict
+
+- Decision: ${decision.verdict}.
+- Integration action: ${decision.integrationAction}
+- Baseline action: ${decision.baselineAction}
+- Cold sleeve: ${decision.coldSleeveAction}
+- Warm sleeve: ${decision.warmSleeveAction}
+
 ## Metrics
 
 | Sample | Side | Trades | Total return % | Max DD % | Win % | Profit factor | Sharpe |
@@ -848,6 +857,7 @@ Generated: ${summary.generatedAt}
 - Existing shared strict logistic baseline: ${baseline ? `${baseline.tradeCount} trades, ${baseline.totalReturnPct}% total return, ${baseline.maxDrawdownPct}% max DD, ${baseline.winRatePct}% win rate` : 'not found'}.
 - Same final model at 0.55/0.55 thresholds: ${thresholdAudit.sameModelBaseline.metrics.all.tradeCount} trades, ${thresholdAudit.sameModelBaseline.metrics.all.totalReturnPct}% total return, ${thresholdAudit.sameModelBaseline.metrics.all.maxDrawdownPct}% max DD.
 - Selected thresholds vs 0.55/0.55: ${post.all.totalReturnPct - thresholdAudit.sameModelBaseline.metrics.all.totalReturnPct >= 0 ? '+' : ''}${round(post.all.totalReturnPct - thresholdAudit.sameModelBaseline.metrics.all.totalReturnPct, 2)} percentage points of post-cutoff total return.
+- Demotion rationale: ${decision.demoteReason}
 
 ## Overfit Checks
 
@@ -855,15 +865,16 @@ Generated: ${summary.generatedAt}
 - Threshold selection used only walk-forward validation before ${TRAIN_CUTOFF}; post-cutoff rows were evaluated after selection.
 - Minimum validation trades: ${MIN_VALIDATION_TRADES}; minimum post-cutoff trades for replacement consideration: ${MIN_POST_TRADES}.
 - Source exact IDs were tested, but source-group and weather-only feature sets were also tested to make source dependence visible.
+- Sleeve split was evaluated from side metrics only, not promoted as a new fitted strategy, because the post-cutoff side samples are 2 cold trades and 4 warm trades.
 - Top coefficients: ${selected.coefficients.map((entry) => `${entry.feature}=${entry.weight}`).join(', ')}.
 
 ## Recommendation
 
-${summary.recommendation}
+${decision.recommendation}
 `
 }
 
-function recommendationFor(selected, baseline) {
+function decisionFor(selected, baseline) {
   const post = selected.post.metrics.all
   const validation = selected.validation.metrics.all
   const hasMinimumPostTrades = post.tradeCount >= MIN_POST_TRADES
@@ -876,10 +887,38 @@ function recommendationFor(selected, baseline) {
   const bothSidesVisible = selected.post.metrics.coldLong.tradeCount > 0 && selected.post.metrics.warmShort.tradeCount > 0
 
   if (hasMinimumPostTrades && improvesBaseline && validationIsPositive && bothSidesVisible) {
-    return 'Use this as a candidate replacement only after another worker or a later run reproduces it on a fresh season. It improves the current strict logistic baseline while preserving the weather thesis and minimum sample checks, but the post-cutoff sample is still one winter.'
+    return {
+      verdict: 'candidate replacement, not production-ready',
+      integrationAction:
+        'Do not auto-integrate into shared strategy-tests. Queue this exact config for independent reproduction on the next fresh winter sample before replacing the current baseline.',
+      baselineAction:
+        'Keep the existing strict logistic baseline until a second out-of-sample season confirms the replacement.',
+      coldSleeveAction:
+        'Do not split cold into a standalone sleeve yet; require at least one more winter with multiple cold trades.',
+      warmSleeveAction:
+        'Do not split warm into a standalone sleeve yet; require at least one more winter with multiple warm trades.',
+      demoteReason:
+        'The selected candidate clears the mechanical comparison, but it is still one post-cutoff winter and remains sample-limited.',
+      recommendation:
+        'Use this as a candidate replacement only after another worker or a later run reproduces it on a fresh season. It improves the current strict logistic baseline while preserving the weather thesis and minimum sample checks, but the post-cutoff sample is still one winter.',
+    }
   }
 
-  return 'Do not replace the shared baseline yet. Use this run to inform threshold calibration and side diagnostics; the post-cutoff sample is too small or the validation/post stability is not strong enough for a real baseline change.'
+  return {
+    verdict: 'demote logistic to diagnostics/watchlist',
+    integrationAction:
+      'Do not change shared strategy-tests from this lane. Do not replace the baseline and do not add cold/warm production sleeves; mark strict-theory-regularized-logistic-regression as diagnostic/watchlist until another winter validates it.',
+    baselineAction:
+      'Demote the strict logistic baseline from any primary/hero ranking because its six-trade post-cutoff result is fragile and driven by one large cold loss plus one large cold recovery.',
+    coldSleeveAction:
+      'Do not promote cold-long: post-cutoff has only 2 trades, with one -17.38% net loss and one +19.82% net gain.',
+    warmSleeveAction:
+      'Do not promote warm-short as production: post-cutoff is better controlled at 4 trades, +4.45% total return, and -2.71% max drawdown, but validation was only 3 warm trades and +0.88%.',
+    demoteReason:
+      'The validation curve looks strong, but the post-cutoff sample is only 6 trades, the cold side is unstable, and the 0.50 threshold improvement over 0.55 is mostly threshold sensitivity rather than robust model evidence.',
+    recommendation:
+      'Do not replace or split the shared baseline yet. Use this run only as threshold calibration and side-diagnostic evidence; the least overfit integration is to demote logistic to a watchlist/diagnostic strategy until more out-of-sample winter rows arrive.',
+  }
 }
 
 function main() {
@@ -975,7 +1014,8 @@ function main() {
     selected.post.metrics.all.tradeCount >= MIN_POST_TRADES &&
     selected.validation.metrics.all.tradeCount >= MIN_VALIDATION_TRADES
 
-  const recommendation = recommendationFor(selected, existingBaseline)
+  const decision = decisionFor(selected, existingBaseline)
+  const recommendation = decision.recommendation
 
   const summary = {
     generatedAt: new Date().toISOString(),
@@ -1021,6 +1061,7 @@ function main() {
       },
     },
     selected,
+    decision,
     topValidationCandidates: finalEvaluated.slice(0, 12).map((result, index) => ({
       rank: index + 1,
       id: result.id,

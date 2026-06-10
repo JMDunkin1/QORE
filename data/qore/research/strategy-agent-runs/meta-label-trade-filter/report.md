@@ -1,10 +1,18 @@
 # Meta-label trade filter optimization
-Generated: 2026-06-10T03:53:34.993Z
+Generated: 2026-06-10T04:02:13.808Z
 ## Verdict
 Do not replace the shared baseline. Use this as a risk-filter diagnostic unless a longer walk-forward window confirms it.
 Current shared meta-label baseline: -6.22% total, 6 post-cutoff trades, -17.45% maxDD, Sharpe -0.17.
 Best validation-selected post-cutoff report card in this run: 19.78% total, 4 trades, 50% win, -2.38% maxDD, Sharpe 2.25.
 Best combined candidate that clears the fixed six-trade post-cutoff minimum: 3.75% total, 6 trades, 50% win, -17.38% maxDD, Sharpe 0.45.
+## Integration recommendation
+- Action: Demote strict-theory-meta-label-trade-filter from the primary strategy shortlist; keep it as a diagnostic research lane only.
+- Baseline decision: Do not replace the shared meta-label baseline with the four-trade selected candidate.
+- Sleeve decision: Do not integrate separate cold-long or warm-short sleeves yet.
+- Evidence: The selected combined candidate improves the post-cutoff report card by shrinking to four trades, below the fixed six-trade minimum used for primary ranking.
+- Evidence: The best six-trade combined candidate is only modestly positive and still carries the December cold-long drawdown.
+- Evidence: Cold-long has no validation-usable independent sleeve, while the selected warm-short sleeve loses post-cutoff.
+- Promotion gate: Require a longer walk-forward window or at least another winter with six or more non-overlapping post-cutoff trades before promotion.
 ## Selected lanes
 | lane | selected | validation | test | sourceIds |
 | --- | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Rule Arctic Threshold Optimization
 
-Generated: 2026-06-10T03:25:16.388Z
+Generated: 2026-06-10T04:02:27.496Z
 
 ## Method
 
@@ -42,4 +42,10 @@ No combined candidate passed the robustness gate.
 
 ## Recommendation
 
-Do not replace the current baseline yet; use the refined thresholds as research input because the validation set is still small and side balance is fragile.
+- Verdict: Demote the combined rule baseline; do not replace it with a tuned threshold candidate.
+- Integration action: Keep strict-theory-rule-arctic-threshold as a diagnostic benchmark only. If the shared integration needs a rule signal, split cold-long and warm-short into separate sleeves for reporting/ranking, but do not promote either sleeve to production until each clears multi-season validation.
+
+- Best combined train-ranked candidate is still the current baseline (combined-coldA-8-coldC0p55-coldE0-warmA8-warmC0p6-warmE0); the threshold grid did not find a better combined rule.
+- No combined candidate passed the robustness gate (0 passes).
+- Cold sleeve is directionally interesting on full history (23.15% total, -17.38% maxDD, Sharpe 0.76, 4 trades) but too sparse and not validated post-cutoff (-1.01% total, -17.38% maxDD, Sharpe 0.18, 2 trades).
+- Warm sleeve is unstable: train/full are weak (-21.39% total, -29.38% maxDD, Sharpe -0.94, 9 trades train; -14.81% total, -29.61% maxDD, Sharpe -0.3, 16 trades full) while the post-cutoff gain (8.36% total, -7.46% maxDD, Sharpe 0.85, 7 trades) is a small holdout bounce.

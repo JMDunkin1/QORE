@@ -217,7 +217,7 @@ button {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -330,6 +330,7 @@ button {
 .section-heading {
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 14px;
 }
 
@@ -337,6 +338,60 @@ button {
   font-size: 21px;
   line-height: 1.15;
   margin: 3px 0 0;
+}
+
+.heading-actions,
+.chart-toolbar,
+.chart-button-group {
+  display: flex;
+  align-items: center;
+}
+
+.heading-actions {
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chart-toolbar {
+  min-width: 0;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chart-range-label {
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.chart-button-group {
+  gap: 4px;
+}
+
+.chart-button-group button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0;
+}
+
+.chart-button-group button:hover:not(:disabled) {
+  border-color: #9aa3af;
+  background: #f8fafc;
+}
+
+.chart-button-group button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .chart-frame {
@@ -395,6 +450,33 @@ button {
   font-style: normal;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.chart-range-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.chart-range-stats div {
+  min-width: 0;
+}
+
+.chart-range-stats dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chart-range-stats dd {
+  margin-top: 3px;
+  font-size: 17px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
 }
 
 .market-tape dl,
@@ -608,6 +690,59 @@ dd {
   font-style: normal;
 }
 
+.side-split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.side-split-card {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.side-split-card > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.side-split-card > strong {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.side-split-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.side-split-card dl div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.side-split-card dt {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.side-split-card dd {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -615,7 +750,7 @@ dd {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 720px;
+  min-width: 1100px;
 }
 
 .compact-table {
@@ -644,6 +779,11 @@ tbody tr:hover {
   background: #f8fafc;
 }
 
+tbody tr.selected-row {
+  background: #eef6ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
 td strong,
 td span {
   display: block;
@@ -652,6 +792,27 @@ td span {
 td span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.table-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.table-pill.positive {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.table-pill.warning {
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .model-score {
@@ -1152,5 +1313,13 @@ code {
 
   .panel {
     padding: 14px;
+  }
+
+  .chart-range-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chart-toolbar {
+    justify-content: flex-start;
   }
 }

@@ -696,6 +696,7 @@ function writeArtifacts({ baseline, bestTrain, bestRobust, bestBySide, ranked, m
     bestRobustValidation: compactResult(bestRobust),
     bestBySide: Object.fromEntries(Object.entries(bestBySide).map(([key, value]) => [key, compactResult(value)])),
   }
+  summary.recommendation = recommendationFor(summary)
   fs.writeFileSync(path.join(OUTPUT_DIR, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
   fs.writeFileSync(path.join(OUTPUT_DIR, 'report.md'), reportMarkdown(summary))
 }
@@ -733,14 +734,30 @@ function paramsLine(params) {
   return `cold <= ${params.coldMaxWeightedAnomalyF}F, cold coverage >= ${params.coldMinCoveragePct}, cold extremes >= ${params.coldMinExtremeCount}; warm >= ${params.warmMinWeightedAnomalyF}F, warm coverage >= ${params.warmMinCoveragePct}, warm extremes >= ${params.warmMinExtremeCount}`
 }
 
+function recommendationFor(summary) {
+  const coldFull = summary.bestTrainRanked.sides.full.coldLong
+  const coldTest = summary.bestTrainRanked.sides.test.coldLong
+  const warmFull = summary.bestTrainRanked.sides.full.warmShort
+  const warmTrain = summary.bestTrainRanked.sides.train.warmShort
+  const warmTest = summary.bestTrainRanked.sides.test.warmShort
+
+  return {
+    verdict: 'Demote the combined rule baseline; do not replace it with a tuned threshold candidate.',
+    integrationAction:
+      'Keep strict-theory-rule-arctic-threshold as a diagnostic benchmark only. If the shared integration needs a rule signal, split cold-long and warm-short into separate sleeves for reporting/ranking, but do not promote either sleeve to production until each clears multi-season validation.',
+    rationale: [
+      `Best combined train-ranked candidate is still the current baseline (${summary.bestTrainRanked.id}); the threshold grid did not find a better combined rule.`,
+      `No combined candidate passed the robustness gate (${summary.robustCandidateCount} passes).`,
+      `Cold sleeve is directionally interesting on full history (${metricLine(coldFull)}) but too sparse and not validated post-cutoff (${metricLine(coldTest)}).`,
+      `Warm sleeve is unstable: train/full are weak (${metricLine(warmTrain)} train; ${metricLine(warmFull)} full) while the post-cutoff gain (${metricLine(warmTest)}) is a small holdout bounce.`,
+    ],
+  }
+}
+
 function reportMarkdown(summary) {
   const robustNote = summary.robustCandidateCount
     ? `${summary.robustCandidateCount} combined candidate(s) passed the robustness gate.`
     : 'No combined candidate passed the robustness gate.'
-  const recommendation =
-    summary.bestTrainRanked.robustnessPass && summary.bestTrainRanked.test.totalReturnPct > summary.baseline.test.totalReturnPct
-      ? 'Candidate is strong enough to consider as a baseline replacement, pending a code review and a fresh data rerun.'
-      : 'Do not replace the current baseline yet; use the refined thresholds as research input because the validation set is still small and side balance is fragile.'
 
   return `# Rule Arctic Threshold Optimization
 
@@ -786,7 +803,10 @@ ${robustNote}
 
 ## Recommendation
 
-${recommendation}
+- Verdict: ${summary.recommendation.verdict}
+- Integration action: ${summary.recommendation.integrationAction}
+
+${summary.recommendation.rationale.map((line) => `- ${line}`).join('\n')}
 `
 }
 

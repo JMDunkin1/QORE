@@ -63,7 +63,17 @@ const forecastModels = [
 const marketSymbols = [
   { symbol: 'UNG', label: 'United States Natural Gas Fund', period1: 1176903000 },
   { symbol: 'NG=F', label: 'Yahoo continuous front-month natural gas future', period1: 967608000 },
+  { symbol: 'SPY', label: 'SPDR S&P 500 ETF Trust', period1: 728265600, persistRawJson: false },
+  { symbol: 'DIA', label: 'SPDR Dow Jones Industrial Average ETF Trust', period1: 852076800, persistRawJson: false },
+  { symbol: 'QQQ', label: 'Invesco QQQ Trust', period1: 921024000, persistRawJson: false },
+  { symbol: 'IWM', label: 'iShares Russell 2000 ETF', period1: 959904000, persistRawJson: false },
 ]
+
+const marketIndexBasket = {
+  symbol: 'US-INDEX-BASKET',
+  label: 'Equal-weight US index ETF basket',
+  components: ['SPY', 'DIA', 'QQQ', 'IWM'],
+}
 
 function csvEscape(value) {
   if (value === null || value === undefined) return ''
@@ -91,6 +101,10 @@ function addDays(dateText, days) {
 
 function compactDate(dateText) {
   return dateText.replaceAll('-', '')
+}
+
+function safeMarketSymbol(symbol) {
+  return symbol.replace(/[^A-Za-z0-9]/g, '-')
 }
 
 function isoFromCompactDate(dateText) {
@@ -225,12 +239,16 @@ async function collectYahooMarket(manifest) {
         symbol: source.symbol,
         source: 'Yahoo chart API',
       })).filter((row) => row.open !== '' && row.high !== '' && row.low !== '' && row.close !== '')
-      const safeSymbol = source.symbol.replace(/[^A-Za-z0-9]/g, '-')
+      const safeSymbol = safeMarketSymbol(source.symbol)
       const csvPath = path.join(marketDir, `${safeSymbol}-daily.csv`)
       const jsonPath = path.join(marketDir, `${safeSymbol}-daily.raw.json`)
       const appCsvPath = path.join(marketDir, `${safeSymbol}-qore-market.csv`)
       await writeCsv(csvPath, rows, ['date', 'open', 'high', 'low', 'close', 'adjustedClose', 'volume', 'symbol', 'source'])
-      await writeJson(jsonPath, json)
+      const files = [csvPath, appCsvPath]
+      if (source.persistRawJson !== false) {
+        await writeJson(jsonPath, json)
+        files.push(jsonPath)
+      }
       await writeCsv(
         appCsvPath,
         rows.map((row) => ({
@@ -252,7 +270,7 @@ async function collectYahooMarket(manifest) {
         rows: rows.length,
         firstDate: rows[0]?.date,
         lastDate: rows.at(-1)?.date,
-        files: [csvPath, appCsvPath, jsonPath].map((file) => path.relative(repoDir, file)),
+        files: files.map((file) => path.relative(repoDir, file)),
       })
       console.log(`market ok: ${source.symbol} ${rows.length} rows`)
     } catch (error) {
@@ -264,6 +282,85 @@ async function collectYahooMarket(manifest) {
       })
       console.warn(`market failed: ${source.symbol}: ${error.message}`)
     }
+  }
+}
+
+async function deriveMarketIndexBasket(manifest) {
+  const marketDir = path.join(dataRoot, 'market', 'yahoo')
+  const componentRows = []
+
+  try {
+    for (const symbol of marketIndexBasket.components) {
+      const filePath = path.join(marketDir, `${safeMarketSymbol(symbol)}-qore-market.csv`)
+      const rows = parseCsv(await readFile(filePath, 'utf8'))
+        .map((row) => ({
+          date: row.date,
+          close: Number(row.close),
+          volume: Number(row.volume),
+        }))
+        .filter((row) => row.date && Number.isFinite(row.close) && row.close > 0)
+      if (!rows.length) throw new Error(`${symbol} qore-market file did not include usable closes.`)
+      componentRows.push({ symbol, rows })
+    }
+
+    const commonDates = componentRows
+      .map((component) => new Set(component.rows.map((row) => row.date)))
+      .reduce((dates, componentDates) => new Set([...dates].filter((date) => componentDates.has(date))))
+    const dates = [...commonDates].sort()
+    if (!dates.length) throw new Error('Index basket components did not have overlapping market dates.')
+
+    const rowsBySymbol = new Map(
+      componentRows.map((component) => [component.symbol, new Map(component.rows.map((row) => [row.date, row]))]),
+    )
+    const baseCloseBySymbol = new Map(
+      componentRows.map((component) => [component.symbol, rowsBySymbol.get(component.symbol).get(dates[0]).close]),
+    )
+
+    const basketRows = dates.map((date) => {
+      const components = marketIndexBasket.components.map((symbol) => {
+        const row = rowsBySymbol.get(symbol).get(date)
+        return {
+          close: row.close,
+          normalizedClose: row.close / baseCloseBySymbol.get(symbol),
+          volume: row.volume,
+        }
+      })
+      const close = round((components.reduce((sum, component) => sum + component.normalizedClose, 0) / components.length) * 100, 6)
+      return {
+        date,
+        open: close,
+        high: close,
+        low: close,
+        close,
+        volume: components.reduce((sum, component) => sum + (Number.isFinite(component.volume) ? component.volume : 0), 0),
+        contract: marketIndexBasket.symbol,
+        storageBcf: 0,
+      }
+    })
+
+    const appCsvPath = path.join(marketDir, `${marketIndexBasket.symbol}-qore-market.csv`)
+    await writeCsv(appCsvPath, basketRows, ['date', 'open', 'high', 'low', 'close', 'volume', 'contract', 'storageBcf'])
+    manifest.market.push({
+      status: 'ok',
+      symbol: marketIndexBasket.symbol,
+      label: marketIndexBasket.label,
+      source: 'Derived equal-weight basket of Yahoo adjusted-close ETF histories.',
+      components: marketIndexBasket.components,
+      rows: basketRows.length,
+      firstDate: basketRows[0]?.date,
+      lastDate: basketRows.at(-1)?.date,
+      files: [path.relative(repoDir, appCsvPath)],
+    })
+    console.log(`market basket ok: ${marketIndexBasket.symbol} ${basketRows.length} rows`)
+  } catch (error) {
+    manifest.market.push({
+      status: 'failed',
+      symbol: marketIndexBasket.symbol,
+      label: marketIndexBasket.label,
+      components: marketIndexBasket.components,
+      error: error.message,
+    })
+    console.warn(`market basket failed: ${marketIndexBasket.symbol}: ${error.message}`)
   }
 }
 
@@ -964,6 +1061,7 @@ async function main() {
   }
 
   await collectYahooMarket(manifest)
+  await deriveMarketIndexBasket(manifest)
   const storageRows = await collectEiaStorage(manifest)
   await backfillMarketStorage(manifest, storageRows)
   await collectNasaPowerTemperatures(manifest)

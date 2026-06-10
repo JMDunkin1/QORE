@@ -1,6 +1,6 @@
 # Elastic Net Expected-Return Lane
 
-Generated at 2026-06-10T03:27:19.187Z.
+Generated at 2026-06-10T04:02:54.174Z.
 
 ## Setup
 
@@ -10,12 +10,14 @@ Generated at 2026-06-10T03:27:19.187Z.
 - PnL: returnPctEntryCloseToTarget, with entryTradeDate > issueDate, targetTradeDate >= targetDate, and targetTradeDate > entryTradeDate.
 - Cost: 0.064% round trip per trade.
 
-## Commands
+## Commands And Inputs Checked
 
-- node scripts/optimize-arctic-strategies.mjs
-- node data/qore/research/strategy-agent-runs/elastic-net-expected-return/optimize-elastic-net-expected-return.mjs
+- Inspected theory.md.
+- Inspected scripts/optimize-arctic-strategies.mjs read-only; not rerun here because it writes shared strategy-tests artifacts.
+- Inspected data/qore/research/strategy-tests/arctic-blast-strategy-baselines.csv and arctic-blast-strategy-baselines.json.
+- Ran node data/qore/research/strategy-agent-runs/elastic-net-expected-return/optimize-elastic-net-expected-return.mjs.
 
-## Changed Files
+## Lane Output Files
 
 - data/qore/research/strategy-agent-runs/elastic-net-expected-return/optimize-elastic-net-expected-return.mjs
 - data/qore/research/strategy-agent-runs/elastic-net-expected-return/candidate-metrics.csv
@@ -40,4 +42,18 @@ Generated at 2026-06-10T03:27:19.187Z.
 
 ## Recommendation
 
-Do not replace the current baseline. The best-looking holdout returns are still dominated by too few post-cutoff trades, and the side-specific checks show the warm-short sleeve is not independently robust.
+Demote elastic-net expected-return to a diagnostic/shadow lane. Do not replace the current baseline, and do not split it into cold/warm sleeves yet; the best-looking holdout returns are still dominated by too few post-cutoff trades.
+
+## Integration Action
+
+Remove strict-theory-elastic-net-expected-return from any primary recommended-strategy slot. Keep the fixed strict-theory rule baseline as the conservative anchor, treat elastic-net selected trades as diagnostics only, and revisit promotion only after it clears source-robust features plus at least 8 post-cutoff trades with acceptable drawdown.
+
+## Why Not Promote
+
+- Baseline reproduction depends on exact source-id features instead of source-robust weather/source-group features.
+- Baseline reproduction has only 4 post-cutoff trades versus the 8-trade combined minimum.
+- Post-cutoff baseline mix is 1 cold-long and 3 warm-short trades, so the 21.6% headline return is not broad evidence.
+- Best combined walk-forward candidate is not replacement-eligible: 4 post-cutoff trades, 21.6% total return, -2.71% max drawdown.
+- Cold-long sleeve selected by walk-forward validation loses -1.01% post-cutoff over 2 trades.
+- Warm-short sleeve is only 1.83% post-cutoff over 3 trades with 33.3% win rate.
+- Cold/warm two-sleeve split falls to 0.8% post-cutoff over 5 trades with -17.38% max drawdown.
