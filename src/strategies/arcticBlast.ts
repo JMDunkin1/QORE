@@ -1,13 +1,15 @@
 import Papa from 'papaparse'
 import type { ExecutionInstrumentCode, StrategySignalIntent, TradeDirection } from '../execution'
 import type { BacktestMetrics, EquityPoint } from '../types'
+import dualWeatherSummaryJson from '../../data/qore/research/strategy-agent-runs/dual-weather-rotation/run-summary.json?raw'
+import dualWeatherTradesCsv from '../../data/qore/research/strategy-agent-runs/dual-weather-rotation/selected-trades.csv?raw'
 import weatherHybridSummaryJson from '../../data/qore/research/strategy-agent-runs/weather-hybrid-rotation/run-summary.json?raw'
 import weatherHybridTradesCsv from '../../data/qore/research/strategy-agent-runs/weather-hybrid-rotation/selected-trades.csv?raw'
 import volatilityMeanReversionSummaryJson from '../../data/qore/research/strategy-agent-runs/volatility-mean-reversion/run-summary.json?raw'
 import volatilityMeanReversionTradesCsv from '../../data/qore/research/strategy-agent-runs/volatility-mean-reversion/selected-trades.csv?raw'
 
-export type ArcticBlastStrategyFamily = 'volatility' | 'weather-hybrid'
-export type ArcticBlastStrategyVariant = 'market-technical' | 'hybrid-rotation'
+export type ArcticBlastStrategyFamily = 'volatility' | 'weather-hybrid' | 'weather-dual'
+export type ArcticBlastStrategyVariant = 'market-technical' | 'hybrid-rotation' | 'dual-edge-rotation'
 
 export type StrategyPromotionStatus = 'research-diagnostic' | 'research-baseline' | 'paper-candidate' | 'needs-more-validation'
 
@@ -182,6 +184,27 @@ type HybridSummary = {
   }
 }
 
+type DualWeatherSummary = HybridSummary & {
+  selected: HybridSummary['selected'] & {
+    sourceWeightMode: string
+    volTargetPct: number
+    legCounts: Record<string, Record<string, number>>
+  }
+  search: {
+    candidateCount: number
+    eligibleCandidateCount: number
+    selectionUsedHoldout: boolean
+  }
+  validation: {
+    realityCheck: {
+      observedAverageDailyEdgePct: number
+      pValue: number
+      iterations: number
+      blockLength: number
+    }
+  }
+}
+
 export type ArcticBlastTrade = {
   strategyId: string
   variant: ArcticBlastStrategyVariant
@@ -235,12 +258,14 @@ const initialCapital = 100000
 
 const volatilityStrategyColor = '#0891b2'
 const weatherHybridStrategyColor = '#7c3aed'
+const dualWeatherStrategyColor = '#16a34a'
 
 export const arcticBlastPromotionGates = [
   'Keep next-session open-to-close entries strictly after the signal-date close.',
   'Select thresholds using train data only; holdout rows stay report-only.',
   'Track long-after-down-shock and short-after-up-shock legs separately.',
   'Track weather-hybrid return against the index basket, not just absolute return.',
+  'Keep dual-weather candidates marked needs-more-validation when holdout edge trails the index basket.',
   'Prove a non-overlapping paper ledger before any broker adapter exists.',
   'Separate ETF proxy results from futures-grade Henry Hub contract results.',
   'Require human approval for promotion from research-baseline to paper-candidate.',
@@ -315,10 +340,10 @@ function parseVolatilityTrades(csv: string): ArcticBlastTrade[] {
   }))
 }
 
-function parseWeatherHybridTrades(csv: string): ArcticBlastTrade[] {
+function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVariant): ArcticBlastTrade[] {
   return parseCsv<Record<string, string>>(csv).map((row) => ({
     strategyId: row.strategyId,
-    variant: 'hybrid-rotation',
+    variant,
     issueDate: row.issueDate,
     targetDate: row.targetDate,
     entryTradeDate: row.entryTradeDate,
@@ -521,6 +546,78 @@ function createWeatherHybridStrategy(summary: HybridSummary, trades: ArcticBlast
   }
 }
 
+function createDualWeatherStrategy(summary: DualWeatherSummary, trades: ArcticBlastTrade[]): ArcticBlastResearchStrategy {
+  const metrics = createHybridMetrics(summary)
+  const { selected, contract } = summary
+  const holdoutEdge = selected.splitEdges.holdout
+  const realityCheckPValue = summary.validation.realityCheck.pValue
+  const promotionStatus: StrategyPromotionStatus =
+    holdoutEdge > 0 && realityCheckPValue <= 0.1 ? 'research-baseline' : 'needs-more-validation'
+
+  return {
+    id: summary.strategyId,
+    name: 'Dual Weather Rotation',
+    family: 'weather-dual',
+    variant: 'dual-edge-rotation',
+    instrument: 'UNG',
+    desk: 'Winter weather dual edge',
+    thesis:
+      'Capital stays in the US index basket by default, rotates into UNG for forecasted winter demand shocks, then fades the realized UNG overreaction after the weather window.',
+    directionPolicy:
+      'Always use both legs: follow broad cold with a long UNG overlay or broad warmth with a short UNG overlay, then fade the realized UNG move after the weather-follow window.',
+    promotionStatus,
+    riskLevel: riskLevelFor(metrics),
+    color: dualWeatherStrategyColor,
+    liveRoutingEnabled: false,
+    sourceUniverse: sourceUniverseFor(trades),
+    timingConvention: 'daily-weather-rotation-v1',
+    returnColumn: 'netReturnPct',
+    universe: `UNG and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
+    theoryAlignment:
+      'Direct two-leg Arctic Blast thesis lane: forecast-driven cold/warm demand direction plus post-window overreaction fade, with index fallback when confidence is low.',
+    samplePolicy:
+      `Selected ${selected.architectureLabel} on train/validation only; train through ${contract.trainEnd}, validation through ${contract.validationEnd}, holdout from ${contract.holdoutStart}.`,
+    tradeFile: summary.outputFiles.selectedTrades,
+    params: {
+      candidateId: selected.candidateId,
+      family: 'weather-dual',
+      variant: 'dual-edge-rotation',
+      architecture: selected.architectureLabel,
+      sourceSet: selected.sourceSetLabel,
+      sourceIds: selected.sourceIds,
+      sourceWeightMode: selected.sourceWeightMode,
+      minGroups: selected.minGroups,
+      minFamilies: selected.minFamilies,
+      anomalyThreshold: selected.anomalyThreshold,
+      coverageThreshold: selected.coverageThreshold,
+      minConfidence: selected.minConfidence,
+      weatherFraction: selected.weatherFraction,
+      reversionFraction: selected.reversionFraction,
+      followHoldDays: selected.followHoldDays,
+      reversionHoldDays: selected.reversionHoldDays,
+      minRealizedMovePct: selected.minRealizedMovePct,
+      sizingMode: selected.sizingMode,
+      volTargetPct: selected.volTargetPct,
+      fallback: contract.fallback,
+      roundTripCostPct: contract.roundTripCostPct,
+      splitEdges: selected.splitEdges,
+      legCounts: selected.legCounts,
+      indexMetrics: selected.indexMetrics,
+      search: summary.search,
+      realityCheck: summary.validation.realityCheck,
+      selectionPolicy: contract.selectionPolicy,
+      signalTiming: contract.signalTiming,
+      reversionTiming: contract.reversionTiming,
+      sourceUniverse: sourceUniverseFor(trades),
+    },
+    metrics,
+    caveat:
+      holdoutEdge > 0
+        ? `Holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)}; bootstrap p-value ${realityCheckPValue}.`
+        : `Needs more validation: train/validation selection was strong, but holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)} and bootstrap p-value is ${realityCheckPValue}.`,
+  }
+}
+
 function signedSplitEdge(value: number) {
   return `${value >= 0 ? '+' : ''}${round(value, 2)}%`
 }
@@ -591,15 +688,23 @@ function metricsFromResearch(metrics: ArcticBlastStrategyMetrics, trades: Arctic
 const volatilitySummary = JSON.parse(volatilityMeanReversionSummaryJson) as VolatilitySummary
 const volatilityTrades = parseVolatilityTrades(volatilityMeanReversionTradesCsv)
 const weatherHybridSummary = JSON.parse(weatherHybridSummaryJson) as HybridSummary
-const weatherHybridTrades = parseWeatherHybridTrades(weatherHybridTradesCsv)
+const weatherHybridTrades = parseWeatherRotationTrades(weatherHybridTradesCsv, 'hybrid-rotation')
+const dualWeatherSummary = JSON.parse(dualWeatherSummaryJson) as DualWeatherSummary
+const dualWeatherTrades = parseWeatherRotationTrades(dualWeatherTradesCsv, 'dual-edge-rotation')
 const tradesByStrategyId = new Map([
   [weatherHybridSummary.strategyId, weatherHybridTrades] as const,
   [volatilitySummary.strategyId, volatilityTrades] as const,
+  [dualWeatherSummary.strategyId, dualWeatherTrades] as const,
+])
+const dailyRotationMetricsByStrategyId = new Map([
+  [weatherHybridSummary.strategyId, createHybridBacktestMetrics(weatherHybridSummary)] as const,
+  [dualWeatherSummary.strategyId, createHybridBacktestMetrics(dualWeatherSummary)] as const,
 ])
 
 export const arcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = [
   createWeatherHybridStrategy(weatherHybridSummary, weatherHybridTrades),
   createVolatilityStrategy(volatilitySummary, volatilityTrades),
+  createDualWeatherStrategy(dualWeatherSummary, dualWeatherTrades),
 ]
 
 export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResult[] = arcticBlastResearchStrategies.map((strategy) => {
@@ -607,7 +712,7 @@ export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResu
   return {
     strategy,
     researchMetrics: strategy.metrics,
-    metrics: strategy.id === weatherHybridSummary.strategyId ? createHybridBacktestMetrics(weatherHybridSummary) : metricsFromResearch(strategy.metrics, trades),
+    metrics: dailyRotationMetricsByStrategyId.get(strategy.id) ?? metricsFromResearch(strategy.metrics, trades),
     curve: curveFromTrades(trades),
     trades,
     joined: [],

@@ -215,6 +215,83 @@ button {
   transform: none;
 }
 
+.strategy-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.strategy-strip-button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 62px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: left;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.strategy-strip-button:hover,
+.strategy-strip-button.active {
+  border-color: #94a3b8;
+  background: #f8fafc;
+  transform: translateY(-1px);
+}
+
+.strategy-strip-button.active {
+  box-shadow: inset 0 0 0 1px #64748b;
+}
+
+.strategy-strip-swatch {
+  width: 8px;
+  height: 36px;
+  border-radius: 4px;
+}
+
+.strategy-strip-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.strategy-strip-copy strong,
+.strategy-strip-copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strategy-strip-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.strategy-strip-copy em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.strategy-strip-button > span:last-child {
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));

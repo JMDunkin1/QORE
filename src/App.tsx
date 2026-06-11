@@ -71,10 +71,15 @@ const benchmarkLabel = 'UNG buy/hold'
 const indexBenchmarkLabel = 'US index basket'
 const researchRankScore = (result: (typeof researchBacktestResults)[number]) => {
   const samplePenalty = result.metrics.tradeCount >= primaryRankMinTrades ? 0 : -10000
-  return samplePenalty + result.metrics.totalReturnPct + result.metrics.sharpe * 2 + result.metrics.maxDrawdownPct * 0.25
+  const tradeCountCredit = Math.min(result.metrics.tradeCount, 100) * 0.03
+  return samplePenalty + result.metrics.cagrPct + result.metrics.sharpe * 8 + result.metrics.calmar * 4 + result.metrics.maxDrawdownPct * 0.4 + tradeCountCredit
 }
 const sortResearchResults = (a: (typeof researchBacktestResults)[number], b: (typeof researchBacktestResults)[number]) =>
-  researchRankScore(b) - researchRankScore(a) || b.metrics.totalReturnPct - a.metrics.totalReturnPct || b.metrics.sharpe - a.metrics.sharpe
+  researchRankScore(b) - researchRankScore(a) ||
+  b.metrics.cagrPct - a.metrics.cagrPct ||
+  b.metrics.sharpe - a.metrics.sharpe ||
+  b.metrics.calmar - a.metrics.calmar ||
+  b.metrics.totalReturnPct - a.metrics.totalReturnPct
 const activeStrategyLabel = (count = researchStrategyRegistry.length) => `${count} active research ${count === 1 ? 'strategy' : 'strategies'} loaded`
 const defaultSelectedBacktest = [...researchBacktestResults].sort(sortResearchResults)[0] ?? null
 const defaultSelectedStrategyId = defaultSelectedBacktest?.strategy.id ?? ''
@@ -214,6 +219,7 @@ function sampleStatusFor(result: ResearchBacktestResult | null): { label: string
   if (result.metrics.tradeCount < primaryRankMinTrades) {
     return { label: `Thin sample: ${result.metrics.tradeCount}/${primaryRankMinTrades}`, tone: 'warning' }
   }
+  if (result.strategy.promotionStatus === 'needs-more-validation') return { label: 'Needs more validation', tone: 'warning' }
   if (result.metrics.maxDrawdownPct <= -20) return { label: 'Drawdown review', tone: 'warning' }
   if (result.strategy.promotionStatus === 'research-diagnostic') return { label: 'Research only', tone: 'warning' }
   return { label: 'Baseline sample', tone: 'positive' }
@@ -620,11 +626,17 @@ function App() {
     sharpe: result.metrics.sharpe,
     color: result.strategy.color,
   }))
-  const secondaryChartSeries: { dataKey: Extract<keyof DashboardChartPoint, string>; name: string } = selectedBacktest
-    ? { dataKey: 'gasReturnPct', name: 'Trade return %' }
-    : { dataKey: 'closeScaled', name: 'Gas px x1000' }
-  const overviewChartSeries = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
-    () => [
+  const strategyStripItems = leaderboard.map((result) => ({
+    id: result.strategy.id,
+    name: result.strategy.name,
+    family: result.strategy.family,
+    status: sampleStatusFor(result).label,
+    returnPct: result.metrics.totalReturnPct,
+    color: result.strategy.color,
+    selected: result.strategy.id === selectedStrategyId,
+  }))
+  const overviewChartSeries = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(() => {
+    const series: SmoothChartSeries<DashboardChartPoint>[] = [
       {
         axis: 'left',
         color: '#2563eb',
@@ -647,37 +659,32 @@ function App() {
         strokeWidth: 2,
         valueFormatter: (value) => signedPercent(roundNumber(value)),
       },
-      {
-        axis: 'left',
-        color: '#475569',
-        dashArray: '5 4',
-        dataKey: 'benchmarkPct',
-        id: 'benchmarkPct',
-        label: `${benchmarkLabel} %`,
-        strokeWidth: 2,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-      {
+    ]
+
+    if (!selectedBacktest) {
+      series.push({
         axis: 'right',
         color: '#f97316',
-        dataKey: secondaryChartSeries.dataKey,
+        dataKey: 'closeScaled',
         id: 'secondary',
-        label: secondaryChartSeries.name,
+        label: 'Gas px x1000',
         strokeWidth: 2,
-        valueFormatter: selectedBacktest ? (value) => signedPercent(roundNumber(value)) : (value) => formatNumber(value),
-      },
-      {
-        axis: 'left',
-        color: '#e11d48',
-        dataKey: 'drawdownPct',
-        id: 'drawdownPct',
-        label: 'Drawdown %',
-        strokeWidth: 2,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-    ],
-    [secondaryChartSeries.dataKey, secondaryChartSeries.name, selectedBacktest],
-  )
+        valueFormatter: (value) => formatNumber(value),
+      })
+    }
+
+    series.push({
+      axis: 'left',
+      color: '#e11d48',
+      dataKey: 'drawdownPct',
+      id: 'drawdownPct',
+      label: 'Drawdown %',
+      strokeWidth: 2,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    })
+
+    return series
+  }, [selectedBacktest])
   const selectedBenchmarkReturnPct = relativeBenchmarkReturn(chartData.map((point) => point.benchmarkPct))
   const selectedBenchmarkEdgePct = selectedBacktest ? selectedBacktest.metrics.totalReturnPct - selectedBenchmarkReturnPct : 0
   const selectedIndexBenchmarkReturnPct = relativeBenchmarkReturn(chartData.map((point) => point.indexBenchmarkPct))
@@ -769,8 +776,8 @@ function App() {
   )
   const selectedRangeStats = selectedBacktest
     ? (() => {
-        const tradeReturns = visibleStrategyChartData.map((point) => point.gasReturnPct).filter(Number.isFinite)
-        const rangeReturnPct = (tradeReturns.reduce((equity, value) => equity * (1 + value / 100), 1) - 1) * 100
+        const returnRows = visibleStrategyChartData.map((point) => point.gasReturnPct).filter(Number.isFinite)
+        const rangeReturnPct = (returnRows.reduce((equity, value) => equity * (1 + value / 100), 1) - 1) * 100
         const benchmarkReturnPct = relativeBenchmarkReturn(visibleStrategyChartData.map((point) => point.benchmarkPct))
         const benchmarkEdgePct = rangeReturnPct - benchmarkReturnPct
         const indexBenchmarkReturnPct = relativeBenchmarkReturn(visibleStrategyChartData.map((point) => point.indexBenchmarkPct))
@@ -778,10 +785,10 @@ function App() {
         const maxDrawdownPct = visibleStrategyChartData.length
           ? Math.min(...visibleStrategyChartData.map((point) => point.drawdownPct ?? 0))
           : 0
-        const bestTradePct = tradeReturns.length ? Math.max(...tradeReturns) : 0
-        const worstTradePct = tradeReturns.length ? Math.min(...tradeReturns) : 0
+        const bestRowPct = returnRows.length ? Math.max(...returnRows) : 0
+        const worstRowPct = returnRows.length ? Math.min(...returnRows) : 0
         return [
-          { label: 'Visible trades', value: `${visibleStrategyChartData.length}`, tone: 'neutral' as Tone },
+          { label: 'Visible rows', value: `${visibleStrategyChartData.length}`, tone: 'neutral' as Tone },
           { label: 'Strategy return', value: signedPercent(roundNumber(rangeReturnPct)), tone: classForSigned(rangeReturnPct) },
           {
             label: indexBenchmarkLabel,
@@ -795,21 +802,21 @@ function App() {
           },
           { label: benchmarkLabel, value: signedPercent(roundNumber(benchmarkReturnPct)), tone: classForSigned(benchmarkReturnPct) },
           { label: 'Edge vs UNG', value: signedPercent(roundNumber(benchmarkEdgePct)), tone: classForSigned(benchmarkEdgePct) },
-          { label: 'Max DD', value: signedPercent(maxDrawdownPct), tone: maxDrawdownPct < -0.05 ? 'negative' : 'neutral' },
-          { label: 'Best trade', value: signedPercent(bestTradePct), tone: classForSigned(bestTradePct) },
-          { label: 'Worst trade', value: signedPercent(worstTradePct), tone: classForSigned(worstTradePct) },
+          { label: 'Max DD', value: signedPercent(maxDrawdownPct), tone: maxDrawdownPct < -5 ? 'negative' : 'neutral' },
+          { label: 'Best row', value: signedPercent(bestRowPct), tone: classForSigned(bestRowPct) },
+          { label: 'Worst row', value: signedPercent(worstRowPct), tone: classForSigned(worstRowPct) },
         ]
       })()
     : []
   const emptyStats = [
     ['CAGR', '-', 'Annualized return'],
     ['Volatility', '-', 'Annualized variability'],
-    ['Win rate', '-', 'Positive daily PnL'],
+    ['Win rate', '-', 'Positive return rows'],
     ['Profit factor', '-', 'Gross wins / losses'],
     ['Trades', '0', 'Position changes'],
     ['Exposure', '-', 'Average absolute'],
     ['Turnover', '-', 'Path churn'],
-    ['CVaR 95', '-', 'Tail daily loss'],
+    ['CVaR 95', '-', 'Tail return-row loss'],
   ]
 
   const loadGithubStatus = useCallback(async (refresh = false) => {
@@ -1080,6 +1087,25 @@ function App() {
           </div>
         </header>
 
+        <section className="strategy-strip" aria-label="Active research strategies">
+          {strategyStripItems.map((strategy) => (
+            <button
+              key={strategy.id}
+              type="button"
+              className={`strategy-strip-button${strategy.selected ? ' active' : ''}`}
+              onClick={() => selectStrategy(strategy.id)}
+              title={`Select ${strategy.name}`}
+            >
+              <span className="strategy-strip-swatch" style={{ background: strategy.color }} />
+              <span className="strategy-strip-copy">
+                <strong>{strategy.name}</strong>
+                <em>{strategy.family} / {strategy.status}</em>
+              </span>
+              <span className={classForSigned(strategy.returnPct)}>{signedPercent(strategy.returnPct)}</span>
+            </button>
+          ))}
+        </section>
+
         <section className="metric-grid" aria-label="Primary quant metrics">
           <MetricCard
             icon={TrendingUp}
@@ -1128,9 +1154,9 @@ function App() {
             }
             detail={
               selectedBacktest
-                ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} total, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% vol`
+                ? `${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% annual vol`
                 : topResearchStrategy
-                  ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} total in event-row optimizer`
+                  ? `${signedPercent(topResearchStrategy.metrics.cagrPct)} CAGR in research baseline`
                   : 'Ready for real strategy metrics'
             }
             tone={(selectedBacktest?.metrics.sharpe ?? topResearchStrategy?.metrics.sharpe ?? 0) > 1 ? 'positive' : 'neutral'}
@@ -1139,7 +1165,7 @@ function App() {
             icon={ShieldCheck}
             label="Max drawdown"
             value={selectedBacktest ? signedPercent(selectedBacktest.metrics.maxDrawdownPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.maxDrawdownPct) : '-'}
-            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% trade VaR 95` : topResearchStrategy ? `${topResearchStrategy.metrics.tradeCount} optimized event trades` : 'No risk path until a strategy runs'}
+            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% return-row VaR 95` : topResearchStrategy ? `${topResearchStrategy.metrics.tradeCount} optimized return rows` : 'No risk path until a strategy runs'}
             tone={(selectedBacktest?.metrics.maxDrawdownPct ?? topResearchStrategy?.metrics.maxDrawdownPct ?? 0) < -15 ? 'negative' : 'positive'}
           />
           <MetricCard
@@ -1157,7 +1183,7 @@ function App() {
               <article className="panel chart-panel wide">
                 <SectionHeading
                   eyebrow="Live read"
-                  title="Equity, gas, and drawdown"
+                  title="Equity and drawdown"
                   action={
                     <ChartZoomToolbar
                       data={chartData}
@@ -1432,12 +1458,12 @@ function App() {
                 ? [
                     ['CAGR', signedPercent(selectedBacktest.metrics.cagrPct), 'Annualized return'],
                     ['Volatility', `${formatNumber(selectedBacktest.metrics.annualVolPct)}%`, 'Annualized variability'],
-                    ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive trades'],
+                    ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive return rows'],
                     ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
                     ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Completed trades'],
                     ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Estimated time in trade'],
                     ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Trade count proxy'],
-                    ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail trade loss'],
+                    ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail return-row loss'],
                   ]
                 : emptyStats
               ).map(([label, value, detail]) => (
@@ -1486,7 +1512,7 @@ function App() {
                   <thead>
                     <tr>
                       <th>Strategy</th>
-                      <th>Return</th>
+                      <th>Total return</th>
                       <th>Index</th>
                       <th>Vs index</th>
                       <th>UNG</th>
