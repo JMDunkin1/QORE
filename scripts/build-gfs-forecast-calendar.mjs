@@ -18,12 +18,17 @@ const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
 const runHour = process.env.QORE_GFS_RUN_HOUR ?? '00'
 const leadDays = listFromEnv('QORE_GFS_LEAD_DAYS', [1, 2, 3, 7, 8, 9, 10]).map(Number)
 const validHoursUtc = listFromEnv('QORE_GFS_VALID_HOURS', [0]).map(Number)
-const heatingSeasonOnly = truthy(process.env.QORE_GFS_HEATING_SEASON_ONLY ?? 'true')
+const coolingSeasonOnly = truthy(process.env.QORE_GFS_COOLING_SEASON_ONLY)
+const heatingSeasonOnly = truthy(process.env.QORE_GFS_HEATING_SEASON_ONLY ?? (coolingSeasonOnly ? 'false' : 'true'))
 const resume = truthy(process.env.QORE_GFS_RESUME)
 const allowPartial = truthy(process.env.QORE_GFS_ALLOW_PARTIAL)
 const concurrency = Math.max(1, Number(process.env.QORE_GFS_CONCURRENCY ?? 4))
 const maxItems = Number(process.env.QORE_GFS_MAX_ITEMS ?? 0)
 const timeoutMs = Number(process.env.QORE_FETCH_TIMEOUT_MS ?? 30000)
+
+if (heatingSeasonOnly && coolingSeasonOnly) {
+  throw new Error('Set only one seasonal calendar filter: QORE_GFS_HEATING_SEASON_ONLY or QORE_GFS_COOLING_SEASON_ONLY.')
+}
 
 const arcticBlastThresholds = {
   coldAnomalyF: -8,
@@ -203,6 +208,11 @@ function datesBetween(start, end) {
 function isHeatingSeason(dateText) {
   const month = Number(dateText.slice(5, 7))
   return month <= 3 || month >= 11
+}
+
+function isCoolingSeason(dateText) {
+  const month = Number(dateText.slice(5, 7))
+  return month >= 5 && month <= 9
 }
 
 function round(value, digits = 3) {
@@ -519,6 +529,7 @@ function buildWorkItems(doneKeys, options = {}) {
       const targetDate = addDays(issueDate, leadDay)
       if (targetDate > endDate) continue
       if (heatingSeasonOnly && !isHeatingSeason(targetDate)) continue
+      if (coolingSeasonOnly && !isCoolingSeason(targetDate)) continue
       const key = `${issueDate}|${leadDay}`
       if (!includeDone && doneKeys.has(key)) continue
       items.push({
@@ -682,6 +693,7 @@ async function main() {
     leadDays,
     validHoursUtc,
     heatingSeasonOnly,
+    coolingSeasonOnly,
     allowPartial,
     modelId: sourceConfig.modelId(),
     locations: locations.length,

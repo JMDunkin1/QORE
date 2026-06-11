@@ -101,14 +101,16 @@ export type BacktestResult = {
 }
 
 export type WeatherModelMetrics = {
-  hddMae: number
-  hddRmse: number
-  cddMae: number
-  cddRmse: number
+  rowCount: number
+  sourceCount: number
+  metricLabel: string
+  unitLabel: string
+  mae: number
+  rmse: number
+  bias: number
   r2: number
   directionalAccuracyPct: number
-  coldSurpriseRecallPct: number
-  calibrationScorePct: number
+  coldRecallPct: number
 }
 
 export type IntegrationConnector = {

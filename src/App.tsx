@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Brain,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -42,6 +43,7 @@ import ungMarketCsv from '../data/qore/market/yahoo/UNG-qore-market.csv?raw'
 import { defaultSettings, joinMarketWeather } from './backtesting/engine'
 import { SmoothZoomChart, type SmoothChartSeries } from './components/SmoothZoomChart'
 import { realDataCatalog, totalLocationRows, totalSignalReturns, totalSignalScores } from './data/realDataCatalog'
+import { sharedWeatherMetrics } from './data/weatherAccuracy'
 import { defaultDryRunRiskPolicy, dryRunGatewayProfile, paperExecutionReadinessGates } from './execution'
 import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
 import { executionVenues, integrationConnectors } from './integrations/connectors'
@@ -67,6 +69,7 @@ const maxChartWheelZoomPower = 4
 const primaryRankMinTrades = 8
 const minZoomWindow = 4
 const strategyDetailLineMaxPoints = 80
+const millisecondsPerYear = 365.25 * 24 * 60 * 60 * 1000
 const benchmarkLabel = 'UNG buy/hold'
 const indexBenchmarkLabel = 'US index basket'
 const researchRankScore = (result: (typeof researchBacktestResults)[number]) => {
@@ -137,19 +140,45 @@ type ChartRange = {
   startIndex: number
   endIndex: number
 }
+type SplitEdgeName = 'train' | 'validation' | 'holdout' | 'all'
+type WeatherSideSeason = 'winter' | 'summer' | 'all-year'
+type WeatherSideDefinition = {
+  id: string
+  label: string
+  seasons?: readonly WeatherSideSeason[]
+  thesisKinds: readonly string[]
+}
+type StrategySelectorItem = {
+  id: string
+  name: string
+  family: string
+  status: string
+  returnPct: number
+  color: string
+  selected: boolean
+}
 
-const weatherSideDefinitions = [
-  { id: 'cold-long', label: 'Cold-long' },
-  { id: 'warm-short', label: 'Warm-short' },
-  { id: 'reversion-long', label: 'Reversion-long' },
-  { id: 'reversion-short', label: 'Reversion-short' },
-  { id: 'index-fallback', label: 'Index fallback' },
-] as const
+const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
+  { id: 'cold-long', label: 'Cold-long', seasons: ['winter', 'all-year'], thesisKinds: ['cold-long'] },
+  { id: 'warm-short', label: 'Warm-short', seasons: ['winter', 'all-year'], thesisKinds: ['warm-short'] },
+  { id: 'summer-cold-short', label: 'Summer cold-short', seasons: ['summer', 'all-year'], thesisKinds: ['summer-cold-short'] },
+  { id: 'summer-heat-long', label: 'Summer heat-long', seasons: ['summer', 'all-year'], thesisKinds: ['summer-heat-long'] },
+  { id: 'reversion-long', label: 'Reversion-long', thesisKinds: ['reversion-long'] },
+  { id: 'reversion-short', label: 'Reversion-short', thesisKinds: ['reversion-short'] },
+  { id: 'index-fallback', label: 'Index fallback', thesisKinds: ['index-fallback'] },
+]
 
 const directionSideDefinitions = [
   { id: 'long', label: 'Long' },
   { id: 'short', label: 'Short' },
 ] as const
+
+function splitEdgeForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined, split: SplitEdgeName) {
+  const splitEdges = strategy?.params.splitEdges
+  if (!splitEdges || typeof splitEdges !== 'object') return null
+  const value = (splitEdges as Partial<Record<SplitEdgeName, unknown>>)[split]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
 
 function roundNumber(value: number, digits = 2) {
   const factor = 10 ** digits
@@ -192,10 +221,45 @@ function relativeBenchmarkReturn(values: Array<number | null | undefined>) {
   return start ? (end / start - 1) * 100 : 0
 }
 
-function sideStatsForTrades(trades: ResearchTrade[], mode: 'weather' | 'direction') {
-  const sideDefinitions = mode === 'direction' ? directionSideDefinitions : weatherSideDefinitions
-  return sideDefinitions.map((side) => {
-    const sideTrades = trades.filter((trade) => (mode === 'direction' ? trade.direction : trade.thesisKind) === side.id)
+function annualizedReturnPct(totalReturnPct: number, startDate: string | undefined, endDate: string | undefined) {
+  const startTime = Date.parse(startDate ?? '')
+  const endTime = Date.parse(endDate ?? '')
+  const years = Number.isFinite(startTime) && Number.isFinite(endTime) && endTime > startTime
+    ? (endTime - startTime) / millisecondsPerYear
+    : 1 / 365.25
+  return ((1 + totalReturnPct / 100) ** (1 / years) - 1) * 100
+}
+
+function weatherSideSeasonForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): WeatherSideSeason {
+  if (strategy?.family === 'weather-summer') return 'summer'
+  if (strategy?.family === 'weather-hybrid' || strategy?.family === 'weather-dual' || strategy?.family === 'weather-alpha') return 'winter'
+  return 'all-year'
+}
+
+function sideStatsForTrades(trades: ResearchTrade[], mode: 'weather' | 'direction', weatherSeason: WeatherSideSeason) {
+  if (mode === 'direction') {
+    return directionSideDefinitions.map((side) => {
+      const sideTrades = trades.filter((trade) => trade.direction === side.id)
+      const totalReturnPct = sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
+      const winRatePct = sideTrades.length
+        ? (sideTrades.filter((trade) => trade.netReturnPct > 0).length / sideTrades.length) * 100
+        : 0
+      const averageTradeReturnPct = sideTrades.length
+        ? sideTrades.reduce((sum, trade) => sum + trade.netReturnPct, 0) / sideTrades.length
+        : 0
+
+      return {
+        ...side,
+        tradeCount: sideTrades.length,
+        totalReturnPct: roundNumber(totalReturnPct * 100),
+        winRatePct: roundNumber(winRatePct, 1),
+        averageTradeReturnPct: roundNumber(averageTradeReturnPct),
+      }
+    })
+  }
+
+  return weatherSideDefinitions.filter((side) => !side.seasons || side.seasons.includes(weatherSeason)).map((side) => {
+    const sideTrades = trades.filter((trade) => side.thesisKinds.includes(trade.thesisKind))
     const totalReturnPct = sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
     const winRatePct = sideTrades.length
       ? (sideTrades.filter((trade) => trade.netReturnPct > 0).length / sideTrades.length) * 100
@@ -212,6 +276,131 @@ function sideStatsForTrades(trades: ResearchTrade[], mode: 'weather' | 'directio
       averageTradeReturnPct: roundNumber(averageTradeReturnPct),
     }
   })
+}
+
+function strategyPerformanceChartSeries(strategyColor: string | undefined, showDetailLines: boolean): SmoothChartSeries<DashboardChartPoint>[] {
+  return [
+    {
+      axis: 'left',
+      color: strategyColor ?? '#0891b2',
+      dataKey: 'gasReturnPct',
+      fillOpacity: 0.2,
+      id: 'gasReturnPct',
+      label: 'Trade return %',
+      mode: 'bar',
+      strokeOpacity: 0.3,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+    {
+      axis: 'left',
+      color: '#2563eb',
+      dataKey: 'equityPct',
+      fill: '#dbeafe',
+      fillOpacity: 0.62,
+      id: 'equityPct',
+      label: 'Equity %',
+      mode: 'area',
+      strokeWidth: 2.4,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+    {
+      axis: 'left',
+      color: '#e11d48',
+      dataKey: 'drawdownPct',
+      id: 'drawdownPct',
+      label: 'Drawdown %',
+      strokeWidth: 2,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+    {
+      axis: 'left',
+      color: '#7c3aed',
+      dashArray: '6 3',
+      dataKey: 'indexBenchmarkPct',
+      id: 'indexBenchmarkPct',
+      label: `${indexBenchmarkLabel} %`,
+      strokeWidth: 2,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+    {
+      axis: 'left',
+      color: '#475569',
+      dashArray: '5 4',
+      dataKey: 'benchmarkPct',
+      id: 'benchmarkPct',
+      label: `${benchmarkLabel} %`,
+      strokeWidth: 2,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+    {
+      axis: 'right',
+      color: '#0f766e',
+      dataKey: 'position',
+      id: 'position',
+      label: 'Position',
+      mode: 'step',
+      strokeWidth: 2,
+      valueFormatter: (value) => formatNumber(value),
+      visible: showDetailLines,
+    },
+    {
+      axis: 'right',
+      color: '#f97316',
+      dashArray: '4 3',
+      dataKey: 'signal',
+      id: 'signal',
+      label: 'Signal',
+      mode: 'step',
+      strokeWidth: 2,
+      valueFormatter: (value) => formatNumber(value),
+      visible: showDetailLines,
+    },
+  ]
+}
+
+function marketOverviewChartSeries(): SmoothChartSeries<DashboardChartPoint>[] {
+  return [
+    {
+      axis: 'left',
+      color: '#2563eb',
+      dataKey: 'equityPct',
+      fill: '#dbeafe',
+      fillOpacity: 0.62,
+      id: 'equityPct',
+      label: 'Equity %',
+      mode: 'area',
+      strokeWidth: 2,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+    {
+      axis: 'left',
+      color: '#7c3aed',
+      dashArray: '6 3',
+      dataKey: 'indexBenchmarkPct',
+      id: 'indexBenchmarkPct',
+      label: `${indexBenchmarkLabel} %`,
+      strokeWidth: 2,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+    {
+      axis: 'right',
+      color: '#f97316',
+      dataKey: 'closeScaled',
+      id: 'secondary',
+      label: 'Gas px x1000',
+      strokeWidth: 2,
+      valueFormatter: (value) => formatNumber(value),
+    },
+    {
+      axis: 'left',
+      color: '#e11d48',
+      dataKey: 'drawdownPct',
+      id: 'drawdownPct',
+      label: 'Drawdown %',
+      strokeWidth: 2,
+      valueFormatter: (value) => signedPercent(roundNumber(value)),
+    },
+  ]
 }
 
 function sampleStatusFor(result: ResearchBacktestResult | null): { label: string; tone: Tone } {
@@ -246,7 +435,7 @@ function SectionHeading({
   action,
 }: {
   eyebrow: string
-  title: string
+  title: ReactNode
   action?: ReactNode
 }) {
   return (
@@ -257,6 +446,48 @@ function SectionHeading({
       </div>
       {action}
     </div>
+  )
+}
+
+function StrategyTitleSelect({
+  items,
+  selectedItem,
+  selectedStrategyId,
+  onSelectStrategy,
+}: {
+  items: StrategySelectorItem[]
+  selectedItem: StrategySelectorItem | null
+  selectedStrategyId: string
+  onSelectStrategy: (strategyId: string) => void
+}) {
+  return (
+    <label className="chart-title-strategy">
+      <span className="chart-title-strategy-control">
+        <span className="chart-title-strategy-swatch" style={{ background: selectedItem?.color ?? '#0f766e' }} />
+        <span className="chart-title-strategy-name">{selectedItem?.name ?? 'No research strategies'}</span>
+        <select
+          value={selectedItem?.id ?? selectedStrategyId}
+          disabled={!items.length}
+          onChange={(event) => onSelectStrategy(event.currentTarget.value)}
+          aria-label="Select chart strategy"
+        >
+          {items.length ? (
+            items.map((strategy) => (
+              <option key={strategy.id} value={strategy.id}>
+                {strategy.name}
+              </option>
+            ))
+          ) : (
+            <option value="">No research strategies</option>
+          )}
+        </select>
+        <ChevronDown size={18} aria-hidden="true" />
+      </span>
+      <span className="chart-title-strategy-meta">
+        {selectedItem && <strong className={classForSigned(selectedItem.returnPct)}>{signedPercent(selectedItem.returnPct)}</strong>}
+        <em>{selectedItem ? `${selectedItem.family} / ${selectedItem.status}` : 'No research strategies'}</em>
+      </span>
+    </label>
   )
 }
 
@@ -341,6 +572,11 @@ function formatShortDate(value: string | undefined) {
   }).format(date)
 }
 
+function signedUnit(value: number, unit: string, digits = 2) {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${formatNumber(value, digits)}${unit}`
+}
+
 function ChartZoomToolbar({
   data,
   range,
@@ -390,6 +626,90 @@ function ChartZoomToolbar({
         </button>
       </div>
     </div>
+  )
+}
+
+function OverviewPerformancePanel({
+  chartData,
+  onSelectStrategy,
+  selectedBacktest,
+  selectedStrategyId,
+  selectedStrategyItem,
+  strategyItems,
+}: {
+  chartData: DashboardChartPoint[]
+  onSelectStrategy: (strategyId: string) => void
+  selectedBacktest: ResearchBacktestResult | null
+  selectedStrategyId: string
+  selectedStrategyItem: StrategySelectorItem | null
+  strategyItems: StrategySelectorItem[]
+}) {
+  const [range, setRange] = useState<ChartRange>(() => fullChartRange(chartData.length))
+  const clampedRange = useMemo(() => clampChartRange(range, chartData.length), [chartData.length, range])
+  const visibleBounds = chartRangeDataBounds(clampedRange, chartData.length)
+  const visibleChartData = chartData.slice(visibleBounds.startIndex, visibleBounds.endIndex + 1)
+  const showDetailLines = visibleChartData.length <= strategyDetailLineMaxPoints
+  const series = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
+    () =>
+      selectedBacktest
+        ? strategyPerformanceChartSeries(selectedBacktest.strategy.color, showDetailLines)
+        : marketOverviewChartSeries(),
+    [selectedBacktest, showDetailLines],
+  )
+
+  const zoomChart = (direction: 'in' | 'out') => {
+    setRange((current) => zoomChartRange(current, chartData.length, direction))
+  }
+
+  const panChart = (direction: 'left' | 'right') => {
+    setRange((current) => panChartRange(current, chartData.length, direction))
+  }
+
+  const resetChart = () => {
+    setRange(fullChartRange(chartData.length))
+  }
+
+  return (
+    <article className="panel chart-panel wide">
+      <SectionHeading
+        eyebrow="Live read"
+        title={
+          <StrategyTitleSelect
+            items={strategyItems}
+            selectedItem={selectedStrategyItem}
+            selectedStrategyId={selectedStrategyId}
+            onSelectStrategy={onSelectStrategy}
+          />
+        }
+        action={
+          <ChartZoomToolbar
+            data={chartData}
+            range={clampedRange}
+            onZoomIn={() => zoomChart('in')}
+            onZoomOut={() => zoomChart('out')}
+            onPanLeft={() => panChart('left')}
+            onPanRight={() => panChart('right')}
+            onReset={resetChart}
+          />
+        }
+      />
+      <div className="chart-frame tall">
+        <SmoothZoomChart
+          data={chartData}
+          formatDate={formatShortDate}
+          minWindow={minZoomWindow}
+          onRangeChange={setRange}
+          range={clampedRange}
+          series={series}
+        />
+        {!chartData.length && (
+          <ChartEmptyOverlay
+            title="No graph data yet"
+            detail="Research strategy artifacts are loaded, but no trade curve could be built."
+          />
+        )}
+      </div>
+    </article>
   )
 }
 
@@ -443,9 +763,6 @@ function App() {
   const [market, setMarket] = useState<MarketBar[]>([])
   const settings = defaultSettings
   const [selectedStrategyId, setSelectedStrategyId] = useState(defaultSelectedStrategyId)
-  const [overviewChartRange, setOverviewChartRange] = useState<ChartRange>(() =>
-    fullChartRange(defaultSelectedBacktest?.curve.length ?? 0),
-  )
   const [strategyChartRange, setStrategyChartRange] = useState<ChartRange>(() =>
     fullChartRange(defaultSelectedBacktest?.curve.length ?? 0),
   )
@@ -461,7 +778,9 @@ function App() {
   const [commitMessage, setCommitMessage] = useState('Update QORE dashboard')
 
   const joinedRows = useMemo(() => joinMarketWeather(market, weather), [market, weather])
-  const weatherMetrics = useMemo(() => (weather.length ? evaluateWeatherModel(weather) : null), [weather])
+  const importedWeatherMetrics = useMemo(() => (weather.length ? evaluateWeatherModel(weather) : null), [weather])
+  const weatherMetrics = importedWeatherMetrics ?? sharedWeatherMetrics
+  const weatherMetricsSource = importedWeatherMetrics ? 'Imported lab CSV' : 'Shared forecast calendars'
   const leaderboard = useMemo(() => [...researchBacktestResults].sort(sortResearchResults), [])
   const topResearchStrategy = useMemo(
     () => leaderboard[0]?.strategy ?? [...researchStrategyRegistry].sort((a, b) => b.metrics.totalReturnPct - a.metrics.totalReturnPct)[0] ?? null,
@@ -477,9 +796,10 @@ function App() {
   )
   const selectedSampleStatus = useMemo(() => sampleStatusFor(selectedBacktest), [selectedBacktest])
   const selectedSideMode = selectedBacktest?.strategy.family === 'volatility' ? 'direction' : 'weather'
+  const selectedWeatherSideSeason = useMemo(() => weatherSideSeasonForStrategy(selectedBacktest?.strategy), [selectedBacktest])
   const selectedSideStats = useMemo(
-    () => sideStatsForTrades(selectedBacktest?.trades ?? [], selectedSideMode),
-    [selectedBacktest, selectedSideMode],
+    () => sideStatsForTrades(selectedBacktest?.trades ?? [], selectedSideMode, selectedWeatherSideSeason),
+    [selectedBacktest, selectedSideMode, selectedWeatherSideSeason],
   )
   const benchmarkSummaryByStrategyId = useMemo(
     () =>
@@ -588,10 +908,6 @@ function App() {
           })),
     [benchmarkByDate, indexBenchmarkByDate, joinedRows, selectedBacktest],
   )
-  const clampedOverviewChartRange = useMemo(
-    () => clampChartRange(overviewChartRange, chartData.length),
-    [chartData.length, overviewChartRange],
-  )
   const clampedStrategyChartRange = useMemo(
     () => clampChartRange(strategyChartRange, chartData.length),
     [chartData.length, strategyChartRange],
@@ -613,10 +929,10 @@ function App() {
         })) ?? [])
   const weatherScoreBars = weatherMetrics
     ? [
-        { name: 'HDD MAE', value: weatherMetrics.hddMae, color: '#2563eb' },
-        { name: 'HDD RMSE', value: weatherMetrics.hddRmse, color: '#0891b2' },
-        { name: 'CDD MAE', value: weatherMetrics.cddMae, color: '#f97316' },
-        { name: 'CDD RMSE', value: weatherMetrics.cddRmse, color: '#ef4444' },
+        { name: `${weatherMetrics.metricLabel} MAE`, value: weatherMetrics.mae, color: '#2563eb' },
+        { name: `${weatherMetrics.metricLabel} RMSE`, value: weatherMetrics.rmse, color: '#0891b2' },
+        { name: 'Bias', value: weatherMetrics.bias, color: weatherMetrics.bias > 0 ? '#f97316' : '#7c3aed' },
+        { name: 'R2', value: weatherMetrics.r2, color: '#0f766e' },
       ]
     : []
   const strategyBars = leaderboard.map((result, index) => ({
@@ -635,143 +951,24 @@ function App() {
     color: result.strategy.color,
     selected: result.strategy.id === selectedStrategyId,
   }))
-  const overviewChartSeries = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(() => {
-    const series: SmoothChartSeries<DashboardChartPoint>[] = [
-      {
-        axis: 'left',
-        color: '#2563eb',
-        dataKey: 'equityPct',
-        fill: '#dbeafe',
-        fillOpacity: 0.62,
-        id: 'equityPct',
-        label: 'Equity %',
-        mode: 'area',
-        strokeWidth: 2,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-      {
-        axis: 'left',
-        color: '#7c3aed',
-        dashArray: '6 3',
-        dataKey: 'indexBenchmarkPct',
-        id: 'indexBenchmarkPct',
-        label: `${indexBenchmarkLabel} %`,
-        strokeWidth: 2,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-    ]
-
-    if (!selectedBacktest) {
-      series.push({
-        axis: 'right',
-        color: '#f97316',
-        dataKey: 'closeScaled',
-        id: 'secondary',
-        label: 'Gas px x1000',
-        strokeWidth: 2,
-        valueFormatter: (value) => formatNumber(value),
-      })
-    }
-
-    series.push({
-      axis: 'left',
-      color: '#e11d48',
-      dataKey: 'drawdownPct',
-      id: 'drawdownPct',
-      label: 'Drawdown %',
-      strokeWidth: 2,
-      valueFormatter: (value) => signedPercent(roundNumber(value)),
-    })
-
-    return series
-  }, [selectedBacktest])
-  const selectedBenchmarkReturnPct = relativeBenchmarkReturn(chartData.map((point) => point.benchmarkPct))
-  const selectedBenchmarkEdgePct = selectedBacktest ? selectedBacktest.metrics.totalReturnPct - selectedBenchmarkReturnPct : 0
-  const selectedIndexBenchmarkReturnPct = relativeBenchmarkReturn(chartData.map((point) => point.indexBenchmarkPct))
-  const selectedIndexBenchmarkEdgePct = selectedBacktest
-    ? selectedBacktest.metrics.totalReturnPct - selectedIndexBenchmarkReturnPct
+  const selectedStrategyItem = strategyStripItems.find((strategy) => strategy.selected) ?? strategyStripItems[0] ?? null
+  const selectedIndexBenchmarkPoints = chartData.filter((point) => Number.isFinite(point.indexBenchmarkPct))
+  const selectedIndexBenchmarkValues = selectedIndexBenchmarkPoints.map((point) => point.indexBenchmarkPct as number)
+  const selectedIndexBenchmarkReturnPct = relativeBenchmarkReturn(selectedIndexBenchmarkValues)
+  const selectedIndexBenchmarkAnnualReturnPct = annualizedReturnPct(
+    selectedIndexBenchmarkReturnPct,
+    selectedIndexBenchmarkPoints[0]?.date,
+    selectedIndexBenchmarkPoints.at(-1)?.date,
+  )
+  const selectedIndexBenchmarkAnnualEdgePct = selectedBacktest
+    ? selectedBacktest.metrics.cagrPct - selectedIndexBenchmarkAnnualReturnPct
     : 0
+  const selectedHoldoutEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
   const visibleStrategyBounds = chartRangeDataBounds(clampedStrategyChartRange, chartData.length)
   const visibleStrategyChartData = chartData.slice(visibleStrategyBounds.startIndex, visibleStrategyBounds.endIndex + 1)
   const showStrategyDetailLines = visibleStrategyChartData.length <= strategyDetailLineMaxPoints
   const strategyDetailChartSeries = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
-    () => [
-      {
-        axis: 'left',
-        color: selectedBacktest?.strategy.color ?? '#0891b2',
-        dataKey: 'gasReturnPct',
-        fillOpacity: 0.2,
-        id: 'gasReturnPct',
-        label: 'Trade return %',
-        mode: 'bar',
-        strokeOpacity: 0.3,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-      {
-        axis: 'left',
-        color: '#2563eb',
-        dataKey: 'equityPct',
-        fill: '#dbeafe',
-        fillOpacity: 0.62,
-        id: 'equityPct',
-        label: 'Equity %',
-        mode: 'area',
-        strokeWidth: 2.4,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-      {
-        axis: 'left',
-        color: '#e11d48',
-        dataKey: 'drawdownPct',
-        id: 'drawdownPct',
-        label: 'Drawdown %',
-        strokeWidth: 2,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-      {
-        axis: 'left',
-        color: '#7c3aed',
-        dashArray: '6 3',
-        dataKey: 'indexBenchmarkPct',
-        id: 'indexBenchmarkPct',
-        label: `${indexBenchmarkLabel} %`,
-        strokeWidth: 2,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-      {
-        axis: 'left',
-        color: '#475569',
-        dashArray: '5 4',
-        dataKey: 'benchmarkPct',
-        id: 'benchmarkPct',
-        label: `${benchmarkLabel} %`,
-        strokeWidth: 2,
-        valueFormatter: (value) => signedPercent(roundNumber(value)),
-      },
-      {
-        axis: 'right',
-        color: '#0f766e',
-        dataKey: 'position',
-        id: 'position',
-        label: 'Position',
-        mode: 'step',
-        strokeWidth: 2,
-        valueFormatter: (value) => formatNumber(value),
-        visible: showStrategyDetailLines,
-      },
-      {
-        axis: 'right',
-        color: '#f97316',
-        dashArray: '4 3',
-        dataKey: 'signal',
-        id: 'signal',
-        label: 'Signal',
-        mode: 'step',
-        strokeWidth: 2,
-        valueFormatter: (value) => formatNumber(value),
-        visible: showStrategyDetailLines,
-      },
-    ],
+    () => strategyPerformanceChartSeries(selectedBacktest?.strategy.color, showStrategyDetailLines),
     [selectedBacktest?.strategy.color, showStrategyDetailLines],
   )
   const selectedRangeStats = selectedBacktest
@@ -809,8 +1006,6 @@ function App() {
       })()
     : []
   const emptyStats = [
-    ['CAGR', '-', 'Annualized return'],
-    ['Volatility', '-', 'Annualized variability'],
     ['Win rate', '-', 'Positive return rows'],
     ['Profit factor', '-', 'Gross wins / losses'],
     ['Trades', '0', 'Position changes'],
@@ -850,28 +1045,15 @@ function App() {
     setSelectedStrategyId(strategyId)
     const nextLength = leaderboard.find((result) => result.strategy.id === strategyId)?.curve.length ?? chartData.length
     const nextRange = fullChartRange(nextLength)
-    setOverviewChartRange(nextRange)
     setStrategyChartRange(nextRange)
-  }
-
-  const zoomOverviewChart = (direction: 'in' | 'out') => {
-    setOverviewChartRange((current) => zoomChartRange(current, chartData.length, direction))
   }
 
   const zoomStrategyChart = (direction: 'in' | 'out') => {
     setStrategyChartRange((current) => zoomChartRange(current, chartData.length, direction))
   }
 
-  const panOverviewChart = (direction: 'left' | 'right') => {
-    setOverviewChartRange((current) => panChartRange(current, chartData.length, direction))
-  }
-
   const panStrategyChart = (direction: 'left' | 'right') => {
     setStrategyChartRange((current) => panChartRange(current, chartData.length, direction))
-  }
-
-  const resetOverviewChart = () => {
-    setOverviewChartRange(fullChartRange(chartData.length))
   }
 
   const resetStrategyChart = () => {
@@ -1087,25 +1269,6 @@ function App() {
           </div>
         </header>
 
-        <section className="strategy-strip" aria-label="Active research strategies">
-          {strategyStripItems.map((strategy) => (
-            <button
-              key={strategy.id}
-              type="button"
-              className={`strategy-strip-button${strategy.selected ? ' active' : ''}`}
-              onClick={() => selectStrategy(strategy.id)}
-              title={`Select ${strategy.name}`}
-            >
-              <span className="strategy-strip-swatch" style={{ background: strategy.color }} />
-              <span className="strategy-strip-copy">
-                <strong>{strategy.name}</strong>
-                <em>{strategy.family} / {strategy.status}</em>
-              </span>
-              <span className={classForSigned(strategy.returnPct)}>{signedPercent(strategy.returnPct)}</span>
-            </button>
-          ))}
-        </section>
-
         <section className="metric-grid" aria-label="Primary quant metrics">
           <MetricCard
             icon={TrendingUp}
@@ -1122,25 +1285,25 @@ function App() {
           />
           <MetricCard
             icon={LineChartIcon}
-            label="Vs index"
-            value={selectedBacktest ? signedPercent(selectedIndexBenchmarkEdgePct) : '-'}
+            label="Yearly vs index"
+            value={selectedBacktest ? signedPercent(selectedIndexBenchmarkAnnualEdgePct) : '-'}
             detail={
               selectedBacktest
-                ? `${indexBenchmarkLabel} ${signedPercent(selectedIndexBenchmarkReturnPct)} over same window`
+                ? `${indexBenchmarkLabel} ${signedPercent(selectedIndexBenchmarkAnnualReturnPct)} yearly over same window`
                 : 'Needs a selected strategy window'
             }
-            tone={selectedBacktest ? classForSigned(selectedIndexBenchmarkEdgePct) : 'warning'}
+            tone={selectedBacktest ? classForSigned(selectedIndexBenchmarkAnnualEdgePct) : 'warning'}
           />
           <MetricCard
             icon={Gauge}
-            label="Vs UNG"
-            value={selectedBacktest ? signedPercent(selectedBenchmarkEdgePct) : '-'}
+            label="Holdout edge"
+            value={selectedHoldoutEdgePct === null ? '-' : signedPercent(selectedHoldoutEdgePct)}
             detail={
-              selectedBacktest
-                ? `${benchmarkLabel} ${signedPercent(selectedBenchmarkReturnPct)} over same window`
-                : 'Needs a selected strategy window'
+              selectedHoldoutEdgePct === null
+                ? 'No holdout split for selected strategy'
+                : `Report-only edge vs ${indexBenchmarkLabel} after selection`
             }
-            tone={selectedBacktest ? classForSigned(selectedBenchmarkEdgePct) : 'warning'}
+            tone={selectedHoldoutEdgePct === null ? 'warning' : classForSigned(selectedHoldoutEdgePct)}
           />
           <MetricCard
             icon={Activity}
@@ -1171,8 +1334,8 @@ function App() {
           <MetricCard
             icon={CloudSun}
             label="Weather accuracy"
-            value={weatherMetrics ? `${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%` : '-'}
-            detail={weatherMetrics ? `HDD MAE ${formatNumber(weatherMetrics.hddMae)} | R2 ${formatNumber(weatherMetrics.r2, 3)}` : 'Import weather rows to score'}
+            value={`${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%`}
+            detail={`${weatherMetrics.metricLabel} MAE ${formatNumber(weatherMetrics.mae)}${weatherMetrics.unitLabel} | ${formatCompact(weatherMetrics.rowCount)} scored rows`}
             tone={weatherMetrics && weatherMetrics.directionalAccuracyPct > 60 ? 'positive' : 'warning'}
           />
         </section>
@@ -1180,39 +1343,15 @@ function App() {
         {activeView === 'overview' && (
           <section className="view-stack">
             <div className="split-layout">
-              <article className="panel chart-panel wide">
-                <SectionHeading
-                  eyebrow="Live read"
-                  title="Equity and drawdown"
-                  action={
-                    <ChartZoomToolbar
-                      data={chartData}
-                      range={clampedOverviewChartRange}
-                      onZoomIn={() => zoomOverviewChart('in')}
-                      onZoomOut={() => zoomOverviewChart('out')}
-                      onPanLeft={() => panOverviewChart('left')}
-                      onPanRight={() => panOverviewChart('right')}
-                      onReset={resetOverviewChart}
-                    />
-                  }
-                />
-                <div className="chart-frame tall">
-                  <SmoothZoomChart
-                    data={chartData}
-                    formatDate={formatShortDate}
-                    minWindow={minZoomWindow}
-                    onRangeChange={setOverviewChartRange}
-                    range={clampedOverviewChartRange}
-                    series={overviewChartSeries}
-                  />
-                  {!chartData.length && (
-                    <ChartEmptyOverlay
-                      title="No graph data yet"
-                      detail="Research strategy artifacts are loaded, but no trade curve could be built."
-                    />
-                  )}
-                </div>
-              </article>
+              <OverviewPerformancePanel
+                key={`${selectedBacktest?.strategy.id ?? 'lab'}-${chartData.length}`}
+                chartData={chartData}
+                onSelectStrategy={selectStrategy}
+                selectedBacktest={selectedBacktest}
+                selectedStrategyId={selectedBacktest?.strategy.id ?? selectedStrategyId}
+                selectedStrategyItem={selectedStrategyItem}
+                strategyItems={strategyStripItems}
+              />
 
               <article className="panel market-tape">
                 <SectionHeading eyebrow="Market tape" title="Current regime" />
@@ -1456,8 +1595,6 @@ function App() {
             <div className="stat-grid">
               {(selectedBacktest
                 ? [
-                    ['CAGR', signedPercent(selectedBacktest.metrics.cagrPct), 'Annualized return'],
-                    ['Volatility', `${formatNumber(selectedBacktest.metrics.annualVolPct)}%`, 'Annualized variability'],
                     ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive return rows'],
                     ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
                     ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Completed trades'],
@@ -1478,7 +1615,7 @@ function App() {
             <article className="panel table-panel">
               <SectionHeading
                 eyebrow="Side split"
-                title={selectedSideMode === 'direction' ? 'Long vs short' : 'Cold-long vs warm-short'}
+                title={selectedSideMode === 'direction' ? 'Long vs short' : 'Weather side split'}
                 action={<span className={`repo-pill ${selectedSampleStatus.tone}`}>{selectedBacktest?.strategy.promotionStatus ?? 'Pending'}</span>}
               />
               <div className="side-split-grid">
@@ -1515,6 +1652,7 @@ function App() {
                       <th>Total return</th>
                       <th>Index</th>
                       <th>Vs index</th>
+                      <th>Holdout edge</th>
                       <th>UNG</th>
                       <th>Vs UNG</th>
                       <th>Sharpe</th>
@@ -1530,6 +1668,7 @@ function App() {
                         const sampleStatus = sampleStatusFor(result)
                         const benchmarkSummary = benchmarkSummaryByStrategyId.get(result.strategy.id)
                         const indexBenchmarkSummary = indexBenchmarkSummaryByStrategyId.get(result.strategy.id)
+                        const holdoutEdgePct = splitEdgeForStrategy(result.strategy, 'holdout')
                         return (
                           <tr
                             key={result.strategy.id}
@@ -1547,6 +1686,9 @@ function App() {
                             <td className={classForSigned(indexBenchmarkSummary?.edgePct ?? 0)}>
                               {signedPercent(indexBenchmarkSummary?.edgePct ?? 0)}
                             </td>
+                            <td className={holdoutEdgePct === null ? undefined : classForSigned(holdoutEdgePct)}>
+                              {holdoutEdgePct === null ? '-' : signedPercent(holdoutEdgePct)}
+                            </td>
                             <td className={classForSigned(benchmarkSummary?.returnPct ?? 0)}>{signedPercent(benchmarkSummary?.returnPct ?? 0)}</td>
                             <td className={classForSigned(benchmarkSummary?.edgePct ?? 0)}>{signedPercent(benchmarkSummary?.edgePct ?? 0)}</td>
                             <td>{formatNumber(result.metrics.sharpe)}</td>
@@ -1561,7 +1703,7 @@ function App() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={11}>
+                        <td colSpan={12}>
                           <strong>No research strategies</strong>
                           <span>Research strategy results will populate this table.</span>
                         </td>
@@ -1593,11 +1735,11 @@ function App() {
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
-                  {!weatherScoreBars.length && <ChartEmptyOverlay title="No imported weather rows" detail="The model QA chart is ready for real imported rows." />}
+                  {!weatherScoreBars.length && <ChartEmptyOverlay title="No weather scores" detail="Forecast score rows need matching actual anomalies." />}
                 </div>
               </article>
               <article className="panel model-score">
-                <SectionHeading eyebrow="Champion gates" title="Weather edge" />
+                <SectionHeading eyebrow={weatherMetricsSource} title="Weather edge" />
                 {weatherMetrics ? (
                   <>
                     <div className="score-ring">
@@ -1607,15 +1749,19 @@ function App() {
                     <dl>
                       <div>
                         <dt>Cold recall</dt>
-                        <dd>{formatNumber(weatherMetrics.coldSurpriseRecallPct, 1)}%</dd>
+                        <dd>{formatNumber(weatherMetrics.coldRecallPct, 1)}%</dd>
                       </div>
                       <div>
-                        <dt>Calibration</dt>
-                        <dd>{formatNumber(weatherMetrics.calibrationScorePct, 1)}%</dd>
+                        <dt>Bias</dt>
+                        <dd>{signedUnit(weatherMetrics.bias, weatherMetrics.unitLabel)}</dd>
                       </div>
                       <div>
                         <dt>R2</dt>
                         <dd>{formatNumber(weatherMetrics.r2, 3)}</dd>
+                      </div>
+                      <div>
+                        <dt>Rows</dt>
+                        <dd>{formatCompact(weatherMetrics.rowCount)}</dd>
                       </div>
                     </dl>
                   </>

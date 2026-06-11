@@ -3,13 +3,17 @@ import type { ExecutionInstrumentCode, StrategySignalIntent, TradeDirection } fr
 import type { BacktestMetrics, EquityPoint } from '../types'
 import dualWeatherSummaryJson from '../../data/qore/research/strategy-agent-runs/dual-weather-rotation/run-summary.json?raw'
 import dualWeatherTradesCsv from '../../data/qore/research/strategy-agent-runs/dual-weather-rotation/selected-trades.csv?raw'
+import ngasWinterAlphaSummaryJson from '../../data/qore/research/strategy-agent-runs/ngas-winter-alpha/run-summary.json?raw'
+import ngasWinterAlphaTradesCsv from '../../data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv?raw'
+import ngasSummerAlphaSummaryJson from '../../data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json?raw'
+import ngasSummerAlphaTradesCsv from '../../data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv?raw'
 import weatherHybridSummaryJson from '../../data/qore/research/strategy-agent-runs/weather-hybrid-rotation/run-summary.json?raw'
 import weatherHybridTradesCsv from '../../data/qore/research/strategy-agent-runs/weather-hybrid-rotation/selected-trades.csv?raw'
 import volatilityMeanReversionSummaryJson from '../../data/qore/research/strategy-agent-runs/volatility-mean-reversion/run-summary.json?raw'
 import volatilityMeanReversionTradesCsv from '../../data/qore/research/strategy-agent-runs/volatility-mean-reversion/selected-trades.csv?raw'
 
-export type ArcticBlastStrategyFamily = 'volatility' | 'weather-hybrid' | 'weather-dual'
-export type ArcticBlastStrategyVariant = 'market-technical' | 'hybrid-rotation' | 'dual-edge-rotation'
+export type ArcticBlastStrategyFamily = 'volatility' | 'weather-hybrid' | 'weather-dual' | 'weather-alpha' | 'weather-summer'
+export type ArcticBlastStrategyVariant = 'market-technical' | 'hybrid-rotation' | 'dual-edge-rotation' | 'winter-alpha' | 'summer-alpha'
 
 export type StrategyPromotionStatus = 'research-diagnostic' | 'research-baseline' | 'paper-candidate' | 'needs-more-validation'
 
@@ -205,6 +209,92 @@ type DualWeatherSummary = HybridSummary & {
   }
 }
 
+type WinterAlphaSummary = {
+  strategyId: string
+  data: {
+    marketStartDate: string
+    marketEndDate: string
+  }
+  contract: {
+    trainEnd: string
+    validationEnd: string
+    holdoutStart: string
+    roundTripCostPct: number
+    oneWayCostPct: number
+    fallback: string
+    signalTiming: string
+    selectionPolicy: string
+    overfitControl: string
+    indexTrendLookbackSessions: number
+  }
+  parents: {
+    weatherHybrid: {
+      strategyId: string
+      candidateId: string
+      role: string
+    }
+    dualWeather: {
+      strategyId: string
+      candidateId: string
+      role: string
+    }
+  }
+  selected: {
+    candidateId: string
+    architectureLabel: string
+    sourceSetLabel: string
+    sourceIds: string[]
+    sourceWeightMode: string
+    sizingMode: string
+    indexRiskMode: string
+    indexRiskLabel: string
+    indexTrendLookbackSessions: number | null
+    weatherFraction: number
+    reversionFraction: number
+    overlayCap: number
+    followHoldDays: number
+    reversionHoldDays: number
+    minRealizedMovePct: number
+    positionPolicy: string
+    conflictPolicy: string
+    requiredSideChecks: string[]
+    allMetrics: HybridSummaryMetrics
+    trainMetrics: HybridSummaryMetrics
+    validationMetrics: HybridSummaryMetrics
+    holdoutMetrics: HybridSummaryMetrics
+    splitEdges: {
+      train: number
+      validation: number
+      holdout: number
+      all: number
+    }
+    indexMetrics: {
+      all: HybridSummaryMetrics
+      train: HybridSummaryMetrics
+      validation: HybridSummaryMetrics
+      holdout: HybridSummaryMetrics
+    }
+    sideReturns: Record<string, Record<string, HybridSummaryMetrics>>
+    legCounts: Record<string, Record<string, number>>
+  }
+  search: {
+    candidateCount: number
+    eligibleCandidateCount: number
+    selectionUsedHoldout: boolean
+  }
+  validation: {
+    realityCheck: {
+      observedAverageDailyEdgePct: number
+      pValue: number
+      iterations: number
+      blockLength: number
+    }
+  }
+  outputFiles: {
+    selectedTrades: string
+  }
+}
+
 export type ArcticBlastTrade = {
   strategyId: string
   variant: ArcticBlastStrategyVariant
@@ -230,6 +320,10 @@ export type ArcticBlastTrade = {
   equity?: number
   equityPct?: number
   indexFraction?: number
+  investedIndexFraction?: number
+  cashFraction?: number
+  indexRiskMode?: string
+  indexRiskOn?: boolean
   indexReturnPct?: number
   ungPosition?: number
   ungReturnPct?: number
@@ -259,6 +353,8 @@ const initialCapital = 100000
 const volatilityStrategyColor = '#0891b2'
 const weatherHybridStrategyColor = '#7c3aed'
 const dualWeatherStrategyColor = '#16a34a'
+const ngasWinterAlphaStrategyColor = '#d97706'
+const summerWeatherStrategyColor = '#db2777'
 
 export const arcticBlastPromotionGates = [
   'Keep next-session open-to-close entries strictly after the signal-date close.',
@@ -266,6 +362,8 @@ export const arcticBlastPromotionGates = [
   'Track long-after-down-shock and short-after-up-shock legs separately.',
   'Track weather-hybrid return against the index basket, not just absolute return.',
   'Keep dual-weather candidates marked needs-more-validation when holdout edge trails the index basket.',
+  'Keep NGAS Winter Alpha marked needs-more-validation unless the parent blend clears holdout edge and bootstrap reality checks.',
+  'Keep NGAS Summer Alpha marked needs-more-validation unless both cooling-season sides clear holdout edge and bootstrap reality checks.',
   'Prove a non-overlapping paper ledger before any broker adapter exists.',
   'Separate ETF proxy results from futures-grade Henry Hub contract results.',
   'Require human approval for promotion from research-baseline to paper-candidate.',
@@ -366,6 +464,10 @@ function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVar
     equity: numberFrom(row.equity),
     equityPct: numberFrom(row.equityPct),
     indexFraction: numberFrom(row.indexFraction),
+    investedIndexFraction: numberFrom(row.investedIndexFraction),
+    cashFraction: numberFrom(row.cashFraction),
+    indexRiskMode: row.indexRiskMode,
+    indexRiskOn: row.indexRiskOn === 'true',
     indexReturnPct: numberFrom(row.indexReturnPct),
     ungPosition: numberFrom(row.ungPosition),
     ungReturnPct: numberFrom(row.ungReturnPct),
@@ -443,7 +545,7 @@ function createVolatilityStrategy(summary: VolatilitySummary, trades: ArcticBlas
   }
 }
 
-function createHybridMetrics(summary: HybridSummary): ArcticBlastStrategyMetrics {
+function createHybridMetrics(summary: { selected: { allMetrics: HybridSummaryMetrics } }): ArcticBlastStrategyMetrics {
   const metrics = summary.selected.allMetrics
   return {
     totalReturnPct: metrics.totalReturnPct,
@@ -461,7 +563,7 @@ function createHybridMetrics(summary: HybridSummary): ArcticBlastStrategyMetrics
   }
 }
 
-function createHybridBacktestMetrics(summary: HybridSummary): BacktestMetrics {
+function createHybridBacktestMetrics(summary: { selected: { allMetrics: HybridSummaryMetrics } }): BacktestMetrics {
   const metrics = summary.selected.allMetrics
   return {
     totalReturnPct: metrics.totalReturnPct,
@@ -618,6 +720,153 @@ function createDualWeatherStrategy(summary: DualWeatherSummary, trades: ArcticBl
   }
 }
 
+function createNgasSummerAlphaStrategy(summary: DualWeatherSummary, trades: ArcticBlastTrade[]): ArcticBlastResearchStrategy {
+  const metrics = createHybridMetrics(summary)
+  const { selected, contract } = summary
+  const holdoutEdge = selected.splitEdges.holdout
+  const realityCheckPValue = summary.validation.realityCheck.pValue
+  const promotionStatus: StrategyPromotionStatus =
+    holdoutEdge > 0 && realityCheckPValue <= 0.1 ? 'research-baseline' : 'needs-more-validation'
+
+  return {
+    id: summary.strategyId,
+    name: 'NGAS Summer Alpha',
+    family: 'weather-summer',
+    variant: 'summer-alpha',
+    instrument: 'UNG',
+    desk: 'Summer cooling weather dual edge',
+    thesis:
+      'Capital stays in the US index basket by default, then uses day-7 summer temperature forecasts to short UNG during broad coolness, go long UNG during broad heat, and fade post-window overreactions.',
+    directionPolicy:
+      'Always test both legs: follow broad summer heat with a long UNG overlay or broad summer coolness with a short UNG overlay, then fade the realized UNG move after the weather-follow window.',
+    promotionStatus,
+    riskLevel: riskLevelFor(metrics),
+    color: summerWeatherStrategyColor,
+    liveRoutingEnabled: false,
+    sourceUniverse: sourceUniverseFor(trades),
+    timingConvention: 'daily-weather-rotation-v1',
+    returnColumn: 'netReturnPct',
+    universe: `UNG and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
+    theoryAlignment:
+      'Direct summer cooling-demand lane: forecast-driven heat/cool demand direction plus post-window overreaction fade, with index fallback when confidence is low.',
+    samplePolicy:
+      `Selected ${selected.architectureLabel} on train/validation only; train through ${contract.trainEnd}, validation through ${contract.validationEnd}, holdout from ${contract.holdoutStart}.`,
+    tradeFile: summary.outputFiles.selectedTrades,
+    params: {
+      candidateId: selected.candidateId,
+      family: 'weather-summer',
+      variant: 'summer-alpha',
+      architecture: selected.architectureLabel,
+      sourceSet: selected.sourceSetLabel,
+      sourceIds: selected.sourceIds,
+      sourceWeightMode: selected.sourceWeightMode,
+      minGroups: selected.minGroups,
+      minFamilies: selected.minFamilies,
+      anomalyThreshold: selected.anomalyThreshold,
+      coverageThreshold: selected.coverageThreshold,
+      minConfidence: selected.minConfidence,
+      weatherFraction: selected.weatherFraction,
+      reversionFraction: selected.reversionFraction,
+      followHoldDays: selected.followHoldDays,
+      reversionHoldDays: selected.reversionHoldDays,
+      minRealizedMovePct: selected.minRealizedMovePct,
+      sizingMode: selected.sizingMode,
+      volTargetPct: selected.volTargetPct,
+      fallback: contract.fallback,
+      roundTripCostPct: contract.roundTripCostPct,
+      splitEdges: selected.splitEdges,
+      legCounts: selected.legCounts,
+      indexMetrics: selected.indexMetrics,
+      search: summary.search,
+      realityCheck: summary.validation.realityCheck,
+      selectionPolicy: contract.selectionPolicy,
+      signalTiming: contract.signalTiming,
+      reversionTiming: contract.reversionTiming,
+      sourceUniverse: sourceUniverseFor(trades),
+    },
+    metrics,
+    caveat:
+      holdoutEdge > 0
+        ? `Holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)}; bootstrap p-value ${realityCheckPValue}.`
+        : `Needs more validation: the architecture includes both summer heat-long and cool-short legs, but holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)} and bootstrap p-value is ${realityCheckPValue}.`,
+  }
+}
+
+function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: ArcticBlastTrade[]): ArcticBlastResearchStrategy {
+  const metrics = createHybridMetrics(summary)
+  const { selected, contract } = summary
+  const holdoutEdge = selected.splitEdges.holdout
+  const realityCheckPValue = summary.validation.realityCheck.pValue
+  const promotionStatus: StrategyPromotionStatus =
+    holdoutEdge > 0 && realityCheckPValue <= 0.1 ? 'research-baseline' : 'needs-more-validation'
+
+  return {
+    id: summary.strategyId,
+    name: 'NGAS Winter Alpha',
+    family: 'weather-alpha',
+    variant: 'winter-alpha',
+    instrument: 'UNG',
+    desk: 'Winter natural gas alpha blend',
+    thesis:
+      'Blend parent experts conservatively: Dual Weather supplies cold-follow context, Weather Hybrid confirms warm-short fades, and idle capital remains in the index fallback.',
+    directionPolicy:
+      `${selected.positionPolicy} Idle capital uses ${selected.indexRiskLabel.toLowerCase()}.`,
+    promotionStatus,
+    riskLevel: riskLevelFor(metrics),
+    color: ngasWinterAlphaStrategyColor,
+    liveRoutingEnabled: false,
+    sourceUniverse: sourceUniverseFor(trades),
+    timingConvention: 'daily-weather-rotation-v1',
+    returnColumn: 'netReturnPct',
+    universe: `UNG and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
+    theoryAlignment:
+      'Parent-expert blend of winter forecast-follow demand risk and same-direction warm-weather fade confirmation; no new weather thresholds are fit in this layer.',
+    samplePolicy:
+      `${selected.architectureLabel}; train through ${contract.trainEnd}, validation through ${contract.validationEnd}, holdout from ${contract.holdoutStart}. ${contract.overfitControl}`,
+    tradeFile: summary.outputFiles.selectedTrades,
+    params: {
+      candidateId: selected.candidateId,
+      family: 'weather-alpha',
+      variant: 'winter-alpha',
+      architecture: selected.architectureLabel,
+      sourceSet: selected.sourceSetLabel,
+      sourceIds: selected.sourceIds,
+      sourceWeightMode: selected.sourceWeightMode,
+      sizingMode: selected.sizingMode,
+      indexRiskMode: selected.indexRiskMode,
+      indexRiskLabel: selected.indexRiskLabel,
+      indexTrendLookbackSessions: selected.indexTrendLookbackSessions,
+      weatherFraction: selected.weatherFraction,
+      reversionFraction: selected.reversionFraction,
+      overlayCap: selected.overlayCap,
+      followHoldDays: selected.followHoldDays,
+      reversionHoldDays: selected.reversionHoldDays,
+      minRealizedMovePct: selected.minRealizedMovePct,
+      positionPolicy: selected.positionPolicy,
+      conflictPolicy: selected.conflictPolicy,
+      requiredSideChecks: selected.requiredSideChecks,
+      parents: summary.parents,
+      fallback: contract.fallback,
+      roundTripCostPct: contract.roundTripCostPct,
+      oneWayCostPct: contract.oneWayCostPct,
+      splitEdges: selected.splitEdges,
+      sideReturns: selected.sideReturns,
+      legCounts: selected.legCounts,
+      indexMetrics: selected.indexMetrics,
+      search: summary.search,
+      realityCheck: summary.validation.realityCheck,
+      selectionPolicy: contract.selectionPolicy,
+      signalTiming: contract.signalTiming,
+      sourceUniverse: sourceUniverseFor(trades),
+    },
+    metrics,
+    caveat:
+      holdoutEdge > 0
+        ? `Holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)}, but bootstrap p-value is ${realityCheckPValue}; keep this behind paper validation.`
+        : `Needs more validation: train/validation edge is strong, but holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)} and bootstrap p-value is ${realityCheckPValue}.`,
+  }
+}
+
 function signedSplitEdge(value: number) {
   return `${value >= 0 ? '+' : ''}${round(value, 2)}%`
 }
@@ -691,20 +940,30 @@ const weatherHybridSummary = JSON.parse(weatherHybridSummaryJson) as HybridSumma
 const weatherHybridTrades = parseWeatherRotationTrades(weatherHybridTradesCsv, 'hybrid-rotation')
 const dualWeatherSummary = JSON.parse(dualWeatherSummaryJson) as DualWeatherSummary
 const dualWeatherTrades = parseWeatherRotationTrades(dualWeatherTradesCsv, 'dual-edge-rotation')
+const ngasSummerAlphaSummary = JSON.parse(ngasSummerAlphaSummaryJson) as DualWeatherSummary
+const ngasSummerAlphaTrades = parseWeatherRotationTrades(ngasSummerAlphaTradesCsv, 'summer-alpha')
+const ngasWinterAlphaSummary = JSON.parse(ngasWinterAlphaSummaryJson) as WinterAlphaSummary
+const ngasWinterAlphaTrades = parseWeatherRotationTrades(ngasWinterAlphaTradesCsv, 'winter-alpha')
 const tradesByStrategyId = new Map([
   [weatherHybridSummary.strategyId, weatherHybridTrades] as const,
   [volatilitySummary.strategyId, volatilityTrades] as const,
   [dualWeatherSummary.strategyId, dualWeatherTrades] as const,
+  [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaTrades] as const,
+  [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaTrades] as const,
 ])
 const dailyRotationMetricsByStrategyId = new Map([
   [weatherHybridSummary.strategyId, createHybridBacktestMetrics(weatherHybridSummary)] as const,
   [dualWeatherSummary.strategyId, createHybridBacktestMetrics(dualWeatherSummary)] as const,
+  [ngasSummerAlphaSummary.strategyId, createHybridBacktestMetrics(ngasSummerAlphaSummary)] as const,
+  [ngasWinterAlphaSummary.strategyId, createHybridBacktestMetrics(ngasWinterAlphaSummary)] as const,
 ])
 
 export const arcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = [
   createWeatherHybridStrategy(weatherHybridSummary, weatherHybridTrades),
   createVolatilityStrategy(volatilitySummary, volatilityTrades),
   createDualWeatherStrategy(dualWeatherSummary, dualWeatherTrades),
+  createNgasSummerAlphaStrategy(ngasSummerAlphaSummary, ngasSummerAlphaTrades),
+  createNgasWinterAlphaStrategy(ngasWinterAlphaSummary, ngasWinterAlphaTrades),
 ]
 
 export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResult[] = arcticBlastResearchStrategies.map((strategy) => {

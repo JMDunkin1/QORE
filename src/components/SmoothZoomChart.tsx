@@ -54,6 +54,7 @@ type PlotBox = {
 
 type WebKitGestureEvent = Event & {
   clientX?: number
+  clientY?: number
   scale?: number
 }
 
@@ -246,6 +247,7 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
   const frameRequestRef = useRef<number | null>(null)
   const dimensionsRef = useRef<Dimensions>({ width: 0, height: 0 })
   const gestureAnchorRatioRef = useRef(0.5)
+  const gestureActiveRef = useRef(false)
   const gestureStartRangeRef = useRef<SmoothChartRange | null>(null)
   const [dimensions, setDimensions] = useState<Dimensions>({ width: 0, height: 0 })
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
@@ -345,7 +347,8 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
       if (target instanceof Node && frame.contains(target)) return true
       if (typeof gestureEvent.clientX !== 'number') return false
       const rect = frame.getBoundingClientRect()
-      return gestureEvent.clientX >= rect.left && gestureEvent.clientX <= rect.right
+      const clientY = 'clientY' in gestureEvent && typeof gestureEvent.clientY === 'number' ? gestureEvent.clientY : rect.top + rect.height / 2
+      return gestureEvent.clientX >= rect.left && gestureEvent.clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
     }
 
     const scheduleRange = (nextRange: SmoothChartRange) => {
@@ -383,12 +386,14 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
       if (!eventStartedInFrame(event)) return
       if (event.cancelable) event.preventDefault()
       const gestureEvent = event as WebKitGestureEvent
+      gestureActiveRef.current = true
       gestureStartRangeRef.current = pendingRangeRef.current
       gestureAnchorRatioRef.current = anchorRatioForClientX(gestureEvent.clientX)
     }
 
     const handleGestureChange = (event: Event) => {
       if (data.length <= 1) return
+      if (!gestureActiveRef.current) return
       if (event.cancelable) event.preventDefault()
       const gestureEvent = event as WebKitGestureEvent
       const scale = typeof gestureEvent.scale === 'number' && Number.isFinite(gestureEvent.scale) ? gestureEvent.scale : 1
@@ -398,6 +403,7 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
     }
 
     const handleGestureEnd = () => {
+      gestureActiveRef.current = false
       gestureStartRangeRef.current = null
     }
 
