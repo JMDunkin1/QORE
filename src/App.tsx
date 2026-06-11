@@ -1,4 +1,12 @@
-import { type ChangeEvent, type ElementType, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  type ChangeEvent,
+  type ElementType,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -27,28 +35,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import {
-  Area,
-  Bar,
-  BarChart,
-  Brush,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  Legend,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Scatter,
-  ScatterChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 import './App.css'
 import indexBasketCsv from '../data/qore/market/yahoo/US-INDEX-BASKET-qore-market.csv?raw'
 import ungMarketCsv from '../data/qore/market/yahoo/UNG-qore-market.csv?raw'
 import { defaultSettings, joinMarketWeather } from './backtesting/engine'
+import { SmoothZoomChart, type SmoothChartSeries } from './components/SmoothZoomChart'
 import { realDataCatalog, totalLocationRows, totalSignalReturns, totalSignalScores } from './data/realDataCatalog'
 import { defaultDryRunRiskPolicy, dryRunGatewayProfile, paperExecutionReadinessGates } from './execution'
 import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
@@ -70,8 +62,8 @@ const navItems: Array<{ id: ActiveView; label: string; icon: ElementType }> = [
 
 const activeViews: ActiveView[] = ['overview', 'backtest', 'models', 'data', 'execution', 'github']
 const chartMargin = { top: 16, right: 18, bottom: 4, left: 0 }
-const zoomableChartMargin = { top: 16, right: 18, bottom: 28, left: 0 }
 const strategyChartMargin = { top: 16, right: 18, bottom: 12, left: 0 }
+const maxChartWheelZoomPower = 4
 const primaryRankMinTrades = 8
 const minZoomWindow = 4
 const strategyDetailLineMaxPoints = 80
@@ -83,6 +75,7 @@ const researchRankScore = (result: (typeof researchBacktestResults)[number]) => 
 }
 const sortResearchResults = (a: (typeof researchBacktestResults)[number], b: (typeof researchBacktestResults)[number]) =>
   researchRankScore(b) - researchRankScore(a) || b.metrics.totalReturnPct - a.metrics.totalReturnPct || b.metrics.sharpe - a.metrics.sharpe
+const activeStrategyLabel = (count = researchStrategyRegistry.length) => `${count} active research ${count === 1 ? 'strategy' : 'strategies'} loaded`
 const defaultSelectedBacktest = [...researchBacktestResults].sort(sortResearchResults)[0] ?? null
 const defaultSelectedStrategyId = defaultSelectedBacktest?.strategy.id ?? ''
 const benchmarkMarketBars = parseMarketCsv(ungMarketCsv).sort((a, b) => a.date.localeCompare(b.date))
@@ -109,7 +102,9 @@ type MetricCardProps = {
 }
 
 type DashboardChartPoint = {
+  chartIndex: number
   date: string
+  [key: string]: string | number | null | undefined
   equity: number | null
   equityPct: number | null
   dailyPnlPct: number | null
@@ -137,14 +132,13 @@ type ChartRange = {
   startIndex: number
   endIndex: number
 }
-type BrushRange = {
-  startIndex?: number
-  endIndex?: number
-}
 
 const weatherSideDefinitions = [
   { id: 'cold-long', label: 'Cold-long' },
   { id: 'warm-short', label: 'Warm-short' },
+  { id: 'reversion-long', label: 'Reversion-long' },
+  { id: 'reversion-short', label: 'Reversion-short' },
+  { id: 'index-fallback', label: 'Index fallback' },
 ] as const
 
 const directionSideDefinitions = [
@@ -275,45 +269,59 @@ function fullChartRange(total: number): ChartRange {
 
 function clampChartRange(range: ChartRange, total: number): ChartRange {
   if (total <= 0) return fullChartRange(total)
-  const startIndex = Math.max(0, Math.min(range.startIndex, total - 1))
-  const endIndex = Math.max(startIndex, Math.min(range.endIndex, total - 1))
+  const requestedSpan = range.endIndex - range.startIndex + 1
+  const minimumSpan = Math.min(minZoomWindow, total)
+  const span = Math.max(minimumSpan, Math.min(Number.isFinite(requestedSpan) ? requestedSpan : total, total))
+  const rawStartIndex = Number.isFinite(range.startIndex) ? range.startIndex : 0
+  const startIndex = Math.max(0, Math.min(rawStartIndex, total - span))
+  return { startIndex, endIndex: startIndex + span - 1 }
+}
+
+function chartRangeDataBounds(range: ChartRange, total: number): ChartRange {
+  if (total <= 0) return fullChartRange(total)
+  const clamped = clampChartRange(range, total)
+  const startIndex = Math.max(0, Math.min(Math.floor(clamped.startIndex), total - 1))
+  const endIndex = Math.max(startIndex, Math.min(Math.ceil(clamped.endIndex), total - 1))
   return { startIndex, endIndex }
 }
 
-function chartRangeFromBrush(range: BrushRange, current: ChartRange, total: number): ChartRange {
-  return clampChartRange(
-    {
-      startIndex: range.startIndex ?? current.startIndex,
-      endIndex: range.endIndex ?? current.endIndex,
-    },
-    total,
-  )
+function clampRatio(value: number) {
+  return Math.max(0, Math.min(value, 1))
 }
 
-function zoomChartRange(range: ChartRange, total: number, direction: 'in' | 'out'): ChartRange {
-  if (total <= 1) return fullChartRange(total)
+function clampChartWheelZoomPower(value: number) {
+  return Math.max(-maxChartWheelZoomPower, Math.min(value, maxChartWheelZoomPower))
+}
+
+function zoomChartRangeAtRatio(range: ChartRange, total: number, zoomPower: number, anchorRatio: number): ChartRange {
+  if (total <= 1 || !Number.isFinite(zoomPower) || zoomPower === 0) return clampChartRange(range, total)
   const current = clampChartRange(range, total)
   const span = current.endIndex - current.startIndex + 1
   const minimumSpan = Math.min(minZoomWindow, total)
-  const nextSpan =
-    direction === 'in'
-      ? Math.max(minimumSpan, Math.floor(span * 0.62))
-      : Math.min(total, Math.ceil(span * 1.62))
-  const center = (current.startIndex + current.endIndex) / 2
-  const startIndex = Math.round(center - (nextSpan - 1) / 2)
+  const ratio = clampRatio(anchorRatio)
+  const scale = 2 ** clampChartWheelZoomPower(zoomPower)
+  const nextSpan = Math.max(minimumSpan, Math.min(total, span / scale))
+
+  const anchorIndex = current.startIndex + (span - 1) * ratio
+  const startIndex = anchorIndex - (nextSpan - 1) * ratio
   return clampChartRange({ startIndex, endIndex: startIndex + nextSpan - 1 }, total)
+}
+
+function zoomChartRange(range: ChartRange, total: number, direction: 'in' | 'out'): ChartRange {
+  return zoomChartRangeAtRatio(range, total, direction === 'in' ? 0.7 : -0.7, 0.5)
 }
 
 function panChartRange(range: ChartRange, total: number, direction: 'left' | 'right'): ChartRange {
   if (total <= 1) return fullChartRange(total)
   const current = clampChartRange(range, total)
   const span = current.endIndex - current.startIndex + 1
-  const offset = Math.max(1, Math.round(span * 0.45)) * (direction === 'left' ? -1 : 1)
+  const offset = Math.max(1, span * 0.45) * (direction === 'left' ? -1 : 1)
   return clampChartRange({ startIndex: current.startIndex + offset, endIndex: current.endIndex + offset }, total)
 }
 
 function isFullChartRange(range: ChartRange, total: number) {
-  return total <= 1 || (range.startIndex <= 0 && range.endIndex >= total - 1)
+  const clamped = clampChartRange(range, total)
+  return total <= 1 || (clamped.startIndex <= 0.001 && clamped.endIndex >= total - 1.001)
 }
 
 function formatShortDate(value: string | undefined) {
@@ -346,9 +354,10 @@ function ChartZoomToolbar({
 }) {
   const total = data.length
   const clampedRange = clampChartRange(range, total)
-  const span = total ? clampedRange.endIndex - clampedRange.startIndex + 1 : 0
+  const { startIndex: startDataIndex, endIndex: endDataIndex } = chartRangeDataBounds(clampedRange, total)
+  const span = total ? endDataIndex - startDataIndex + 1 : 0
   const rangeLabel = total
-    ? `${formatShortDate(data[clampedRange.startIndex]?.date)} - ${formatShortDate(data[clampedRange.endIndex]?.date)}`
+    ? `${formatShortDate(data[startDataIndex]?.date)} - ${formatShortDate(data[endDataIndex]?.date)}`
     : 'No range'
 
   return (
@@ -434,9 +443,9 @@ function App() {
   const [strategyChartRange, setStrategyChartRange] = useState<ChartRange>(() =>
     fullChartRange(defaultSelectedBacktest?.curve.length ?? 0),
   )
-  const [dataLabel, setDataLabel] = useState(`${researchStrategyRegistry.length} research strategies loaded`)
+  const [dataLabel, setDataLabel] = useState(activeStrategyLabel())
   const [importLog, setImportLog] = useState(
-    `Tracked real data is available under ${realDataCatalog.defaultDataRoot}; ${researchStrategyRegistry.length} research strategies are loaded from strategy-test artifacts.`,
+    `Tracked real data is available under ${realDataCatalog.defaultDataRoot}; ${activeStrategyLabel()} from vetted strategy artifacts.`,
   )
   const [githubStatus, setGithubStatus] = useState<GithubStatus | null>(null)
   const [githubError, setGithubError] = useState('')
@@ -539,34 +548,48 @@ function App() {
   const latestMarket = market.at(-1)
   const latestPoint = selectedBacktest?.curve.at(-1) ?? joinedRows.at(-1)
   const hasLabData = weather.length > 0 || market.length > 0
-  const chartData: DashboardChartPoint[] = selectedBacktest
-    ? selectedBacktest.curve.map((point) => ({
-        ...point,
-        gasReturnPct: point.gasReturnPct,
-        demandScore: point.demandScore,
-        storageBcf: point.storageBcf,
-        closeScaled: point.closeScaled,
-        benchmarkPct: benchmarkByDate.get(point.date) ?? null,
-        indexBenchmarkPct: indexBenchmarkByDate.get(point.date) ?? null,
-      }))
-    : joinedRows.map((point) => ({
-        date: point.date,
-        equity: null,
-        equityPct: null,
-        dailyPnlPct: null,
-        drawdownPct: null,
-        close: point.close,
-        weatherSurprise: point.weatherSurprise,
-        hddError: point.hddError,
-        position: null,
-        signal: null,
-        closeScaled: point.close * 1000,
-        gasReturnPct: point.dailyReturn * 100,
-        demandScore: point.demandScore,
-        storageBcf: point.storageBcf,
-        benchmarkPct: benchmarkByDate.get(point.date) ?? null,
-        indexBenchmarkPct: indexBenchmarkByDate.get(point.date) ?? null,
-      }))
+  const chartData: DashboardChartPoint[] = useMemo(
+    () =>
+      selectedBacktest
+        ? selectedBacktest.curve.map((point, chartIndex) => ({
+            ...point,
+            chartIndex,
+            gasReturnPct: point.gasReturnPct,
+            demandScore: point.demandScore,
+            storageBcf: point.storageBcf,
+            closeScaled: point.closeScaled,
+            benchmarkPct: benchmarkByDate.get(point.date) ?? null,
+            indexBenchmarkPct: indexBenchmarkByDate.get(point.date) ?? null,
+          }))
+        : joinedRows.map((point, chartIndex) => ({
+            chartIndex,
+            date: point.date,
+            equity: null,
+            equityPct: null,
+            dailyPnlPct: null,
+            drawdownPct: null,
+            close: point.close,
+            weatherSurprise: point.weatherSurprise,
+            hddError: point.hddError,
+            position: null,
+            signal: null,
+            closeScaled: point.close * 1000,
+            gasReturnPct: point.dailyReturn * 100,
+            demandScore: point.demandScore,
+            storageBcf: point.storageBcf,
+            benchmarkPct: benchmarkByDate.get(point.date) ?? null,
+            indexBenchmarkPct: indexBenchmarkByDate.get(point.date) ?? null,
+          })),
+    [benchmarkByDate, indexBenchmarkByDate, joinedRows, selectedBacktest],
+  )
+  const clampedOverviewChartRange = useMemo(
+    () => clampChartRange(overviewChartRange, chartData.length),
+    [chartData.length, overviewChartRange],
+  )
+  const clampedStrategyChartRange = useMemo(
+    () => clampChartRange(strategyChartRange, chartData.length),
+    [chartData.length, strategyChartRange],
+  )
   const scatterData = joinedRows.length
     ? joinedRows.map((point) => ({
         date: point.date,
@@ -597,20 +620,153 @@ function App() {
     sharpe: result.metrics.sharpe,
     color: result.strategy.color,
   }))
-  const secondaryChartSeries = selectedBacktest
+  const secondaryChartSeries: { dataKey: Extract<keyof DashboardChartPoint, string>; name: string } = selectedBacktest
     ? { dataKey: 'gasReturnPct', name: 'Trade return %' }
     : { dataKey: 'closeScaled', name: 'Gas px x1000' }
+  const overviewChartSeries = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
+    () => [
+      {
+        axis: 'left',
+        color: '#2563eb',
+        dataKey: 'equityPct',
+        fill: '#dbeafe',
+        fillOpacity: 0.62,
+        id: 'equityPct',
+        label: 'Equity %',
+        mode: 'area',
+        strokeWidth: 2,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'left',
+        color: '#7c3aed',
+        dashArray: '6 3',
+        dataKey: 'indexBenchmarkPct',
+        id: 'indexBenchmarkPct',
+        label: `${indexBenchmarkLabel} %`,
+        strokeWidth: 2,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'left',
+        color: '#475569',
+        dashArray: '5 4',
+        dataKey: 'benchmarkPct',
+        id: 'benchmarkPct',
+        label: `${benchmarkLabel} %`,
+        strokeWidth: 2,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'right',
+        color: '#f97316',
+        dataKey: secondaryChartSeries.dataKey,
+        id: 'secondary',
+        label: secondaryChartSeries.name,
+        strokeWidth: 2,
+        valueFormatter: selectedBacktest ? (value) => signedPercent(roundNumber(value)) : (value) => formatNumber(value),
+      },
+      {
+        axis: 'left',
+        color: '#e11d48',
+        dataKey: 'drawdownPct',
+        id: 'drawdownPct',
+        label: 'Drawdown %',
+        strokeWidth: 2,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+    ],
+    [secondaryChartSeries.dataKey, secondaryChartSeries.name, selectedBacktest],
+  )
   const selectedBenchmarkReturnPct = relativeBenchmarkReturn(chartData.map((point) => point.benchmarkPct))
   const selectedBenchmarkEdgePct = selectedBacktest ? selectedBacktest.metrics.totalReturnPct - selectedBenchmarkReturnPct : 0
   const selectedIndexBenchmarkReturnPct = relativeBenchmarkReturn(chartData.map((point) => point.indexBenchmarkPct))
   const selectedIndexBenchmarkEdgePct = selectedBacktest
     ? selectedBacktest.metrics.totalReturnPct - selectedIndexBenchmarkReturnPct
     : 0
-  const visibleStrategyChartData = chartData.slice(
-    strategyChartRange.startIndex,
-    Math.min(strategyChartRange.endIndex + 1, chartData.length),
-  )
+  const visibleStrategyBounds = chartRangeDataBounds(clampedStrategyChartRange, chartData.length)
+  const visibleStrategyChartData = chartData.slice(visibleStrategyBounds.startIndex, visibleStrategyBounds.endIndex + 1)
   const showStrategyDetailLines = visibleStrategyChartData.length <= strategyDetailLineMaxPoints
+  const strategyDetailChartSeries = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
+    () => [
+      {
+        axis: 'left',
+        color: selectedBacktest?.strategy.color ?? '#0891b2',
+        dataKey: 'gasReturnPct',
+        fillOpacity: 0.2,
+        id: 'gasReturnPct',
+        label: 'Trade return %',
+        mode: 'bar',
+        strokeOpacity: 0.3,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'left',
+        color: '#2563eb',
+        dataKey: 'equityPct',
+        fill: '#dbeafe',
+        fillOpacity: 0.62,
+        id: 'equityPct',
+        label: 'Equity %',
+        mode: 'area',
+        strokeWidth: 2.4,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'left',
+        color: '#e11d48',
+        dataKey: 'drawdownPct',
+        id: 'drawdownPct',
+        label: 'Drawdown %',
+        strokeWidth: 2,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'left',
+        color: '#7c3aed',
+        dashArray: '6 3',
+        dataKey: 'indexBenchmarkPct',
+        id: 'indexBenchmarkPct',
+        label: `${indexBenchmarkLabel} %`,
+        strokeWidth: 2,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'left',
+        color: '#475569',
+        dashArray: '5 4',
+        dataKey: 'benchmarkPct',
+        id: 'benchmarkPct',
+        label: `${benchmarkLabel} %`,
+        strokeWidth: 2,
+        valueFormatter: (value) => signedPercent(roundNumber(value)),
+      },
+      {
+        axis: 'right',
+        color: '#0f766e',
+        dataKey: 'position',
+        id: 'position',
+        label: 'Position',
+        mode: 'step',
+        strokeWidth: 2,
+        valueFormatter: (value) => formatNumber(value),
+        visible: showStrategyDetailLines,
+      },
+      {
+        axis: 'right',
+        color: '#f97316',
+        dashArray: '4 3',
+        dataKey: 'signal',
+        id: 'signal',
+        label: 'Signal',
+        mode: 'step',
+        strokeWidth: 2,
+        valueFormatter: (value) => formatNumber(value),
+        visible: showStrategyDetailLines,
+      },
+    ],
+    [selectedBacktest?.strategy.color, showStrategyDetailLines],
+  )
   const selectedRangeStats = selectedBacktest
     ? (() => {
         const tradeReturns = visibleStrategyChartData.map((point) => point.gasReturnPct).filter(Number.isFinite)
@@ -691,14 +847,6 @@ function App() {
     setStrategyChartRange(nextRange)
   }
 
-  const handleOverviewBrushChange = (range: BrushRange) => {
-    setOverviewChartRange((current) => chartRangeFromBrush(range, current, chartData.length))
-  }
-
-  const handleStrategyBrushChange = (range: BrushRange) => {
-    setStrategyChartRange((current) => chartRangeFromBrush(range, current, chartData.length))
-  }
-
   const zoomOverviewChart = (direction: 'in' | 'out') => {
     setOverviewChartRange((current) => zoomChartRange(current, chartData.length, direction))
   }
@@ -713,6 +861,14 @@ function App() {
 
   const panStrategyChart = (direction: 'left' | 'right') => {
     setStrategyChartRange((current) => panChartRange(current, chartData.length, direction))
+  }
+
+  const resetOverviewChart = () => {
+    setOverviewChartRange(fullChartRange(chartData.length))
+  }
+
+  const resetStrategyChart = () => {
+    setStrategyChartRange(fullChartRange(chartData.length))
   }
 
   useEffect(() => {
@@ -791,7 +947,7 @@ function App() {
   const clearLabData = () => {
     setWeather([])
     setMarket([])
-    setDataLabel(`${researchStrategyRegistry.length} research strategies loaded`)
+    setDataLabel(activeStrategyLabel())
     setImportLog('Cleared imported session rows. Shared strategy and data files were not changed.')
   }
 
@@ -927,10 +1083,16 @@ function App() {
         <section className="metric-grid" aria-label="Primary quant metrics">
           <MetricCard
             icon={TrendingUp}
-            label="Total return"
-            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.totalReturnPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.totalReturnPct) : '-'}
-            detail={selectedBacktest ? `${selectedBacktest.strategy.name} on ${selectedBacktest.metrics.tradeCount} trades` : topResearchStrategy ? `${topResearchStrategy.name} research baseline` : 'No research strategies loaded'}
-            tone={selectedBacktest ? classForSigned(selectedBacktest.metrics.totalReturnPct) : topResearchStrategy ? classForSigned(topResearchStrategy.metrics.totalReturnPct) : 'warning'}
+            label="Average yearly return"
+            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.cagrPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.cagrPct) : '-'}
+            detail={
+              selectedBacktest
+                ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} total from ${formatShortDate(selectedBacktest.researchMetrics.firstEntry)} to ${formatShortDate(selectedBacktest.researchMetrics.lastExit)}`
+                : topResearchStrategy
+                  ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} total research baseline`
+                  : 'No research strategies loaded'
+            }
+            tone={selectedBacktest ? classForSigned(selectedBacktest.metrics.cagrPct) : topResearchStrategy ? classForSigned(topResearchStrategy.metrics.cagrPct) : 'warning'}
           />
           <MetricCard
             icon={LineChartIcon}
@@ -966,9 +1128,9 @@ function App() {
             }
             detail={
               selectedBacktest
-                ? `${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% vol`
+                ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} total, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% vol`
                 : topResearchStrategy
-                  ? `${signedPercent(topResearchStrategy.metrics.cagrPct)} CAGR in event-row optimizer`
+                  ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} total in event-row optimizer`
                   : 'Ready for real strategy metrics'
             }
             tone={(selectedBacktest?.metrics.sharpe ?? topResearchStrategy?.metrics.sharpe ?? 0) > 1 ? 'positive' : 'neutral'}
@@ -999,92 +1161,24 @@ function App() {
                   action={
                     <ChartZoomToolbar
                       data={chartData}
-                      range={overviewChartRange}
+                      range={clampedOverviewChartRange}
                       onZoomIn={() => zoomOverviewChart('in')}
                       onZoomOut={() => zoomOverviewChart('out')}
                       onPanLeft={() => panOverviewChart('left')}
                       onPanRight={() => panOverviewChart('right')}
-                      onReset={() => setOverviewChartRange(fullChartRange(chartData.length))}
+                      onReset={resetOverviewChart}
                     />
                   }
                 />
                 <div className="chart-frame tall">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={zoomableChartMargin}>
-                      <CartesianGrid stroke="#e7ebef" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" minTickGap={30} tick={{ fontSize: 12 }} tickFormatter={formatShortDate} />
-                      <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
-                      <ReferenceLine yAxisId="left" y={0} stroke="#9aa3af" />
-                      <Tooltip contentStyle={tooltipStyle} />
-                      <Legend />
-                      <Area
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="equityPct"
-                        name="Equity %"
-                        stroke="#2563eb"
-                        fill="#dbeafe"
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="indexBenchmarkPct"
-                        name={`${indexBenchmarkLabel} %`}
-                        stroke="#7c3aed"
-                        dot={false}
-                        strokeWidth={2}
-                        strokeDasharray="6 3"
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="benchmarkPct"
-                        name={`${benchmarkLabel} %`}
-                        stroke="#475569"
-                        dot={false}
-                        strokeWidth={2}
-                        strokeDasharray="5 4"
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey={secondaryChartSeries.dataKey}
-                        name={secondaryChartSeries.name}
-                        stroke="#f97316"
-                        dot={false}
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="drawdownPct"
-                        name="Drawdown %"
-                        stroke="#e11d48"
-                        dot={false}
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      />
-                      {chartData.length > 1 && (
-                        <Brush
-                          dataKey="date"
-                          height={24}
-                          travellerWidth={9}
-                          stroke="#2563eb"
-                          fill="#f8fafc"
-                          startIndex={overviewChartRange.startIndex}
-                          endIndex={overviewChartRange.endIndex}
-                          tickFormatter={formatShortDate}
-                          onChange={handleOverviewBrushChange}
-                        />
-                      )}
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  <SmoothZoomChart
+                    data={chartData}
+                    formatDate={formatShortDate}
+                    minWindow={minZoomWindow}
+                    onRangeChange={setOverviewChartRange}
+                    range={clampedOverviewChartRange}
+                    series={overviewChartSeries}
+                  />
                   {!chartData.length && (
                     <ChartEmptyOverlay
                       title="No graph data yet"
@@ -1291,12 +1385,12 @@ function App() {
                       </span>
                       <ChartZoomToolbar
                         data={chartData}
-                        range={strategyChartRange}
+                        range={clampedStrategyChartRange}
                         onZoomIn={() => zoomStrategyChart('in')}
                         onZoomOut={() => zoomStrategyChart('out')}
                         onPanLeft={() => panStrategyChart('left')}
                         onPanRight={() => panStrategyChart('right')}
-                        onReset={() => setStrategyChartRange(fullChartRange(chartData.length))}
+                        onReset={resetStrategyChart}
                       />
                     </div>
                   }
@@ -1305,110 +1399,14 @@ function App() {
                   {selectedBacktest?.strategy.thesis ?? 'No research strategy is active.'}
                 </p>
                 <div className="chart-frame tall">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={zoomableChartMargin}>
-                      <CartesianGrid stroke="#e7ebef" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" minTickGap={30} tick={{ fontSize: 12 }} tickFormatter={formatShortDate} />
-                      <YAxis yAxisId="percent" tick={{ fontSize: 12 }} />
-                      <YAxis yAxisId="position" orientation="right" domain={[-1.15, 1.15]} tick={{ fontSize: 12 }} hide={!showStrategyDetailLines} />
-                      <ReferenceLine yAxisId="percent" y={0} stroke="#9aa3af" />
-                      <Tooltip contentStyle={tooltipStyle} />
-                      <Legend />
-                      <Bar
-                        yAxisId="percent"
-                        dataKey="gasReturnPct"
-                        name="Trade return %"
-                        fill={selectedBacktest?.strategy.color ?? '#0891b2'}
-                        fillOpacity={0.2}
-                        stroke={selectedBacktest?.strategy.color ?? '#0891b2'}
-                        strokeOpacity={0.3}
-                        maxBarSize={10}
-                        isAnimationActive={false}
-                      />
-                      <Area
-                        yAxisId="percent"
-                        type="monotone"
-                        dataKey="equityPct"
-                        name="Equity %"
-                        stroke="#2563eb"
-                        fill="#dbeafe"
-                        fillOpacity={0.62}
-                        strokeWidth={2.4}
-                        activeDot={{ r: 5 }}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        yAxisId="percent"
-                        type="monotone"
-                        dataKey="drawdownPct"
-                        name="Drawdown %"
-                        stroke="#e11d48"
-                        dot={false}
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        yAxisId="percent"
-                        type="monotone"
-                        dataKey="indexBenchmarkPct"
-                        name={`${indexBenchmarkLabel} %`}
-                        stroke="#7c3aed"
-                        dot={false}
-                        strokeWidth={2}
-                        strokeDasharray="6 3"
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        yAxisId="percent"
-                        type="monotone"
-                        dataKey="benchmarkPct"
-                        name={`${benchmarkLabel} %`}
-                        stroke="#475569"
-                        dot={false}
-                        strokeWidth={2}
-                        strokeDasharray="5 4"
-                        isAnimationActive={false}
-                      />
-                      {showStrategyDetailLines && (
-                        <>
-                          <Line
-                            yAxisId="position"
-                            type="stepAfter"
-                            dataKey="position"
-                            name="Position"
-                            stroke="#0f766e"
-                            dot={false}
-                            strokeWidth={2}
-                            isAnimationActive={false}
-                          />
-                          <Line
-                            yAxisId="position"
-                            type="stepAfter"
-                            dataKey="signal"
-                            name="Signal"
-                            stroke="#f97316"
-                            dot={false}
-                            strokeWidth={2}
-                            strokeDasharray="4 3"
-                            isAnimationActive={false}
-                          />
-                        </>
-                      )}
-                      {chartData.length > 1 && (
-                        <Brush
-                          dataKey="date"
-                          height={24}
-                          travellerWidth={9}
-                          stroke="#2563eb"
-                          fill="#f8fafc"
-                          startIndex={strategyChartRange.startIndex}
-                          endIndex={strategyChartRange.endIndex}
-                          tickFormatter={formatShortDate}
-                          onChange={handleStrategyBrushChange}
-                        />
-                      )}
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  <SmoothZoomChart
+                    data={chartData}
+                    formatDate={formatShortDate}
+                    minWindow={minZoomWindow}
+                    onRangeChange={setStrategyChartRange}
+                    range={clampedStrategyChartRange}
+                    series={strategyDetailChartSeries}
+                  />
                   {!selectedBacktest && (
                     <ChartEmptyOverlay
                       title="No research strategy selected"
@@ -1715,7 +1713,7 @@ function App() {
                     <dd>{joinedRows.length}</dd>
                   </div>
                   <div>
-                    <dt>Research strategies</dt>
+                    <dt>Active strategies</dt>
                     <dd>{researchStrategyRegistry.length}</dd>
                   </div>
                   <div>

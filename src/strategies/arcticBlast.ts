@@ -1,17 +1,13 @@
 import Papa from 'papaparse'
 import type { ExecutionInstrumentCode, StrategySignalIntent, TradeDirection } from '../execution'
 import type { BacktestMetrics, EquityPoint } from '../types'
-import summaryCsv from '../../data/qore/research/strategy-tests/arctic-blast-strategy-baselines.csv?raw'
-import strictTheoryElasticNetTradesCsv from '../../data/qore/research/strategy-tests/strict-theory-elastic-net-expected-return-trades.csv?raw'
-import strictTheoryGradientBoostedTreesTradesCsv from '../../data/qore/research/strategy-tests/strict-theory-gradient-boosted-trees-trades.csv?raw'
-import strictTheoryMetaLabelTradesCsv from '../../data/qore/research/strategy-tests/strict-theory-meta-label-trade-filter-trades.csv?raw'
-import strictTheoryLogisticTradesCsv from '../../data/qore/research/strategy-tests/strict-theory-regularized-logistic-regression-trades.csv?raw'
-import strictTheoryRuleTradesCsv from '../../data/qore/research/strategy-tests/strict-theory-rule-arctic-threshold-trades.csv?raw'
+import weatherHybridSummaryJson from '../../data/qore/research/strategy-agent-runs/weather-hybrid-rotation/run-summary.json?raw'
+import weatherHybridTradesCsv from '../../data/qore/research/strategy-agent-runs/weather-hybrid-rotation/selected-trades.csv?raw'
 import volatilityMeanReversionSummaryJson from '../../data/qore/research/strategy-agent-runs/volatility-mean-reversion/run-summary.json?raw'
 import volatilityMeanReversionTradesCsv from '../../data/qore/research/strategy-agent-runs/volatility-mean-reversion/selected-trades.csv?raw'
 
-export type ArcticBlastStrategyFamily = 'rule' | 'logistic' | 'elastic-net' | 'gradient-boosted-trees' | 'meta-label' | 'volatility'
-export type ArcticBlastStrategyVariant = 'strict-theory' | 'market-technical'
+export type ArcticBlastStrategyFamily = 'volatility' | 'weather-hybrid'
+export type ArcticBlastStrategyVariant = 'market-technical' | 'hybrid-rotation'
 
 export type StrategyPromotionStatus = 'research-diagnostic' | 'research-baseline' | 'paper-candidate' | 'needs-more-validation'
 
@@ -30,8 +26,6 @@ export type ArcticBlastStrategyMetrics = {
   lastExit: string
 }
 
-const minTradesForPrimaryRank = 8
-
 export type ArcticBlastResearchStrategy = {
   id: string
   name: string
@@ -46,7 +40,7 @@ export type ArcticBlastResearchStrategy = {
   color: string
   liveRoutingEnabled: false
   sourceUniverse: string[]
-  timingConvention: 'close-after-issue-v1' | 'next-session-open-close-v1'
+  timingConvention: 'close-after-issue-v1' | 'next-session-open-close-v1' | 'daily-weather-rotation-v1'
   returnColumn: 'returnPctEntryCloseToTarget' | 'netReturnPct'
   universe: string
   theoryAlignment: string
@@ -66,28 +60,6 @@ export type ArcticBlastSignalInput = {
   expectedReturnPct?: number
   maxHoldingDays?: number
   notes?: string[]
-}
-
-type BaselineRow = {
-  strategyId: string
-  variant: ArcticBlastStrategyVariant
-  label: string
-  universe: string
-  theoryAlignment: string
-  samplePolicy: string
-  totalReturnPct: string
-  cagrPct: string
-  sharpe: string
-  sortino: string
-  maxDrawdownPct: string
-  winRatePct: string
-  profitFactor: string
-  tradeCount: string
-  averageTradeReturnPct: string
-  averageHoldDays: string
-  firstEntry: string
-  lastExit: string
-  tradeFile: string
 }
 
 type VolatilitySummaryMetrics = {
@@ -133,6 +105,83 @@ type VolatilitySummary = {
   }
 }
 
+type HybridSummaryMetrics = {
+  totalReturnPct: number
+  cagrPct: number
+  annualVolPct: number
+  sharpe: number
+  sortino: number
+  maxDrawdownPct: number
+  calmar: number
+  winRatePct: number
+  profitFactor: number
+  tradeCount: number
+  exposurePct: number
+  turnover: number
+  var95Pct: number
+  cvar95Pct: number
+  averageDailyPnlPct: number
+  firstEntry: string
+  lastExit: string
+  averageHoldDays: number
+}
+
+type HybridSummary = {
+  strategyId: string
+  selected: {
+    candidateId: string
+    architectureLabel: string
+    sourceSetLabel: string
+    sourceIds: string[]
+    minGroups: number
+    minFamilies: number
+    sizingMode: string
+    anomalyThreshold: number
+    coverageThreshold: number
+    minConfidence: number
+    weatherFraction: number
+    reversionFraction: number
+    followHoldDays: number
+    reversionHoldDays: number
+    minRealizedMovePct: number
+    useFollowLeg: boolean
+    useReversionLeg: boolean
+    allMetrics: HybridSummaryMetrics
+    trainMetrics: HybridSummaryMetrics
+    validationMetrics: HybridSummaryMetrics
+    holdoutMetrics: HybridSummaryMetrics
+    splitEdges: {
+      train: number
+      validation: number
+      holdout: number
+      all: number
+    }
+    indexMetrics: {
+      all: HybridSummaryMetrics
+      train: HybridSummaryMetrics
+      validation: HybridSummaryMetrics
+      holdout: HybridSummaryMetrics
+    }
+  }
+  contract: {
+    trainEnd: string
+    validationEnd: string
+    holdoutStart: string
+    roundTripCostPct: number
+    fallback: string
+    selectionPolicy: string
+    signalTiming: string
+    reversionTiming: string
+  }
+  data: {
+    marketStartDate: string
+    marketEndDate: string
+  }
+  outputFiles: {
+    selectedTrades: string
+  }
+}
+
 export type ArcticBlastTrade = {
   strategyId: string
   variant: ArcticBlastStrategyVariant
@@ -153,6 +202,14 @@ export type ArcticBlastTrade = {
   grossReturnPct: number
   netReturnPct: number
   rank: number
+  confidence?: number
+  drawdownPct?: number
+  equity?: number
+  equityPct?: number
+  indexFraction?: number
+  indexReturnPct?: number
+  ungPosition?: number
+  ungReturnPct?: number
 }
 
 export type ArcticBlastEquityPoint = EquityPoint & {
@@ -176,31 +233,14 @@ export type ArcticBlastResearchBacktestResult = {
 
 const initialCapital = 100000
 
-const tradeCsvByStrategyId: Record<string, string> = {
-  'strict-theory-rule-arctic-threshold': strictTheoryRuleTradesCsv,
-  'strict-theory-regularized-logistic-regression': strictTheoryLogisticTradesCsv,
-  'strict-theory-elastic-net-expected-return': strictTheoryElasticNetTradesCsv,
-  'strict-theory-gradient-boosted-trees': strictTheoryGradientBoostedTreesTradesCsv,
-  'strict-theory-meta-label-trade-filter': strictTheoryMetaLabelTradesCsv,
-}
-
-const strategyColors = [
-  '#2563eb',
-  '#0f766e',
-  '#f97316',
-  '#7c3aed',
-  '#dc2626',
-  '#0891b2',
-  '#65a30d',
-  '#b45309',
-  '#be185d',
-  '#475569',
-]
+const volatilityStrategyColor = '#0891b2'
+const weatherHybridStrategyColor = '#7c3aed'
 
 export const arcticBlastPromotionGates = [
-  'Pass no-lookahead timing review using returnPctEntryCloseToTarget only.',
-  'Report cold-long and warm-short legs separately before promotion.',
-  'Re-run after each added winter or forecast-calendar backfill.',
+  'Keep next-session open-to-close entries strictly after the signal-date close.',
+  'Select thresholds using train data only; holdout rows stay report-only.',
+  'Track long-after-down-shock and short-after-up-shock legs separately.',
+  'Track weather-hybrid return against the index basket, not just absolute return.',
   'Prove a non-overlapping paper ledger before any broker adapter exists.',
   'Separate ETF proxy results from futures-grade Henry Hub contract results.',
   'Require human approval for promotion from research-baseline to paper-candidate.',
@@ -245,66 +285,10 @@ function daysBetween(startDate: string, endDate: string) {
   return Math.max(1, (Date.parse(endDate) - Date.parse(startDate)) / 86400000)
 }
 
-function familyFromId(strategyId: string): ArcticBlastStrategyFamily {
-  if (strategyId.includes('volatility-mean-reversion')) return 'volatility'
-  if (strategyId.includes('regularized-logistic')) return 'logistic'
-  if (strategyId.includes('elastic-net')) return 'elastic-net'
-  if (strategyId.includes('gradient-boosted-trees')) return 'gradient-boosted-trees'
-  if (strategyId.includes('meta-label')) return 'meta-label'
-  return 'rule'
-}
-
 function riskLevelFor(metrics: ArcticBlastStrategyMetrics): ArcticBlastResearchStrategy['riskLevel'] {
   if (metrics.maxDrawdownPct <= -25) return 'High'
   if (metrics.maxDrawdownPct <= -12) return 'Medium'
   return 'Low'
-}
-
-function promotionStatusFor(metrics: ArcticBlastStrategyMetrics): StrategyPromotionStatus {
-  if (metrics.tradeCount < minTradesForPrimaryRank) return 'research-diagnostic'
-  if (metrics.maxDrawdownPct <= -20 || metrics.sharpe < 0.5 || metrics.profitFactor < 1.25) return 'research-diagnostic'
-  return 'research-baseline'
-}
-
-function parseMetrics(row: BaselineRow): ArcticBlastStrategyMetrics {
-  return {
-    totalReturnPct: numberFrom(row.totalReturnPct),
-    cagrPct: numberFrom(row.cagrPct),
-    sharpe: numberFrom(row.sharpe),
-    sortino: numberFrom(row.sortino),
-    maxDrawdownPct: numberFrom(row.maxDrawdownPct),
-    winRatePct: numberFrom(row.winRatePct),
-    profitFactor: numberFrom(row.profitFactor),
-    tradeCount: numberFrom(row.tradeCount),
-    averageTradeReturnPct: numberFrom(row.averageTradeReturnPct),
-    averageHoldDays: numberFrom(row.averageHoldDays),
-    firstEntry: row.firstEntry,
-    lastExit: row.lastExit,
-  }
-}
-
-function parseTrades(csv: string): ArcticBlastTrade[] {
-  return parseCsv<Record<string, string>>(csv).map((row) => ({
-    strategyId: row.strategyId,
-    variant: row.variant as ArcticBlastStrategyVariant,
-    issueDate: row.issueDate,
-    targetDate: row.targetDate,
-    entryTradeDate: row.entryTradeDate,
-    targetTradeDate: row.targetTradeDate,
-    sourceId: row.sourceId,
-    windowId: row.windowId,
-    thesisKind: row.thesisKind,
-    leadDays: numberFrom(row.leadDays),
-    direction: row.direction === 'short' ? 'short' : 'long',
-    weightedAnomalyF: numberFrom(row.weightedAnomalyF),
-    coveragePct: numberFrom(row.coveragePct),
-    coldCoveragePct: numberFrom(row.coldCoveragePct),
-    warmCoveragePct: numberFrom(row.warmCoveragePct),
-    extremeCount: numberFrom(row.extremeCount),
-    grossReturnPct: numberFrom(row.grossReturnPct),
-    netReturnPct: numberFrom(row.netReturnPct),
-    rank: numberFrom(row.rank),
-  }))
 }
 
 function parseVolatilityTrades(csv: string): ArcticBlastTrade[] {
@@ -331,46 +315,40 @@ function parseVolatilityTrades(csv: string): ArcticBlastTrade[] {
   }))
 }
 
-function sourceUniverseFor(trades: ArcticBlastTrade[]) {
-  return [...new Set(trades.map((trade) => trade.sourceId))].sort()
+function parseWeatherHybridTrades(csv: string): ArcticBlastTrade[] {
+  return parseCsv<Record<string, string>>(csv).map((row) => ({
+    strategyId: row.strategyId,
+    variant: 'hybrid-rotation',
+    issueDate: row.issueDate,
+    targetDate: row.targetDate,
+    entryTradeDate: row.entryTradeDate,
+    targetTradeDate: row.targetTradeDate || row.exitTradeDate,
+    sourceId: row.sourceId,
+    windowId: row.windowId,
+    thesisKind: row.thesisKind,
+    leadDays: numberFrom(row.leadDays),
+    direction: row.direction === 'short' ? 'short' : 'long',
+    weightedAnomalyF: numberFrom(row.weightedAnomalyF),
+    coveragePct: numberFrom(row.coveragePct),
+    coldCoveragePct: numberFrom(row.coldCoveragePct),
+    warmCoveragePct: numberFrom(row.warmCoveragePct),
+    extremeCount: numberFrom(row.extremeCount),
+    grossReturnPct: numberFrom(row.grossReturnPct),
+    netReturnPct: numberFrom(row.netReturnPct),
+    rank: numberFrom(row.rank),
+    confidence: numberFrom(row.confidence),
+    drawdownPct: numberFrom(row.drawdownPct),
+    equity: numberFrom(row.equity),
+    equityPct: numberFrom(row.equityPct),
+    indexFraction: numberFrom(row.indexFraction),
+    indexReturnPct: numberFrom(row.indexReturnPct),
+    ungPosition: numberFrom(row.ungPosition),
+    ungReturnPct: numberFrom(row.ungReturnPct),
+  }))
 }
 
-function createStrategy(row: BaselineRow, index: number, trades: ArcticBlastTrade[]): ArcticBlastResearchStrategy {
-  const metrics = parseMetrics(row)
-  const promotionStatus = promotionStatusFor(metrics)
-  return {
-    id: row.strategyId,
-    name: row.label,
-    family: familyFromId(row.strategyId),
-    variant: row.variant,
-    instrument: 'UNG',
-    desk: 'Winter Weather Demand strict theory',
-    thesis: `${row.universe} ${row.samplePolicy}`,
-    directionPolicy:
-      'Theory-fixed: long UNG when independently confirmed winter 7-10 day cold raises heating demand; short UNG when independently confirmed winter 7-10 day warmth weakens heating demand.',
-    promotionStatus,
-    riskLevel: riskLevelFor(metrics),
-    color: strategyColors[index % strategyColors.length],
-    liveRoutingEnabled: false,
-    sourceUniverse: sourceUniverseFor(trades),
-    timingConvention: 'close-after-issue-v1',
-    returnColumn: 'returnPctEntryCloseToTarget',
-    universe: row.universe,
-    theoryAlignment: row.theoryAlignment,
-    samplePolicy: row.samplePolicy,
-    tradeFile: row.tradeFile,
-    params: {
-      variant: row.variant,
-      family: familyFromId(row.strategyId),
-      theoryAlignment: row.theoryAlignment,
-      sourceUniverse: sourceUniverseFor(trades),
-    },
-    metrics,
-    caveat:
-      promotionStatus === 'research-diagnostic'
-        ? 'Research diagnostic only; requires stronger side-split and sample-size validation before promotion.'
-        : row.samplePolicy,
-  }
+function sourceUniverseFor(trades: ArcticBlastTrade[]) {
+  return [...new Set(trades.map((trade) => trade.sourceId))].sort()
 }
 
 function createVolatilityMetrics(summary: VolatilitySummary): ArcticBlastStrategyMetrics {
@@ -391,7 +369,7 @@ function createVolatilityMetrics(summary: VolatilitySummary): ArcticBlastStrateg
   }
 }
 
-function createVolatilityStrategy(summary: VolatilitySummary, index: number, trades: ArcticBlastTrade[]): ArcticBlastResearchStrategy {
+function createVolatilityStrategy(summary: VolatilitySummary, trades: ArcticBlastTrade[]): ArcticBlastResearchStrategy {
   const metrics = createVolatilityMetrics(summary)
   const { selected, contract } = summary
   return {
@@ -407,7 +385,7 @@ function createVolatilityStrategy(summary: VolatilitySummary, index: number, tra
       'After the signal-date close, go long next-session open-to-close after a negative volatility shock and short next-session open-to-close after a positive volatility shock.',
     promotionStatus: 'research-baseline',
     riskLevel: riskLevelFor(metrics),
-    color: strategyColors[index % strategyColors.length],
+    color: volatilityStrategyColor,
     liveRoutingEnabled: false,
     sourceUniverse: sourceUniverseFor(trades),
     timingConvention: 'next-session-open-close-v1',
@@ -436,8 +414,115 @@ function createVolatilityStrategy(summary: VolatilitySummary, index: number, tra
     },
     metrics,
     caveat:
-      'Sixth research baseline only. This clears the small-sample problem, but it is a market-volatility strategy rather than a weather forecast strategy.',
+      'Active research baseline. The rejected weather-forecast variants remain archived as research evidence, but this is the only strategy loaded into the registry.',
   }
+}
+
+function createHybridMetrics(summary: HybridSummary): ArcticBlastStrategyMetrics {
+  const metrics = summary.selected.allMetrics
+  return {
+    totalReturnPct: metrics.totalReturnPct,
+    cagrPct: metrics.cagrPct,
+    sharpe: metrics.sharpe,
+    sortino: metrics.sortino,
+    maxDrawdownPct: metrics.maxDrawdownPct,
+    winRatePct: metrics.winRatePct,
+    profitFactor: metrics.profitFactor,
+    tradeCount: metrics.tradeCount,
+    averageTradeReturnPct: metrics.averageDailyPnlPct,
+    averageHoldDays: metrics.averageHoldDays,
+    firstEntry: metrics.firstEntry,
+    lastExit: metrics.lastExit,
+  }
+}
+
+function createHybridBacktestMetrics(summary: HybridSummary): BacktestMetrics {
+  const metrics = summary.selected.allMetrics
+  return {
+    totalReturnPct: metrics.totalReturnPct,
+    cagrPct: metrics.cagrPct,
+    annualVolPct: metrics.annualVolPct,
+    sharpe: metrics.sharpe,
+    sortino: metrics.sortino,
+    maxDrawdownPct: metrics.maxDrawdownPct,
+    calmar: metrics.calmar,
+    winRatePct: metrics.winRatePct,
+    profitFactor: metrics.profitFactor,
+    tradeCount: metrics.tradeCount,
+    exposurePct: metrics.exposurePct,
+    turnover: metrics.turnover,
+    var95Pct: metrics.var95Pct,
+    cvar95Pct: metrics.cvar95Pct,
+    averageDailyPnlPct: metrics.averageDailyPnlPct,
+  }
+}
+
+function createWeatherHybridStrategy(summary: HybridSummary, trades: ArcticBlastTrade[]): ArcticBlastResearchStrategy {
+  const metrics = createHybridMetrics(summary)
+  const { selected, contract } = summary
+  return {
+    id: summary.strategyId,
+    name: 'Weather Hybrid Rotation',
+    family: 'weather-hybrid',
+    variant: 'hybrid-rotation',
+    instrument: 'UNG',
+    desk: 'Winter weather rotation',
+    thesis:
+      'Capital stays in the US index basket by default, then rotates a measured UNG overlay around high-confidence 7-10 day winter cold/warm forecast windows and post-window overreaction fades.',
+    directionPolicy:
+      selected.useFollowLeg && selected.useReversionLeg
+        ? 'Trade the weather-demand direction first, then fade large realized UNG moves after the weather window.'
+        : selected.useReversionLeg
+          ? 'Use weather fear as the setup, then fade the realized UNG move after the forecast window.'
+          : 'Trade the weather-demand direction while idle capital remains in the index basket.',
+    promotionStatus: 'research-baseline',
+    riskLevel: riskLevelFor(metrics),
+    color: weatherHybridStrategyColor,
+    liveRoutingEnabled: false,
+    sourceUniverse: sourceUniverseFor(trades),
+    timingConvention: 'daily-weather-rotation-v1',
+    returnColumn: 'netReturnPct',
+    universe: `UNG and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
+    theoryAlignment:
+      'Direct Arctic Blast thesis lane: forecast-driven cold/warm demand risk plus post-window overreaction control, with index fallback when confidence is low.',
+    samplePolicy:
+      `Selected ${selected.architectureLabel} on train/validation only; train through ${contract.trainEnd}, validation through ${contract.validationEnd}, holdout from ${contract.holdoutStart}.`,
+    tradeFile: summary.outputFiles.selectedTrades,
+    params: {
+      candidateId: selected.candidateId,
+      family: 'weather-hybrid',
+      variant: 'hybrid-rotation',
+      architecture: selected.architectureLabel,
+      sourceSet: selected.sourceSetLabel,
+      sourceIds: selected.sourceIds,
+      minGroups: selected.minGroups,
+      minFamilies: selected.minFamilies,
+      anomalyThreshold: selected.anomalyThreshold,
+      coverageThreshold: selected.coverageThreshold,
+      minConfidence: selected.minConfidence,
+      weatherFraction: selected.weatherFraction,
+      reversionFraction: selected.reversionFraction,
+      followHoldDays: selected.followHoldDays,
+      reversionHoldDays: selected.reversionHoldDays,
+      minRealizedMovePct: selected.minRealizedMovePct,
+      sizingMode: selected.sizingMode,
+      fallback: contract.fallback,
+      roundTripCostPct: contract.roundTripCostPct,
+      splitEdges: selected.splitEdges,
+      indexMetrics: selected.indexMetrics,
+      selectionPolicy: contract.selectionPolicy,
+      signalTiming: contract.signalTiming,
+      reversionTiming: contract.reversionTiming,
+      sourceUniverse: sourceUniverseFor(trades),
+    },
+    metrics,
+    caveat:
+      `Holdout is one winter so far: ${signedSplitEdge(selected.splitEdges.holdout)} edge versus the index basket after train/validation selection.`,
+  }
+}
+
+function signedSplitEdge(value: number) {
+  return `${value >= 0 ? '+' : ''}${round(value, 2)}%`
 }
 
 function curveFromTrades(trades: ArcticBlastTrade[]): ArcticBlastEquityPoint[] {
@@ -449,23 +534,23 @@ function curveFromTrades(trades: ArcticBlastTrade[]): ArcticBlastEquityPoint[] {
     .sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
     .map((trade) => {
       const previousEquity = equity
-      equity = Math.max(1, equity * (1 + trade.netReturnPct / 100))
+      equity = trade.equity && trade.equity > 0 ? trade.equity : Math.max(1, equity * (1 + trade.netReturnPct / 100))
       peak = Math.max(peak, equity)
-      const direction = trade.direction === 'short' ? -1 : 1
+      const direction = Number.isFinite(trade.ungPosition) ? trade.ungPosition ?? 0 : trade.direction === 'short' ? -1 : 1
       return {
         date: trade.targetTradeDate,
         equity: round(equity, 2),
-        equityPct: round((equity / initialCapital - 1) * 100, 2),
+        equityPct: Number.isFinite(trade.equityPct) ? round(trade.equityPct ?? 0, 2) : round((equity / initialCapital - 1) * 100, 2),
         dailyPnlPct: round(previousEquity ? ((equity - previousEquity) / previousEquity) * 100 : 0, 3),
-        drawdownPct: round(((equity - peak) / peak) * 100, 2),
+        drawdownPct: Number.isFinite(trade.drawdownPct) ? round(trade.drawdownPct ?? 0, 2) : round(((equity - peak) / peak) * 100, 2),
         close: 0,
         weatherSurprise: round(trade.weightedAnomalyF, 2),
         hddError: round(trade.weightedAnomalyF, 2),
         position: direction,
-        signal: direction,
+        signal: Number.isFinite(trade.confidence) ? round((trade.confidence ?? 0) * Math.sign(direction), 3) : direction,
         gasReturnPct: round(trade.netReturnPct, 3),
-        demandScore: round(trade.rank, 3),
-        storageBcf: 0,
+        demandScore: Number.isFinite(trade.confidence) ? round(trade.confidence ?? 0, 3) : round(trade.rank, 3),
+        storageBcf: Number.isFinite(trade.indexFraction) ? round((trade.indexFraction ?? 0) * 100, 2) : 0,
         closeScaled: null,
         sourceId: trade.sourceId,
         windowId: trade.windowId,
@@ -503,19 +588,18 @@ function metricsFromResearch(metrics: ArcticBlastStrategyMetrics, trades: Arctic
   }
 }
 
-const baselineRows = parseCsv<BaselineRow>(summaryCsv)
 const volatilitySummary = JSON.parse(volatilityMeanReversionSummaryJson) as VolatilitySummary
 const volatilityTrades = parseVolatilityTrades(volatilityMeanReversionTradesCsv)
-const tradesByStrategyId = new Map(
-  [
-    ...Object.entries(tradeCsvByStrategyId).map(([strategyId, csv]) => [strategyId, parseTrades(csv)] as const),
-    [volatilitySummary.strategyId, volatilityTrades] as const,
-  ],
-)
+const weatherHybridSummary = JSON.parse(weatherHybridSummaryJson) as HybridSummary
+const weatherHybridTrades = parseWeatherHybridTrades(weatherHybridTradesCsv)
+const tradesByStrategyId = new Map([
+  [weatherHybridSummary.strategyId, weatherHybridTrades] as const,
+  [volatilitySummary.strategyId, volatilityTrades] as const,
+])
 
 export const arcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = [
-  ...baselineRows.map((row, index) => createStrategy(row, index, tradesByStrategyId.get(row.strategyId) ?? [])),
-  createVolatilityStrategy(volatilitySummary, baselineRows.length, volatilityTrades),
+  createWeatherHybridStrategy(weatherHybridSummary, weatherHybridTrades),
+  createVolatilityStrategy(volatilitySummary, volatilityTrades),
 ]
 
 export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResult[] = arcticBlastResearchStrategies.map((strategy) => {
@@ -523,7 +607,7 @@ export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResu
   return {
     strategy,
     researchMetrics: strategy.metrics,
-    metrics: metricsFromResearch(strategy.metrics, trades),
+    metrics: strategy.id === weatherHybridSummary.strategyId ? createHybridBacktestMetrics(weatherHybridSummary) : metricsFromResearch(strategy.metrics, trades),
     curve: curveFromTrades(trades),
     trades,
     joined: [],

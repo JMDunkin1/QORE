@@ -404,6 +404,112 @@ button {
   height: 362px;
 }
 
+.smooth-chart {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.smooth-chart-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.smooth-chart-gridline line {
+  stroke: #e7ebef;
+  stroke-dasharray: 3 3;
+}
+
+.smooth-chart-gridline text,
+.smooth-chart-axis-label,
+.smooth-chart-x-tick text {
+  fill: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.smooth-chart-axis-line,
+.smooth-chart-x-tick line {
+  stroke: #d8dde4;
+}
+
+.smooth-chart-area {
+  pointer-events: none;
+}
+
+.smooth-chart-line,
+.smooth-chart-bar {
+  pointer-events: none;
+}
+
+.smooth-chart-hover-line {
+  stroke: #94a3b8;
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.smooth-chart-hover-dot {
+  vector-effect: non-scaling-stroke;
+}
+
+.smooth-chart-legend {
+  position: absolute;
+  top: 8px;
+  left: 58px;
+  right: 58px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  color: #344155;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.smooth-chart-legend span,
+.smooth-chart-tooltip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smooth-chart-legend i,
+.smooth-chart-tooltip i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.smooth-chart-tooltip {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  gap: 5px;
+  min-width: 188px;
+  max-width: 220px;
+  padding: 10px 12px;
+  border: 1px solid #d8dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 50px rgba(32, 39, 50, 0.14);
+  color: #18202b;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.smooth-chart-tooltip strong {
+  font-size: 13px;
+}
+
 .strategy-chart-key {
   display: grid;
   gap: 7px;
