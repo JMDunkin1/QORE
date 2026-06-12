@@ -111,13 +111,13 @@ For archived Arctic Blast strategy testing, use the `close-after-issue-v1` timin
 
 ## Active Research Strategies
 
-The first active strategy is `ngas-summer-alpha`. It keeps idle capital in `US-INDEX-BASKET`, then uses multi-model day-7 summer heat forecasts to add NG futures exposure and fade same-direction gas rallies after the weather-follow window. Cool-short evidence stays diagnostic until enough validated cooling-season cool events exist.
+The first active strategy is `ngas-summer-alpha`. It keeps idle capital in `US-INDEX-BASKET`, then uses fresh multi-model day-7 summer heat forecasts to add NG futures exposure while skipping clustered heat-follow longs, and fades same-direction gas rallies after the observation window. Cool-short evidence stays diagnostic until enough validated cooling-season cool events exist.
 
 ```bash
 npm run optimize:ngas-summer-alpha
 ```
 
-The selected summer run made `153.23%` full-sample versus `91.47%` for the index basket, with `-26.11%` max drawdown. Train return was `39.5%`, validation was `34.87%`, and holdout was `34.6%`; holdout edge versus the index basket was `5.22%`. It remains needs-more-validation, not broker-ready.
+The selected summer run made `205.04%` full-sample versus `91.47%` for the index basket, with `-23.72%` max drawdown. Train return was `50.92%`, validation was `35.23%`, and holdout was `49.46%`; holdout edge versus the index basket was `20.08%`. It remains needs-more-validation, not broker-ready.
 
 The second active strategy is `ngas-winter-alpha`. It combines archived parent experts without fitting new weather thresholds: Dual Weather supplies cold-follow and warm-short context, Weather Hybrid supplies post-window fade context, and Volatility Mean Reversion confirms selected same-direction fades. Those parent lanes are retained as research inputs, not active dashboard strategies.
 

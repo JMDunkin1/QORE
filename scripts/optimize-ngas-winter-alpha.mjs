@@ -26,6 +26,30 @@ const BOOTSTRAP_ITERATIONS = 1200
 const BLOCK_LENGTH = 10
 const INDEX_TREND_LOOKBACK_SESSIONS = 200
 const WEATHER_RESOLUTION_SOURCE_IDS = new Set(['gfs', 'gefs-mean'])
+const MAX_EFFECTIVE_OVERLAY_CAP = 0.6
+
+const OVERLAY_RISK_MULTIPLIER_VARIANTS = [
+  {
+    id: 'risk-110',
+    label: '1.10x gas-overlay risk budget',
+    value: 1.1,
+  },
+  {
+    id: 'risk-115',
+    label: '1.15x gas-overlay risk budget',
+    value: 1.15,
+  },
+  {
+    id: 'risk-120',
+    label: '1.20x gas-overlay risk budget',
+    value: 1.2,
+  },
+  {
+    id: 'risk-125',
+    label: '1.25x gas-overlay risk budget',
+    value: 1.25,
+  },
+]
 
 const DEFAULT_WEATHER_RESOLUTION_POLICY = {
   id: 'none',
@@ -300,10 +324,39 @@ function policySupportsWeatherResolution(policy) {
   )
 }
 
+function policySupportsOverlayRiskMultiplier(policy) {
+  return (
+    policy.selectionEligible &&
+    policy.indexRiskMode === 'full-index-fallback' &&
+    policy.conflictPolicy === 'short-fade-plus-cold-follow-vol-long' &&
+    policy.weatherResolutionPolicy?.id === 'graded-shift-sizing'
+  )
+}
+
+function expandedOverlayRiskPolicies(policies) {
+  return policies.flatMap((policy) => {
+    const basePolicy = {
+      ...policy,
+      overlayRiskMultiplier: policy.overlayRiskMultiplier ?? 1,
+    }
+    if (!policySupportsOverlayRiskMultiplier(basePolicy)) return [basePolicy]
+
+    const riskVariants = OVERLAY_RISK_MULTIPLIER_VARIANTS.map((variant) => ({
+      ...basePolicy,
+      id: `${basePolicy.id}-${variant.id}`,
+      label: `${basePolicy.label} + ${variant.label}`,
+      positionPolicy: `${basePolicy.positionPolicy} Portfolio risk-budget overlay: scale active gas exposure by ${variant.value}x, capped at ${MAX_EFFECTIVE_OVERLAY_CAP}x, without changing signal selection.`,
+      overlayRiskMultiplier: variant.value,
+    }))
+    return [basePolicy, ...riskVariants]
+  })
+}
+
 function expandedBlendPolicies() {
   const baselines = BLEND_POLICIES.map((policy) => ({
     ...policy,
     weatherResolutionPolicy: DEFAULT_WEATHER_RESOLUTION_POLICY,
+    overlayRiskMultiplier: 1,
   }))
   const weatherResolved = BLEND_POLICIES.filter(policySupportsWeatherResolution).flatMap((policy) =>
     WEATHER_RESOLUTION_POLICIES.map((resolutionPolicy) => ({
@@ -312,9 +365,10 @@ function expandedBlendPolicies() {
       label: `${policy.label} + ${resolutionPolicy.label}`,
       positionPolicy: `${policy.positionPolicy} Weather-resolution overlay: ${resolutionPolicy.description}`,
       weatherResolutionPolicy: resolutionPolicy,
+      overlayRiskMultiplier: 1,
     })),
   )
-  return [...baselines, ...weatherResolved]
+  return expandedOverlayRiskPolicies([...baselines, ...weatherResolved])
 }
 
 function readText(filePath) {
@@ -652,6 +706,30 @@ function applyWeatherResolution(policy, blend, weatherResolutionData) {
   }
 }
 
+function applyOverlayRiskMultiplier(policy, blend) {
+  const multiplier = policy.overlayRiskMultiplier ?? 1
+  const effectiveOverlayCap = Math.min(MAX_EFFECTIVE_OVERLAY_CAP, policy.overlayCap * multiplier)
+  if (multiplier === 1 || blend.position === 0) {
+    return {
+      ...blend,
+      overlayRiskMultiplier: multiplier,
+      effectiveOverlayCap,
+    }
+  }
+
+  const scaledPosition = clamp(blend.position * multiplier, -effectiveOverlayCap, effectiveOverlayCap)
+  const realizedMultiplier = blend.position ? scaledPosition / blend.position : 1
+
+  return {
+    ...blend,
+    followPosition: blend.followPosition * realizedMultiplier,
+    reversionPosition: blend.reversionPosition * realizedMultiplier,
+    position: scaledPosition,
+    overlayRiskMultiplier: multiplier,
+    effectiveOverlayCap,
+  }
+}
+
 function chooseDominantRow(followRow, reversionRow, position, policy) {
   if (policy.conflictPolicy === 'vol-confirmed-fade-plus-cold-follow' && reversionRow) return reversionRow
   if (policy.conflictPolicy === 'net-position' && followRow && reversionRow) {
@@ -961,7 +1039,8 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
     const volatilityRow = volatilityByDate.get(date)
     const fallback = baseFallbackRow(dualRow, weatherRow)
     const rawBlend = blendPositionFor(policy, dualRow, weatherRow, volatilityRow)
-    const blend = applyWeatherResolution(policy, rawBlend, weatherResolutionData)
+    const resolvedBlend = applyWeatherResolution(policy, rawBlend, weatherResolutionData)
+    const blend = applyOverlayRiskMultiplier(policy, resolvedBlend)
     const weatherActive = blend.position !== 0
     const activeFollowRow = weatherActive ? blend.followRow : null
     const activeReversionRow = weatherActive ? blend.reversionRow : null
@@ -1065,6 +1144,8 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
       weatherResolutionReliefF: Number.isFinite(blend.weatherResolution.reliefF) ? round(blend.weatherResolution.reliefF, 3) : '',
       weatherResolutionAction: blend.weatherResolution.action ?? '',
       weatherResolutionScale: round(blend.weatherResolution.scale ?? 1, 4),
+      overlayRiskMultiplier: round(blend.overlayRiskMultiplier ?? 1, 4),
+      effectiveOverlayCap: round(blend.effectiveOverlayCap ?? policy.overlayCap, 4),
     }
 
     rows.push(row)
@@ -1286,6 +1367,8 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
     reversionFraction: 0.2,
     reversionLongScale: policy.reversionLongScale ?? 1,
     standaloneReversionScale: policy.standaloneReversionScale ?? 1,
+    overlayRiskMultiplier: policy.overlayRiskMultiplier ?? 1,
+    effectiveOverlayCap: Math.min(MAX_EFFECTIVE_OVERLAY_CAP, policy.overlayCap * (policy.overlayRiskMultiplier ?? 1)),
     overlayCap: policy.overlayCap,
     followHoldDays: 3,
     reversionHoldDays: 2,
@@ -1379,6 +1462,8 @@ function formatCandidateRow(candidate) {
     indexRiskMode: candidate.indexRiskMode,
     selectionEligible: candidate.selectionEligible,
     overlayCap: candidate.overlayCap,
+    overlayRiskMultiplier: candidate.overlayRiskMultiplier,
+    effectiveOverlayCap: candidate.effectiveOverlayCap,
     reversionLongScale: candidate.reversionLongScale,
     standaloneReversionScale: candidate.standaloneReversionScale,
     trainReturnPct: candidate.trainMetrics.totalReturnPct,
@@ -1462,6 +1547,8 @@ function selectedTradeRows(rows) {
     'weatherResolutionReliefF',
     'weatherResolutionAction',
     'weatherResolutionScale',
+    'overlayRiskMultiplier',
+    'effectiveOverlayCap',
   ]
   return { headers, rows }
 }
@@ -1634,6 +1721,7 @@ This active QORE research strategy combines parent experts without fitting new w
 - Parent experts: Dual Weather Rotation for forecast-follow, Weather Hybrid Rotation for post-window reversion, and Volatility Mean Reversion for same-direction fade confirmation.
 - Position policy: ${selected.positionPolicy}
 - Max weather UNG overlay: ${selected.overlayCap}x; parent weather leg ${selected.weatherFraction}x and weather reversion leg ${selected.reversionFraction}x.
+- Gas-overlay risk multiplier: ${selected.overlayRiskMultiplier}x; effective max weather UNG overlay ${selected.effectiveOverlayCap}x.
 - Vol-confirmed reversion-long size: ${selected.reversionLongScale}x of the parent reversion leg.
 - Standalone reversion fade size: ${selected.standaloneReversionScale}x of the parent reversion leg when no same-direction follow signal confirms it.
 - Weather-resolution overlay: ${selected.weatherResolutionPolicy.label}. ${selected.weatherResolutionPolicy.description}
@@ -1680,6 +1768,7 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 - Eligibility requires a selectable gas-alpha policy, positive train and validation edge, lower train and validation drawdown than the index basket, and train/validation volatility under a 20% annualized risk budget.
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
+- Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, parent signals, or weather thresholds.
 - Holdout was not used for selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
 - Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
 - Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
@@ -1691,12 +1780,12 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 
 ## Top Train/Validation-Ranked Candidates
 
-| candidate | eligible | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| candidate | eligible | risk mult | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 ${topCandidates
   .map(
     (candidate) =>
-      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
+      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.overlayRiskMultiplier}x | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
   )
   .join('\n')}
 
@@ -1748,9 +1837,9 @@ function main() {
       signalTiming:
         'Parent strategies already enforce post-signal execution; NGAS Winter Alpha only combines parent daily ledgers and recalculates costs.',
       selectionPolicy:
-        'Only predeclared parent-blend policies are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
+        'Only predeclared parent-blend policies and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
       overfitControl:
-        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
+        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay and one bounded gas-overlay risk multiplier. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
       weatherResolutionTiming:
         'Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate, or NASA POWER actual anomalies only when targetDate < entryTradeDate.',
       indexTrendLookbackSessions: INDEX_TREND_LOOKBACK_SESSIONS,

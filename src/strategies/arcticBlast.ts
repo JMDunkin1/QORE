@@ -159,6 +159,7 @@ type HybridSummary = {
     selectionPolicy: string
     signalTiming: string
     reversionTiming: string
+    heatSignalFreshness?: string
   }
   data: {
     marketStartDate: string
@@ -173,6 +174,8 @@ type DualWeatherSummary = HybridSummary & {
   selected: HybridSummary['selected'] & {
     sourceWeightMode: string
     volTargetPct: number
+    freshHeatLookbackDays: number
+    skippedHeatFollowSignals: number
     legCounts: Record<string, Record<string, number>>
   }
   search: {
@@ -241,6 +244,8 @@ type WinterAlphaSummary = {
     reversionFraction: number
     reversionLongScale: number
     standaloneReversionScale: number
+    overlayRiskMultiplier: number
+    effectiveOverlayCap: number
     overlayCap: number
     followHoldDays: number
     reversionHoldDays: number
@@ -323,6 +328,8 @@ export type ArcticBlastTrade = {
   weatherResolutionReliefF?: number
   weatherResolutionAction?: string
   weatherResolutionScale?: number
+  overlayRiskMultiplier?: number
+  effectiveOverlayCap?: number
 }
 
 export type ArcticBlastEquityPoint = EquityPoint & {
@@ -449,6 +456,8 @@ function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVar
     weatherResolutionReliefF: row.weatherResolutionReliefF ? numberFrom(row.weatherResolutionReliefF) : undefined,
     weatherResolutionAction: row.weatherResolutionAction || undefined,
     weatherResolutionScale: row.weatherResolutionScale ? numberFrom(row.weatherResolutionScale) : undefined,
+    overlayRiskMultiplier: row.overlayRiskMultiplier ? numberFrom(row.overlayRiskMultiplier) : undefined,
+    effectiveOverlayCap: row.effectiveOverlayCap ? numberFrom(row.effectiveOverlayCap) : undefined,
   }))
 }
 
@@ -512,9 +521,9 @@ function createNgasSummerAlphaStrategy(summary: DualWeatherSummary, trades: Arct
     instrument: 'NG',
     desk: 'Summer natural gas futures heat edge',
     thesis:
-      'Capital stays in the US index basket by default, then uses multi-model day-7 summer heat forecasts to add NG futures exposure and fade same-direction weather overreactions.',
+      'Capital stays in the US index basket by default, then uses fresh multi-model day-7 summer heat forecasts to add NG futures exposure and fade repeated same-direction weather overreactions.',
     directionPolicy:
-      'Follow confirmed broad summer heat with a long NG futures overlay, then short only same-direction gas rallies after the weather-follow window. Cool-short remains diagnostic until enough validated cool events exist.',
+      'Follow the first confirmed broad summer heat signal with a long NG futures overlay, skip clustered heat-follow longs, then short same-direction gas rallies after the observation window. Cool-short remains diagnostic until enough validated cool events exist.',
     promotionStatus,
     riskLevel: riskLevelFor(metrics),
     color: summerWeatherStrategyColor,
@@ -524,7 +533,7 @@ function createNgasSummerAlphaStrategy(summary: DualWeatherSummary, trades: Arct
     returnColumn: 'netReturnPct',
     universe: `NG futures and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
     theoryAlignment:
-      'Direct summer cooling-demand lane: multi-model heat demand direction plus same-direction post-window overreaction fade, with index fallback when confidence is low. Cool-short evidence is retained as diagnostic.',
+      'Direct summer cooling-demand lane: fresh multi-model heat demand direction plus same-direction post-window overreaction fade, with index fallback when confidence is low. Cool-short evidence is retained as diagnostic.',
     samplePolicy:
       `Selected ${selected.architectureLabel} on train/validation only; train through ${contract.trainEnd}, validation through ${contract.validationEnd}, holdout from ${contract.holdoutStart}.`,
     tradeFile: summary.outputFiles.selectedTrades,
@@ -546,6 +555,8 @@ function createNgasSummerAlphaStrategy(summary: DualWeatherSummary, trades: Arct
       followHoldDays: selected.followHoldDays,
       reversionHoldDays: selected.reversionHoldDays,
       minRealizedMovePct: selected.minRealizedMovePct,
+      freshHeatLookbackDays: selected.freshHeatLookbackDays,
+      skippedHeatFollowSignals: selected.skippedHeatFollowSignals,
       sizingMode: selected.sizingMode,
       volTargetPct: selected.volTargetPct,
       fallback: contract.fallback,
@@ -558,6 +569,7 @@ function createNgasSummerAlphaStrategy(summary: DualWeatherSummary, trades: Arct
       selectionPolicy: contract.selectionPolicy,
       signalTiming: contract.signalTiming,
       reversionTiming: contract.reversionTiming,
+      heatSignalFreshness: contract.heatSignalFreshness,
       sourceUniverse: sourceUniverseFor(trades),
     },
     metrics,
@@ -617,6 +629,8 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
       reversionFraction: selected.reversionFraction,
       reversionLongScale: selected.reversionLongScale,
       standaloneReversionScale: selected.standaloneReversionScale,
+      overlayRiskMultiplier: selected.overlayRiskMultiplier,
+      effectiveOverlayCap: selected.effectiveOverlayCap,
       overlayCap: selected.overlayCap,
       followHoldDays: selected.followHoldDays,
       reversionHoldDays: selected.reversionHoldDays,

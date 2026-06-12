@@ -47,6 +47,7 @@ const WARM_COVERAGE_MIN_ANOMALY_F = 8
 const WARM_EXTREME_ANOMALY_F = 14
 const BOOTSTRAP_ITERATIONS = 1200
 const BLOCK_LENGTH = 10
+const HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS = 3
 
 const SOURCE_SETS = [
   {
@@ -155,6 +156,17 @@ function percentile(values, pct) {
 
 function daysBetween(startDate, endDate) {
   return Math.max(1, (Date.parse(endDate) - Date.parse(startDate)) / 86400000)
+}
+
+function calendarDaysBetween(startDate, endDate) {
+  return (Date.parse(endDate) - Date.parse(startDate)) / 86400000
+}
+
+function hasRecentHeatSignal(issueDate, priorHeatIssueDates, lookbackDays) {
+  return priorHeatIssueDates.some((priorIssueDate) => {
+    const ageDays = calendarDaysBetween(priorIssueDate, issueDate)
+    return ageDays > 0 && ageDays <= lookbackDays
+  })
 }
 
 function isCoolingSeason(isoDate) {
@@ -522,6 +534,8 @@ function scaledFraction(baseFraction, confidence, mode, day, targetVolPct) {
 function scheduleOverlay(days, signals, candidate) {
   const byIndex = new Map()
   const eventRows = []
+  const priorHeatIssueDates = []
+  let skippedHeatFollowSignals = 0
   const setPosition = (index, payload) => {
     if (index < 0 || index >= days.length) return
     const current = byIndex.get(index)
@@ -529,6 +543,11 @@ function scheduleOverlay(days, signals, candidate) {
   }
 
   for (const signal of signals) {
+    const isHeatSignal = signal.thesisKind === 'summer-heat-long'
+    const isFreshHeatSignal =
+      !isHeatSignal || !hasRecentHeatSignal(signal.issueDate, priorHeatIssueDates, candidate.freshHeatLookbackDays)
+    if (isHeatSignal) priorHeatIssueDates.push(signal.issueDate)
+
     const entryIndex = firstIndexAfter(days, signal.issueDate)
     const targetIndex = firstIndexOnOrAfter(days, signal.targetDate)
     if (entryIndex < 0 || targetIndex < entryIndex) continue
@@ -547,26 +566,31 @@ function scheduleOverlay(days, signals, candidate) {
       thesisKind: signal.thesisKind,
     }
 
-    for (let index = entryIndex; index <= followEndIndex; index += 1) {
-      const weatherPosition =
-        signal.direction * scaledFraction(candidate.weatherFraction, signal.confidence, candidate.sizingMode, days[index], candidate.volTargetPct)
-      setPosition(index, {
+    if (isFreshHeatSignal) {
+      for (let index = entryIndex; index <= followEndIndex; index += 1) {
+        const weatherPosition =
+          signal.direction *
+          scaledFraction(candidate.weatherFraction, signal.confidence, candidate.sizingMode, days[index], candidate.volTargetPct)
+        setPosition(index, {
+          ...eventBase,
+          position: weatherPosition,
+          signal: signal.direction * signal.confidence,
+          windowId: 'weather-follow',
+          thesisKind: signal.thesisKind,
+          rank: signal.rank + 10,
+        })
+      }
+      eventRows.push({
         ...eventBase,
-        position: weatherPosition,
-        signal: signal.direction * signal.confidence,
-        windowId: 'weather-follow',
-        thesisKind: signal.thesisKind,
-        rank: signal.rank + 10,
+        leg: 'weather-follow',
+        direction: signal.direction === 1 ? 'long' : 'short',
+        entryTradeDate: days[entryIndex].date,
+        exitTradeDate: days[followEndIndex].date,
+        realizedMovePct: '',
       })
+    } else {
+      skippedHeatFollowSignals += 1
     }
-    eventRows.push({
-      ...eventBase,
-      leg: 'weather-follow',
-      direction: signal.direction === 1 ? 'long' : 'short',
-      entryTradeDate: days[entryIndex].date,
-      exitTradeDate: days[followEndIndex].date,
-      realizedMovePct: '',
-    })
 
     const priorClose = days[Math.max(entryIndex - 1, 0)]?.ungClose
     const exitClose = days[followEndIndex]?.ungClose
@@ -601,7 +625,7 @@ function scheduleOverlay(days, signals, candidate) {
     }
   }
 
-  return { byIndex, eventRows }
+  return { byIndex, eventRows, skippedHeatFollowSignals }
 }
 
 function buildCurve(days, overlayByIndex) {
@@ -839,7 +863,7 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
   const cacheKey = signalCacheKey(candidate)
   const signals = signalCache.get(cacheKey) ?? signalsForCandidate(rowsByIssueDate, candidate, reliabilityWeights)
   signalCache.set(cacheKey, signals)
-  const { byIndex, eventRows: scheduledEventRows } = scheduleOverlay(days, signals, candidate)
+  const { byIndex, eventRows: scheduledEventRows, skippedHeatFollowSignals } = scheduleOverlay(days, signals, candidate)
   const { curve, rows } = buildCurve(days, byIndex)
   const overlayRows = rows.filter((row) => row.windowId !== 'index-fallback')
   const eventRows = executedEventRowsFromRows(rows)
@@ -870,6 +894,7 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
       `fh${candidate.followHoldDays}`,
       `rh${candidate.reversionHoldDays}`,
       `mv${candidate.minRealizedMovePct}`,
+      `fresh${candidate.freshHeatLookbackDays}`,
       `vol${candidate.volTargetPct}`,
       candidate.sizingMode,
     ].join('-'),
@@ -893,6 +918,7 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
     splitEdges,
     signalCount: signals.length,
     scheduledEventCount: scheduledEventRows.length,
+    skippedHeatFollowSignals,
     completedEventCount: completedEvents,
     overlayDayCount: overlayRows.length,
     fallbackDayCount: rows.length - overlayRows.length,
@@ -990,6 +1016,7 @@ function formatCandidateRow(candidate) {
     followHoldDays: candidate.followHoldDays,
     reversionHoldDays: candidate.reversionHoldDays,
     minRealizedMovePct: candidate.minRealizedMovePct,
+    freshHeatLookbackDays: candidate.freshHeatLookbackDays,
     volTargetPct: candidate.volTargetPct,
     signals: candidate.signalCount,
     scheduledEvents: candidate.scheduledEventCount,
@@ -1124,6 +1151,7 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Demand link: EIA treats cooling degree days as the measure of air-conditioning need, so this lane maps broad summer warmth to higher gas-fired power demand and broad summer coolness to lower demand.
 - Forecast-combination link: Bates-Granger-style forecast combination says independent forecasts can contain useful information even when none should be selected alone. This lane tests equal-weight and train-only inverse-error-shrunk source weights.
 - Weather-risk-premium link: published natural-gas event studies report that U.S. natural gas futures react to forecasted temperatures and temperature shocks.
+- Freshness link: the heat-follow leg only buys the first broad heat signal after a quiet period, because repeated heat forecasts are more likely already priced.
 - Overreaction link: the fade leg is a constrained contrarian response only when gas first moves in the weather-demand direction, not a standalone price-only reversal.
 - Overfit control: candidate rank uses train and validation only. Holdout after ${HOLDOUT_START} is reported after selection, and a deterministic block-bootstrap reality check is run on daily active return versus the index fallback.
 
@@ -1132,10 +1160,10 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Architecture: ${selected.architectureLabel}.
 - Source set: ${selected.sourceSetLabel}.
 - Source weighting: ${selected.sourceWeightMode === 'bg-shrink' ? 'train-only inverse forecast-error shrinkage' : 'equal forecast weights'}.
-- Weather leg: ${selected.weatherFraction}x max NG futures overlay for ${selected.followHoldDays} trading day(s), long for broad summer heat. Cool-short rows remain diagnostic until the data produces enough confirmed cool events.
+- Weather leg: ${selected.weatherFraction}x max NG futures overlay for ${selected.followHoldDays} trading day(s), long only on fresh broad summer heat after ${selected.freshHeatLookbackDays} quiet calendar day(s). Cool-short rows remain diagnostic until the data produces enough confirmed cool events.
 - Reversion leg: ${selected.reversionFraction}x max NG futures overlay for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized same-direction gas move, opposite the weather-driven move.
 - Sizing: ${selected.sizingMode}${selected.sizingMode === 'vol-target' ? `, ${selected.volTargetPct}% annualized UNG volatility target` : ''}.
-- Signal gates: absolute forecast anomaly >= ${selected.anomalyThreshold}F; side coverage >= ${selected.coverageThreshold}; confidence >= ${selected.minConfidence}; source groups >= ${selected.minGroups}; model families >= ${selected.minFamilies}.
+- Signal gates: absolute forecast anomaly >= ${selected.anomalyThreshold}F; side coverage >= ${selected.coverageThreshold}; confidence >= ${selected.minConfidence}; source groups >= ${selected.minGroups}; model families >= ${selected.minFamilies}; heat-follow freshness lookback ${selected.freshHeatLookbackDays} calendar day(s).
 - Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on gas position changes.
 - Selection: candidate rank used train and validation only. Holdout rows after ${HOLDOUT_START} were not used to choose the candidate.
 
@@ -1172,6 +1200,7 @@ Train/validation side gates used for selection:
 
 - Candidate search count: ${summary.search.candidateCount}.
 - Eligible dual-leg candidates: ${summary.search.eligibleCandidateCount}.
+- Skipped clustered heat-follow signals: ${selected.skippedHeatFollowSignals}.
 - Block-bootstrap p-value versus index daily active return: ${summary.validation.realityCheck.pValue}.
 - Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks.
 
@@ -1188,7 +1217,7 @@ ${topCandidates
 
 ## Verdict
 
-Load this as an active needs-more-validation strategy, not broker-ready. It fixes the prior underperformance by using the futures-grade gas series, requiring multi-model confirmation, and only fading same-direction heat overreactions. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
+Load this as an active needs-more-validation strategy, not broker-ready. It fixes the prior underperformance by using the futures-grade gas series, requiring multi-model confirmation, buying only fresh broad heat signals, and fading same-direction heat overreactions. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
 `
 }
 
@@ -1247,6 +1276,7 @@ function main() {
                                 followHoldDays,
                                 reversionHoldDays,
                                 minRealizedMovePct,
+                                freshHeatLookbackDays: HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS,
                                 volTargetPct,
                               },
                               reliability.weights,
@@ -1324,8 +1354,10 @@ function main() {
       signalTiming: 'Forecast issue-date signals are used only on trading sessions strictly after the issue date.',
       reversionTiming:
         'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, and start no earlier than the next trading session.',
+      heatSignalFreshness:
+        'Summer heat-follow exposure is allowed only when no prior broad summer heat signal was issued within the fixed freshness lookback window; repeated heat signals can still qualify for the same-direction fade.',
       selectionPolicy:
-        'The architecture requires multi-model heat-follow and same-direction overreaction-fade legs. Cool-short rows are kept diagnostic until the data produces enough confirmed cool events. Rank and eligibility use train and validation splits only; holdout metrics are reported after selection.',
+        'The architecture requires fresh multi-model heat-follow and same-direction overreaction-fade legs. Cool-short rows are kept diagnostic until the data produces enough confirmed cool events. Rank and eligibility use train and validation splits only; holdout metrics are reported after selection.',
       sourceWeighting:
         'bg-shrink weights are fit only on train-period forecast temperature errors versus NASA POWER actual weighted anomalies, then shrunk halfway toward equal weights.',
     },
@@ -1422,6 +1454,7 @@ function main() {
     'followHoldDays',
     'reversionHoldDays',
     'minRealizedMovePct',
+    'freshHeatLookbackDays',
     'volTargetPct',
     'signals',
     'scheduledEvents',
