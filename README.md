@@ -79,8 +79,8 @@ These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS fore
 
 - Opens on the tracked `data/qore` research catalog without bundled starter rows.
 - Shows source-backed market, weather, forecast-calendar, signal-score, and signal-return inventory.
-- Loads two active research strategies: Weather Hybrid Rotation and UNG winter volatility mean reversion.
-- Keeps the rejected Winter Weather Demand strategy lanes archived as research evidence instead of active baselines.
+- Loads two active research strategies: NGAS Summer Alpha and NGAS Winter Alpha.
+- Keeps the older weather, volatility, and strict-theory lanes archived as parent research evidence instead of active baselines.
 - Joins explicitly imported weather and market rows by `date` for session-only lab checks.
 - Tracks imported weather forecast quality with HDD/CDD MAE, RMSE, R2, directional accuracy, cold-surprise recall, and calibration.
 - Provides CSV import lanes for intentionally loading local or external backtest rows.
@@ -109,43 +109,23 @@ issueDate,targetDate,leadDays,windowId,modelId,symbol,priorTradeDate,entryTradeD
 
 For archived Arctic Blast strategy testing, use the `close-after-issue-v1` timing convention from `src/backtesting/timing.ts`: treat the forecast score as available only after the `issueDate` close, enter at the first market close strictly after `issueDate`, and exit at the first market close on or after `targetDate` and strictly after entry. Use `returnPctEntryCloseToTarget`; `returnPctPriorCloseToTarget` is diagnostic only because it starts before the signal is known.
 
-Optimize the archived Winter Weather Demand strict strategy tests:
-
-```bash
-npm run optimize:arctic-strategies
-```
-
-This reads the shared forecast score/return/location rows, filters to no-lookahead `UNG` trades, and writes five archived `strict-theory` variants under `data/qore/research/strategy-tests/`. The variants only trade winter 7-10 day rumor-window rows: long for severe broad cold, short for significant broad warmth, with at least two independent forecast source groups confirming the same event. They are not imported into the active dashboard registry because the current evidence is too sparse, drawdown-heavy, or unstable.
-
 ## Active Research Strategies
 
-The first active strategy is `weather-hybrid-rotation`. It keeps idle capital in `US-INDEX-BASKET`, then rotates a measured UNG overlay when winter weather fear creates a high-confidence setup:
-
-- Signal date: after a forecast issue date, use only later trading sessions.
-- Weather setup: 7-10 day winter GFS/GEFS Arctic Blast or warm-winter windows.
-- Selected architecture: fade-only, so it waits for the weather-fear window and then fades the realized UNG overreaction.
-- Fallback: every non-overlay day remains invested in the diversified US index basket.
-- Selection: candidates were ranked on train/validation only; holdout rows after `2025-11-01` were reported after selection.
-
-The selected weather-hybrid run made `133.32%` full-sample versus `91.47%` for the index basket, with `-28.12%` max drawdown. The important anti-overfit detail is the split: train return was `27.95%`, validation was `63.98%`, and holdout was `11.21%`; holdout edge versus the index basket was only `0.27%`, so this is an active research baseline, not a broker-ready system.
-
-Rebuild it with:
+The first active strategy is `ngas-summer-alpha`. It keeps idle capital in `US-INDEX-BASKET`, then uses multi-model day-7 summer heat forecasts to add NG futures exposure and fade same-direction gas rallies after the weather-follow window. Cool-short evidence stays diagnostic until enough validated cooling-season cool events exist.
 
 ```bash
-npm run optimize:weather-hybrid
+npm run optimize:ngas-summer-alpha
 ```
 
-The second active strategy is `volatility-mean-reversion`. It does not trade the weather forecast directly. It trades UNG's next regular session after a large winter close-to-close move:
+The selected summer run made `153.23%` full-sample versus `91.47%` for the index basket, with `-26.11%` max drawdown. Train return was `39.5%`, validation was `34.87%`, and holdout was `34.6%`; holdout edge versus the index basket was `5.22%`. It remains needs-more-validation, not broker-ready.
 
-- Signal date: after the UNG market close, measure the latest close-to-close return against trailing 40-session realized volatility.
-- Trade filter: only act when the absolute volatility-normalized move is at least `0.8`, and trailing volatility is between `2.5%` and `6%`.
-- Direction: go long for the next session after a large down move; go short for the next session after a large up move.
-- Exit: close the trade the same session, so the holding window is next-session open to next-session close.
-- Sizing and cost: results use `35%` notional and `0.064%` round-trip cost.
+The second active strategy is `ngas-winter-alpha`. It combines archived parent experts without fitting new weather thresholds: Dual Weather supplies cold-follow and warm-short context, Weather Hybrid supplies post-window fade context, and Volatility Mean Reversion confirms selected same-direction fades. Those parent lanes are retained as research inputs, not active dashboard strategies.
 
-The edge hypothesis is short-horizon overreaction. UNG can gap or trend hard on weather headlines, inventory anxiety, contract-roll pressure, ETF flow, and natural-gas volatility. In winter, those moves often overshoot into the close. The strategy waits until that move is already known, then fades the next day's intraday follow-through rather than trying to predict the original shock.
+```bash
+npm run optimize:ngas-winter-alpha
+```
 
-The reason it is kept is sample quality. The selected rule was picked on pre-`2025-11-01` training data, then checked on holdout rows after selection. It has `496` full-sample trades, `462` train trades, and `34` holdout trades; full-sample return is `68.97%` with `-6.33%` max drawdown, while holdout return is `6.38%` with `-2.08%` max drawdown. That is not broker-ready, but it is a cleaner high-sample companion lane beside the weather-hybrid strategy.
+The selected winter run made `208.78%` full-sample versus `91.47%` for the index basket, with `-23.74%` max drawdown. Train return was `65.77%`, validation was `49%`, and holdout was `25.01%`; holdout edge versus the index basket was `14.07%`. It remains needs-more-validation until the parent blend clears the bootstrap reality-check gate and paper evidence accumulates.
 
 ## Non-Live Execution Architecture
 

@@ -168,11 +168,6 @@ const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
   { id: 'index-fallback', label: 'Index fallback', thesisKinds: ['index-fallback'] },
 ]
 
-const directionSideDefinitions = [
-  { id: 'long', label: 'Long' },
-  { id: 'short', label: 'Short' },
-] as const
-
 function splitEdgeForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined, split: SplitEdgeName) {
   const splitEdges = strategy?.params.splitEdges
   if (!splitEdges || typeof splitEdges !== 'object') return null
@@ -232,34 +227,18 @@ function annualizedReturnPct(totalReturnPct: number, startDate: string | undefin
 
 function weatherSideSeasonForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): WeatherSideSeason {
   if (strategy?.family === 'weather-summer') return 'summer'
-  if (strategy?.family === 'weather-hybrid' || strategy?.family === 'weather-dual' || strategy?.family === 'weather-alpha') return 'winter'
+  if (strategy?.family === 'weather-alpha') return 'winter'
   return 'all-year'
 }
 
-function sideStatsForTrades(trades: ResearchTrade[], mode: 'weather' | 'direction', weatherSeason: WeatherSideSeason) {
-  if (mode === 'direction') {
-    return directionSideDefinitions.map((side) => {
-      const sideTrades = trades.filter((trade) => trade.direction === side.id)
-      const totalReturnPct = sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
-      const winRatePct = sideTrades.length
-        ? (sideTrades.filter((trade) => trade.netReturnPct > 0).length / sideTrades.length) * 100
-        : 0
-      const averageTradeReturnPct = sideTrades.length
-        ? sideTrades.reduce((sum, trade) => sum + trade.netReturnPct, 0) / sideTrades.length
-        : 0
+function tradeHasThesisKind(trade: ResearchTrade, thesisKind: string) {
+  if (trade.thesisKind === thesisKind) return true
+  return trade.componentThesisKinds?.some((component) => component === thesisKind || component.endsWith(`:${thesisKind}`)) ?? false
+}
 
-      return {
-        ...side,
-        tradeCount: sideTrades.length,
-        totalReturnPct: roundNumber(totalReturnPct * 100),
-        winRatePct: roundNumber(winRatePct, 1),
-        averageTradeReturnPct: roundNumber(averageTradeReturnPct),
-      }
-    })
-  }
-
+function sideStatsForTrades(trades: ResearchTrade[], weatherSeason: WeatherSideSeason) {
   return weatherSideDefinitions.filter((side) => !side.seasons || side.seasons.includes(weatherSeason)).map((side) => {
-    const sideTrades = trades.filter((trade) => side.thesisKinds.includes(trade.thesisKind))
+    const sideTrades = trades.filter((trade) => side.thesisKinds.some((thesisKind) => tradeHasThesisKind(trade, thesisKind)))
     const totalReturnPct = sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
     const winRatePct = sideTrades.length
       ? (sideTrades.filter((trade) => trade.netReturnPct > 0).length / sideTrades.length) * 100
@@ -795,11 +774,10 @@ function App() {
     [leaderboard, selectedStrategyId],
   )
   const selectedSampleStatus = useMemo(() => sampleStatusFor(selectedBacktest), [selectedBacktest])
-  const selectedSideMode = selectedBacktest?.strategy.family === 'volatility' ? 'direction' : 'weather'
   const selectedWeatherSideSeason = useMemo(() => weatherSideSeasonForStrategy(selectedBacktest?.strategy), [selectedBacktest])
   const selectedSideStats = useMemo(
-    () => sideStatsForTrades(selectedBacktest?.trades ?? [], selectedSideMode, selectedWeatherSideSeason),
-    [selectedBacktest, selectedSideMode, selectedWeatherSideSeason],
+    () => sideStatsForTrades(selectedBacktest?.trades ?? [], selectedWeatherSideSeason),
+    [selectedBacktest, selectedWeatherSideSeason],
   )
   const benchmarkSummaryByStrategyId = useMemo(
     () =>
@@ -1492,21 +1470,17 @@ function App() {
           <section className="view-stack">
             <div className="lab-layout">
               <aside className="panel control-panel">
-                <SectionHeading eyebrow="Research" title="Artifact selector" />
-                <label className="select-control">
-                  <span>Strategy</span>
-                  <select value={selectedStrategyId} disabled={!leaderboard.length} onChange={(event) => selectStrategy(event.currentTarget.value)}>
-                    {leaderboard.length ? (
-                      leaderboard.map((result) => (
-                        <option key={result.strategy.id} value={result.strategy.id}>
-                          {result.strategy.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No research strategies</option>
-                    )}
-                  </select>
-                </label>
+                <SectionHeading
+                  eyebrow="Research"
+                  title={
+                    <StrategyTitleSelect
+                      items={strategyStripItems}
+                      selectedItem={selectedStrategyItem}
+                      selectedStrategyId={selectedStrategyId}
+                      onSelectStrategy={selectStrategy}
+                    />
+                  }
+                />
                 <dl className="artifact-summary">
                   <div>
                     <dt>Variant</dt>
@@ -1615,7 +1589,7 @@ function App() {
             <article className="panel table-panel">
               <SectionHeading
                 eyebrow="Side split"
-                title={selectedSideMode === 'direction' ? 'Long vs short' : 'Weather side split'}
+                title="Weather side split"
                 action={<span className={`repo-pill ${selectedSampleStatus.tone}`}>{selectedBacktest?.strategy.promotionStatus ?? 'Pending'}</span>}
               />
               <div className="side-split-grid">

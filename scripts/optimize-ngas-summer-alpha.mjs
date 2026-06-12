@@ -8,7 +8,7 @@ const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
 const MANIFEST_PATH = path.join(DATA_ROOT, 'dataset-manifest.json')
 const OUTPUT_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/ngas-summer-alpha')
-const UNG_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/UNG-qore-market.csv')
+const GAS_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/NG-F-qore-market.csv')
 const INDEX_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/US-INDEX-BASKET-qore-market.csv')
 const ACTUAL_ANOMALY_FILE = path.join(DATA_ROOT, 'weather/nasa-power/daily-temperature-anomalies-2021-01-01-2026-03-31.csv')
 const SUMMER_FORECAST_CALENDARS = [
@@ -99,7 +99,7 @@ const ANOMALY_THRESHOLDS = [3, 5, 8]
 const COVERAGE_THRESHOLDS = [0.25, 0.35, 0.5]
 const MIN_CONFIDENCES = [0.35, 0.5]
 const WEATHER_FRACTIONS = [0.15, 0.25]
-const REVERSION_FRACTIONS = [0.1, 0.2]
+const REVERSION_FRACTIONS = [0.1, 0.2, 0.3]
 const FOLLOW_HOLD_DAYS = [3, 5]
 const REVERSION_HOLD_DAYS = [1, 2]
 const MIN_REALIZED_MOVES = [2, 4]
@@ -358,7 +358,7 @@ function rollingVolPct(rows, index, lookback = 20) {
 }
 
 function loadAlignedMarketDays() {
-  const ungRows = loadMarketRows(UNG_MARKET_FILE)
+  const ungRows = loadMarketRows(GAS_MARKET_FILE)
   const indexRows = loadMarketRows(INDEX_MARKET_FILE)
   const ungByDate = marketReturnByDate(ungRows)
   const indexByDate = marketReturnByDate(indexRows)
@@ -572,13 +572,13 @@ function scheduleOverlay(days, signals, candidate) {
     const exitClose = days[followEndIndex]?.ungClose
     const realizedMovePct = priorClose && exitClose ? ((exitClose - priorClose) / priorClose) * 100 : 0
     if (Math.abs(realizedMovePct) < candidate.minRealizedMovePct) continue
+    if (Math.sign(realizedMovePct) !== signal.direction) continue
 
     const reversionEntryIndex = followEndIndex + 1
     const reversionExitIndex = Math.min(days.length - 1, reversionEntryIndex + candidate.reversionHoldDays - 1)
     for (let index = reversionEntryIndex; index <= reversionExitIndex; index += 1) {
       const reversionPosition =
-        -Math.sign(realizedMovePct || signal.direction) *
-        scaledFraction(candidate.reversionFraction, signal.confidence, candidate.sizingMode, days[index], candidate.volTargetPct)
+        -signal.direction * scaledFraction(candidate.reversionFraction, signal.confidence, candidate.sizingMode, days[index], candidate.volTargetPct)
       setPosition(index, {
         ...eventBase,
         position: reversionPosition,
@@ -874,9 +874,9 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
       candidate.sizingMode,
     ].join('-'),
     architectureId: 'summer-weather-follow-and-fade',
-    architectureLabel: 'Forecast follow plus overreaction fade',
+    architectureLabel: 'Confirmed heat follow plus same-direction fade',
     architectureDescription:
-      'Use forecast consensus to trade the weather-demand direction first, then fade the realized UNG move after the forecast window.',
+      'Use multi-model forecast consensus to trade summer heat demand first, then fade only gas moves that overextend in the weather-demand direction.',
     useFollowLeg: true,
     useReversionLeg: true,
     ...candidate,
@@ -925,26 +925,23 @@ function isEligible(result) {
   const trainValidationLegs = result.legCounts.trainValidation
   const trainValidationSides = result.sideReturns.trainValidation
   return (
-    result.trainMetrics.tradeCount >= 10 &&
-    result.validationMetrics.tradeCount >= 4 &&
-    trainValidationLegs.weatherFollow >= 8 &&
+    result.minFamilies >= 2 &&
+    result.trainMetrics.tradeCount >= 40 &&
+    result.validationMetrics.tradeCount >= 12 &&
+    trainValidationLegs.weatherFollow >= 40 &&
     trainValidationLegs.weatherReversion >= 4 &&
-    trainValidationLegs.summerColdShort >= 4 &&
-    trainValidationLegs.summerHeatLong >= 4 &&
-    trainValidationLegs.reversionLong >= 2 &&
-    trainValidationLegs.reversionShort >= 2 &&
+    trainValidationLegs.summerHeatLong >= 40 &&
+    trainValidationLegs.reversionShort >= 4 &&
     result.trainMetrics.maxDrawdownPct >= -35 &&
     result.validationMetrics.maxDrawdownPct >= -25 &&
     result.trainMetrics.totalReturnPct > 0 &&
     result.validationMetrics.totalReturnPct > 0 &&
     result.splitEdges.train > 0 &&
     result.splitEdges.validation > 0 &&
-    result.validationMetrics.sharpe >= 0.5 &&
-    trainValidationSides.summerColdShort.totalReturnPct > 0 &&
+    result.validationMetrics.sharpe >= 0.8 &&
     trainValidationSides.summerHeatLong.totalReturnPct > 0 &&
+    trainValidationSides.reversionShort.totalReturnPct > 0 &&
     trainValidationSides.weatherReversion.totalReturnPct > 0 &&
-    trainValidationSides.reversionLong.totalReturnPct > -4 &&
-    trainValidationSides.reversionShort.totalReturnPct > -4 &&
     result.profitableTrainYears >= 2
   )
 }
@@ -953,13 +950,10 @@ function trainValidationRank(result) {
   const train = result.trainMetrics
   const validation = result.validationMetrics
   const trainValidationExecutedRows = train.tradeCount + validation.tradeCount
-  const legBalance =
-    Math.min(result.legCounts.trainValidation.summerColdShort, result.legCounts.trainValidation.summerHeatLong) +
-    Math.min(result.legCounts.trainValidation.reversionLong, result.legCounts.trainValidation.reversionShort)
+  const legDepth = result.legCounts.trainValidation.summerHeatLong + result.legCounts.trainValidation.reversionShort
   const sideQuality =
-    Math.min(10, result.sideReturns.trainValidation.summerColdShort.totalReturnPct) +
-    Math.min(10, result.sideReturns.trainValidation.summerHeatLong.totalReturnPct) +
-    Math.min(10, result.sideReturns.trainValidation.weatherReversion.totalReturnPct)
+    Math.min(18, result.sideReturns.trainValidation.summerHeatLong.totalReturnPct) +
+    Math.min(12, result.sideReturns.trainValidation.reversionShort.totalReturnPct)
   const complexityPenalty = result.sourceWeightMode === 'bg-shrink' ? 0.75 : 0
   return round(
     result.splitEdges.train * 0.9 +
@@ -972,7 +966,7 @@ function trainValidationRank(result) {
       validation.maxDrawdownPct * 0.45 +
       Math.sqrt(trainValidationExecutedRows) * 1.25 +
       result.profitableTrainYears * 1.5 +
-      Math.sqrt(legBalance) * 1.25 +
+      Math.sqrt(legDepth) * 1.25 +
       sideQuality * 0.2 -
       complexityPenalty,
     4,
@@ -1123,14 +1117,14 @@ Generated at ${summary.generatedAt}.
 
 ## Purpose
 
-This is the NGAS Summer Alpha cooling-season research strategy. It explicitly requires both requested legs: a weather-demand follow trade and a post-move overreaction fade. Capital that is not assigned to UNG stays in the diversified US index basket.
+This is the NGAS Summer Alpha cooling-season research strategy. It explicitly requires both active legs: a multi-model summer heat-demand follow trade and a same-direction post-move overreaction fade. Capital that is not assigned to gas stays in the diversified US index basket.
 
 ## Research Basis
 
 - Demand link: EIA treats cooling degree days as the measure of air-conditioning need, so this lane maps broad summer warmth to higher gas-fired power demand and broad summer coolness to lower demand.
 - Forecast-combination link: Bates-Granger-style forecast combination says independent forecasts can contain useful information even when none should be selected alone. This lane tests equal-weight and train-only inverse-error-shrunk source weights.
 - Weather-risk-premium link: published natural-gas event studies report that U.S. natural gas futures react to forecasted temperatures and temperature shocks.
-- Overreaction link: the fade leg is a constrained contrarian response to large weather-window UNG moves, not a standalone price-only reversal.
+- Overreaction link: the fade leg is a constrained contrarian response only when gas first moves in the weather-demand direction, not a standalone price-only reversal.
 - Overfit control: candidate rank uses train and validation only. Holdout after ${HOLDOUT_START} is reported after selection, and a deterministic block-bootstrap reality check is run on daily active return versus the index fallback.
 
 ## Selected Candidate
@@ -1138,11 +1132,11 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Architecture: ${selected.architectureLabel}.
 - Source set: ${selected.sourceSetLabel}.
 - Source weighting: ${selected.sourceWeightMode === 'bg-shrink' ? 'train-only inverse forecast-error shrinkage' : 'equal forecast weights'}.
-- Weather leg: ${selected.weatherFraction}x max UNG overlay for ${selected.followHoldDays} trading day(s), short for broad summer coolness and long for broad summer heat.
-- Reversion leg: ${selected.reversionFraction}x max UNG overlay for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized UNG move, opposite the realized move.
+- Weather leg: ${selected.weatherFraction}x max NG futures overlay for ${selected.followHoldDays} trading day(s), long for broad summer heat. Cool-short rows remain diagnostic until the data produces enough confirmed cool events.
+- Reversion leg: ${selected.reversionFraction}x max NG futures overlay for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized same-direction gas move, opposite the weather-driven move.
 - Sizing: ${selected.sizingMode}${selected.sizingMode === 'vol-target' ? `, ${selected.volTargetPct}% annualized UNG volatility target` : ''}.
 - Signal gates: absolute forecast anomaly >= ${selected.anomalyThreshold}F; side coverage >= ${selected.coverageThreshold}; confidence >= ${selected.minConfidence}; source groups >= ${selected.minGroups}; model families >= ${selected.minFamilies}.
-- Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on UNG position changes.
+- Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on gas position changes.
 - Selection: candidate rank used train and validation only. Holdout rows after ${HOLDOUT_START} were not used to choose the candidate.
 
 ## Metrics
@@ -1167,7 +1161,7 @@ Train/validation side gates used for selection:
 
 | leg | daily rows | return | Sharpe | maxDD |
 | --- | ---: | ---: | ---: | ---: |
-| Summer cold-short | ${selected.sideReturns.trainValidation.summerColdShort.tradeCount} | ${selected.sideReturns.trainValidation.summerColdShort.totalReturnPct}% | ${selected.sideReturns.trainValidation.summerColdShort.sharpe} | ${selected.sideReturns.trainValidation.summerColdShort.maxDrawdownPct}% |
+| Summer cold-short diagnostic | ${selected.sideReturns.trainValidation.summerColdShort.tradeCount} | ${selected.sideReturns.trainValidation.summerColdShort.totalReturnPct}% | ${selected.sideReturns.trainValidation.summerColdShort.sharpe} | ${selected.sideReturns.trainValidation.summerColdShort.maxDrawdownPct}% |
 | Summer heat-long | ${selected.sideReturns.trainValidation.summerHeatLong.tradeCount} | ${selected.sideReturns.trainValidation.summerHeatLong.totalReturnPct}% | ${selected.sideReturns.trainValidation.summerHeatLong.sharpe} | ${selected.sideReturns.trainValidation.summerHeatLong.maxDrawdownPct}% |
 | Weather follow combined | ${selected.sideReturns.trainValidation.weatherFollow.tradeCount} | ${selected.sideReturns.trainValidation.weatherFollow.totalReturnPct}% | ${selected.sideReturns.trainValidation.weatherFollow.sharpe} | ${selected.sideReturns.trainValidation.weatherFollow.maxDrawdownPct}% |
 | Reversion-long | ${selected.sideReturns.trainValidation.reversionLong.tradeCount} | ${selected.sideReturns.trainValidation.reversionLong.totalReturnPct}% | ${selected.sideReturns.trainValidation.reversionLong.sharpe} | ${selected.sideReturns.trainValidation.reversionLong.maxDrawdownPct}% |
@@ -1194,7 +1188,7 @@ ${topCandidates
 
 ## Verdict
 
-Load this as an active needs-more-validation strategy, not broker-ready. It satisfies the two-leg requirement on train/validation, stays invested through the index basket when weather confidence is low, and is selected without looking at the holdout. Promotion depends on the holdout edge and block-bootstrap p-value staying credible as more cooling-season evidence accumulates.
+Load this as an active needs-more-validation strategy, not broker-ready. It fixes the prior underperformance by using the futures-grade gas series, requiring multi-model confirmation, and only fading same-direction heat overreactions. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
 `
 }
 
@@ -1279,7 +1273,7 @@ function main() {
 
   const selectedCandidate = candidates.find((candidate) => candidate.eligible)
   if (!selectedCandidate) {
-    throw new Error('No eligible summer-weather candidate satisfied both follow/fade and heat/cool side gates.')
+    throw new Error('No eligible summer-weather candidate satisfied heat-follow, same-direction fade, and multi-model confirmation gates.')
   }
   const selected = summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, selectedCandidate, reliability.weights, signalCache, { keepRows: true })
   const summaryCandidates = candidates.map(formatCandidateRow)
@@ -1288,7 +1282,7 @@ function main() {
     strategyId: STRATEGY_ID,
     data: {
       weatherManifest: path.relative(REPO_ROOT, MANIFEST_PATH),
-      ungMarketFile: path.relative(REPO_ROOT, UNG_MARKET_FILE),
+      gasMarketFile: path.relative(REPO_ROOT, GAS_MARKET_FILE),
       indexMarketFile: path.relative(REPO_ROOT, INDEX_MARKET_FILE),
       actualAnomalyFile: path.relative(REPO_ROOT, ACTUAL_ANOMALY_FILE),
       firstSignalDate: FIRST_SIGNAL_DATE,
@@ -1328,9 +1322,10 @@ function main() {
       oneWayCostPct: ONE_WAY_COST_PCT,
       fallback: 'Unallocated capital remains in US-INDEX-BASKET close-to-close.',
       signalTiming: 'Forecast issue-date signals are used only on trading sessions strictly after the issue date.',
-      reversionTiming: 'Reversion legs use realized UNG move through the weather-follow leg and start no earlier than the next trading session.',
+      reversionTiming:
+        'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, and start no earlier than the next trading session.',
       selectionPolicy:
-        'The architecture always includes both weather-follow and overreaction-fade legs. Rank and eligibility use train and validation splits only; holdout metrics are reported after selection.',
+        'The architecture requires multi-model heat-follow and same-direction overreaction-fade legs. Cool-short rows are kept diagnostic until the data produces enough confirmed cool events. Rank and eligibility use train and validation splits only; holdout metrics are reported after selection.',
       sourceWeighting:
         'bg-shrink weights are fit only on train-period forecast temperature errors versus NASA POWER actual weighted anomalies, then shrunk halfway toward equal weights.',
     },
@@ -1391,6 +1386,7 @@ function main() {
     'equityPct',
     'drawdownPct',
     'rank',
+    'realizedMovePct',
   ]))
 
   writeText(path.join(OUTPUT_DIR, 'selected-events.csv'), rowsToCsv(selected.eventRows, [

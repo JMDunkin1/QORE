@@ -6,10 +6,13 @@ import Papa from 'papaparse'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
+const MANIFEST_PATH = path.join(DATA_ROOT, 'dataset-manifest.json')
 const OUTPUT_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/ngas-winter-alpha')
 const WEATHER_HYBRID_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/weather-hybrid-rotation')
 const DUAL_WEATHER_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/dual-weather-rotation')
+const VOLATILITY_REVERSION_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/volatility-mean-reversion')
 const INDEX_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/US-INDEX-BASKET-qore-market.csv')
+const ACTUAL_DAILY_FILE = path.join(DATA_ROOT, 'weather/events/arctic-blast-actual-daily-2021-01-01-2026-03-31.csv')
 
 const STRATEGY_ID = 'ngas-winter-alpha'
 const INITIAL_CAPITAL = 100000
@@ -22,6 +25,56 @@ const TRADING_DAYS = 252
 const BOOTSTRAP_ITERATIONS = 1200
 const BLOCK_LENGTH = 10
 const INDEX_TREND_LOOKBACK_SESSIONS = 200
+const WEATHER_RESOLUTION_SOURCE_IDS = new Set(['gfs', 'gefs-mean'])
+
+const DEFAULT_WEATHER_RESOLUTION_POLICY = {
+  id: 'none',
+  label: 'No close-in weather confirmation',
+  kind: 'none',
+  description: 'Keep parent reversion legs unchanged.',
+}
+
+const WEATHER_RESOLUTION_POLICIES = [
+  {
+    id: 'close-confirm-1_5f',
+    label: 'Close-in weather confirms reversion by 1.5F',
+    kind: 'confirm-shift',
+    minShiftF: 1.5,
+    description:
+      'Require the latest close-in forecast or already-known actual anomaly to shift at least 1.5F in the same gas-demand direction as the reversion leg.',
+  },
+  {
+    id: 'close-confirm-3f',
+    label: 'Close-in weather confirms reversion by 3F',
+    kind: 'confirm-shift',
+    minShiftF: 3,
+    description:
+      'Require the latest close-in forecast or already-known actual anomaly to shift at least 3F in the same gas-demand direction as the reversion leg.',
+  },
+  {
+    id: 'spared-confirm-1_5f',
+    label: 'Event-spared confirmation by 1.5F',
+    kind: 'confirm-relief',
+    minReliefF: 1.5,
+    description:
+      'Require the close-in or already-known actual anomaly to move at least 1.5F toward normal while supporting the same direction as the reversion leg.',
+  },
+  {
+    id: 'block-adverse-2f',
+    label: 'Block adverse close-in weather shifts',
+    kind: 'block-adverse',
+    minAdverseShiftF: 2,
+    description:
+      'Keep the parent reversion unless the close-in or already-known actual anomaly shifts at least 2F against the reversion direction.',
+  },
+  {
+    id: 'graded-shift-sizing',
+    label: 'Grade reversion size by close-in weather shift',
+    kind: 'graded-shift',
+    description:
+      'Scale reversion exposure up when the close-in or already-known actual anomaly confirms the reversion, and shrink it when the weather shift argues against the trade.',
+  },
+]
 
 const BLEND_POLICIES = [
   {
@@ -100,6 +153,112 @@ const BLEND_POLICIES = [
     requiredSideChecks: ['coldLong', 'warmShort', 'reversionShort'],
   },
   {
+    id: 'short-fade-plus-cold-follow',
+    label: 'Short fade plus cold follow',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short.',
+    conflictPolicy: 'short-fade-plus-cold-follow',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionShort'],
+  },
+  {
+    id: 'short-fade-plus-cold-follow-shrunk-standalone',
+    label: 'Short fade plus cold follow with shrunk standalone fade',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; take same-direction warm-short plus reversion-short blends at full size, but shrink standalone Weather Hybrid reversion-short exposure because its train/validation edge is thinner and less balanced than confirmed blends.',
+    conflictPolicy: 'short-fade-plus-cold-follow',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionShort'],
+    standaloneReversionScale: 0.5,
+  },
+  {
+    id: 'vol-confirmed-fade-plus-cold-follow',
+    label: 'Vol-confirmed fade plus cold follow',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; take Weather Hybrid reversion setups only when Volatility Mean Reversion confirms the same overreaction-fade direction, adding same-direction Dual Weather follow exposure as confirmation.',
+    conflictPolicy: 'vol-confirmed-fade-plus-cold-follow',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionLong', 'reversionShort'],
+  },
+  {
+    id: 'short-fade-plus-cold-follow-vol-long',
+    label: 'Short fade plus cold follow and vol-confirmed long fade',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+    conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionLong', 'reversionShort'],
+    reversionLongScale: 1,
+  },
+  {
+    id: 'short-fade-plus-cold-follow-vol-long-75',
+    label: 'Short fade plus cold follow and 75% vol-confirmed long fade',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add 75%-sized Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+    conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionLong', 'reversionShort'],
+    reversionLongScale: 0.75,
+  },
+  {
+    id: 'short-fade-plus-cold-follow-vol-long-50',
+    label: 'Short fade plus cold follow and 50% vol-confirmed long fade',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add half-sized Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+    conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionLong', 'reversionShort'],
+    reversionLongScale: 0.5,
+  },
+  {
+    id: 'short-fade-plus-cold-follow-vol-long-25',
+    label: 'Short fade plus cold follow and 25% vol-confirmed long fade',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add quarter-sized Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+    conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionLong', 'reversionShort'],
+    reversionLongScale: 0.25,
+  },
+  {
+    id: 'short-fade-plus-cold-follow-vol-long-50-shrunk-standalone',
+    label: 'Short fade plus cold follow, 50% vol-confirmed long fade, shrunk standalone short fade',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; keep same-direction warm-short plus reversion-short blends at full size, add half-sized volatility-confirmed reversion-long exposure, and shrink standalone reversion-short exposure.',
+    conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionLong', 'reversionShort'],
+    reversionLongScale: 0.5,
+    standaloneReversionScale: 0.5,
+  },
+  {
+    id: 'confirmed-warm-short-plus-cold-follow',
+    label: 'Confirmed warm short plus cold follow',
+    positionPolicy:
+      'Take Dual Weather cold-follow setups directly; take warm-short exposure only when Dual Weather and Weather Hybrid agree on the same short direction.',
+    conflictPolicy: 'confirmed-warm-short-plus-cold-follow',
+    overlayCap: 0.45,
+    indexRiskMode: 'full-index-fallback',
+    selectionEligible: true,
+    requiredSideChecks: ['coldLong', 'warmShort', 'reversionShort'],
+  },
+  {
     id: 'short-fade-confirmed-long-risk-off',
     label: 'Short fade plus confirmed long fade, index risk-off',
     positionPolicy:
@@ -133,6 +292,31 @@ const BLEND_POLICIES = [
   },
 ]
 
+function policySupportsWeatherResolution(policy) {
+  return (
+    policy.selectionEligible &&
+    policy.indexRiskMode === 'full-index-fallback' &&
+    policy.requiredSideChecks.some((sideKey) => sideKey.startsWith('reversion'))
+  )
+}
+
+function expandedBlendPolicies() {
+  const baselines = BLEND_POLICIES.map((policy) => ({
+    ...policy,
+    weatherResolutionPolicy: DEFAULT_WEATHER_RESOLUTION_POLICY,
+  }))
+  const weatherResolved = BLEND_POLICIES.filter(policySupportsWeatherResolution).flatMap((policy) =>
+    WEATHER_RESOLUTION_POLICIES.map((resolutionPolicy) => ({
+      ...policy,
+      id: `${policy.id}-${resolutionPolicy.id}`,
+      label: `${policy.label} + ${resolutionPolicy.label}`,
+      positionPolicy: `${policy.positionPolicy} Weather-resolution overlay: ${resolutionPolicy.description}`,
+      weatherResolutionPolicy: resolutionPolicy,
+    })),
+  )
+  return [...baselines, ...weatherResolved]
+}
+
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8')
 }
@@ -148,6 +332,74 @@ function parseCsv(filePath) {
     skipEmptyLines: true,
     transformHeader: (header) => header.trim(),
   }).data
+}
+
+function loadWeatherResolutionData() {
+  const manifest = JSON.parse(readText(MANIFEST_PATH))
+  const forecastByIssueTarget = new Map()
+  const inputFiles = [path.relative(REPO_ROOT, MANIFEST_PATH), path.relative(REPO_ROOT, ACTUAL_DAILY_FILE)]
+
+  for (const calendar of manifest.forecastCalendars) {
+    if (!WEATHER_RESOLUTION_SOURCE_IDS.has(calendar.id)) continue
+    const scoresPath = path.join(DATA_ROOT, calendar.files.signalScores)
+    inputFiles.push(path.relative(REPO_ROOT, scoresPath))
+
+    for (const row of parseCsv(scoresPath)) {
+      const leadDays = numberFrom(row.leadDays, Number.NaN)
+      if (!Number.isFinite(leadDays) || leadDays < 1 || leadDays > 3) continue
+      const key = `${row.issueDate}|${row.targetDate}`
+      const sampledWeight = Math.max(0.0001, numberFrom(row.sampledWeight, 1))
+      const current =
+        forecastByIssueTarget.get(key) ?? {
+          issueDate: row.issueDate,
+          targetDate: row.targetDate,
+          weightedSum: 0,
+          weightSum: 0,
+          coverageSum: 0,
+          extremeCount: 0,
+          sourceIds: new Set(),
+        }
+      current.weightedSum += numberFrom(row.weightedAnomalyF) * sampledWeight
+      current.weightSum += sampledWeight
+      current.coverageSum += numberFrom(row.coveragePct) * sampledWeight
+      current.extremeCount += numberFrom(row.extremeCount)
+      current.sourceIds.add(calendar.id)
+      forecastByIssueTarget.set(key, current)
+    }
+  }
+
+  const forecastsByTargetDate = new Map()
+  for (const value of forecastByIssueTarget.values()) {
+    const row = {
+      issueDate: value.issueDate,
+      targetDate: value.targetDate,
+      weightedAnomalyF: round(value.weightedSum / value.weightSum, 3),
+      coveragePct: round(value.coverageSum / value.weightSum, 4),
+      extremeCount: round(value.extremeCount, 4),
+      sourceIds: [...value.sourceIds].sort(),
+    }
+    forecastsByTargetDate.set(row.targetDate, [...(forecastsByTargetDate.get(row.targetDate) ?? []), row])
+  }
+
+  for (const rows of forecastsByTargetDate.values()) {
+    rows.sort((a, b) => a.issueDate.localeCompare(b.issueDate))
+  }
+
+  const actualByDate = new Map(
+    parseCsv(ACTUAL_DAILY_FILE)
+      .map((row) => [
+        row.date,
+        {
+          date: row.date,
+          weightedAnomalyF: numberFrom(row.weightedAnomalyF, Number.NaN),
+          coveragePct: numberFrom(row.coveragePct, Number.NaN),
+          extremeCount: numberFrom(row.extremeCount, Number.NaN),
+        },
+      ])
+      .filter(([, row]) => Number.isFinite(row.weightedAnomalyF)),
+  )
+
+  return { forecastsByTargetDate, actualByDate, inputFiles }
 }
 
 function numberFrom(value, fallback = 0) {
@@ -209,6 +461,12 @@ function isReversionRow(row) {
   return row?.windowId === 'weather-reversion'
 }
 
+function volatilityDirection(row) {
+  if (row?.direction === 'long') return 1
+  if (row?.direction === 'short') return -1
+  return 0
+}
+
 function baseFallbackRow(dualRow, weatherRow) {
   return dualRow ?? weatherRow
 }
@@ -217,7 +475,185 @@ function sameDirection(firstPosition, secondPosition) {
   return firstPosition !== 0 && secondPosition !== 0 && Math.sign(firstPosition) === Math.sign(secondPosition)
 }
 
+function latestCloseForecastFor(row, weatherResolutionData) {
+  const forecasts = weatherResolutionData.forecastsByTargetDate.get(row.targetDate) ?? []
+  let latest = null
+  for (const forecast of forecasts) {
+    if (forecast.issueDate <= row.entryTradeDate) latest = forecast
+    if (forecast.issueDate > row.entryTradeDate) break
+  }
+  return latest
+}
+
+function weatherResolutionForRow(row, position, weatherResolutionData) {
+  const originalAnomalyF = numberFrom(row?.weightedAnomalyF, Number.NaN)
+  const positionDirection = Math.sign(position)
+  if (!row || positionDirection === 0 || !Number.isFinite(originalAnomalyF)) {
+    return {
+      available: false,
+      action: 'no-reversion',
+      scale: 1,
+    }
+  }
+
+  const actual = row.targetDate < row.entryTradeDate ? weatherResolutionData.actualByDate.get(row.targetDate) : null
+  const closeForecast = actual ? null : latestCloseForecastFor(row, weatherResolutionData)
+  const resolutionAnomalyF = actual?.weightedAnomalyF ?? closeForecast?.weightedAnomalyF ?? Number.NaN
+  if (!Number.isFinite(resolutionAnomalyF)) {
+    return {
+      available: false,
+      action: 'missing-kept',
+      scale: 1,
+      originalAnomalyF: round(originalAnomalyF, 3),
+    }
+  }
+
+  const shiftF = resolutionAnomalyF - originalAnomalyF
+  const weatherGasDirection = shiftF < 0 ? 1 : shiftF > 0 ? -1 : 0
+  const sameDirectionShift = weatherGasDirection !== 0 && weatherGasDirection === positionDirection
+  const adverseDirectionShift = weatherGasDirection !== 0 && weatherGasDirection === -positionDirection
+  const reliefF = Math.abs(originalAnomalyF) - Math.abs(resolutionAnomalyF)
+
+  return {
+    available: true,
+    source: actual ? 'actual' : 'close-forecast',
+    issueDate: actual ? row.targetDate : closeForecast.issueDate,
+    sourceIds: actual ? ['NASA POWER actual anomaly basket'] : closeForecast.sourceIds,
+    originalAnomalyF: round(originalAnomalyF, 3),
+    resolutionAnomalyF: round(resolutionAnomalyF, 3),
+    shiftF: round(shiftF, 3),
+    absShiftF: round(Math.abs(shiftF), 3),
+    reliefF: round(reliefF, 3),
+    weatherGasDirection,
+    sameDirectionShift,
+    adverseDirectionShift,
+    action: 'kept',
+    scale: 1,
+  }
+}
+
+function weatherResolutionDecision(policy, reversionRow, reversionPosition, weatherResolutionData) {
+  const resolutionPolicy = policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY
+  const resolution = weatherResolutionForRow(reversionRow, reversionPosition, weatherResolutionData)
+
+  if (resolutionPolicy.kind === 'none' || !resolution.available) {
+    return {
+      ...resolution,
+      policyId: resolutionPolicy.id,
+      action: resolution.action === 'missing-kept' ? resolution.action : 'none',
+      scale: 1,
+    }
+  }
+
+  if (resolutionPolicy.kind === 'confirm-shift') {
+    const confirmed = resolution.sameDirectionShift && resolution.absShiftF >= resolutionPolicy.minShiftF
+    return {
+      ...resolution,
+      policyId: resolutionPolicy.id,
+      action: confirmed ? 'confirmed-kept' : 'unconfirmed-dropped',
+      scale: confirmed ? 1 : 0,
+    }
+  }
+
+  if (resolutionPolicy.kind === 'confirm-relief') {
+    const confirmed = resolution.sameDirectionShift && resolution.reliefF >= resolutionPolicy.minReliefF
+    return {
+      ...resolution,
+      policyId: resolutionPolicy.id,
+      action: confirmed ? 'spared-kept' : 'not-spared-dropped',
+      scale: confirmed ? 1 : 0,
+    }
+  }
+
+  if (resolutionPolicy.kind === 'block-adverse') {
+    const blocked = resolution.adverseDirectionShift && resolution.absShiftF >= resolutionPolicy.minAdverseShiftF
+    return {
+      ...resolution,
+      policyId: resolutionPolicy.id,
+      action: blocked ? 'adverse-dropped' : 'not-adverse-kept',
+      scale: blocked ? 0 : 1,
+    }
+  }
+
+  if (resolutionPolicy.kind === 'graded-shift') {
+    const scale = resolution.sameDirectionShift
+      ? clamp(0.75 + resolution.absShiftF / 8, 0.75, 1.25)
+      : resolution.adverseDirectionShift
+        ? clamp(0.9 - resolution.absShiftF / 10, 0.45, 0.9)
+        : 0.85
+    return {
+      ...resolution,
+      policyId: resolutionPolicy.id,
+      action: resolution.sameDirectionShift ? 'confirm-scaled' : resolution.adverseDirectionShift ? 'adverse-shrunk' : 'neutral-shrunk',
+      scale: round(scale, 4),
+    }
+  }
+
+  return {
+    ...resolution,
+    policyId: resolutionPolicy.id,
+    action: 'kept',
+    scale: 1,
+  }
+}
+
+function followSurvivesDroppedReversion(policy, followRow) {
+  if (!followRow) return false
+  if (['net-position', 'follow-first'].includes(policy.conflictPolicy)) return true
+  if (followRow.thesisKind !== 'cold-long') return false
+  return ['short-fade-plus-cold-follow', 'vol-confirmed-fade-plus-cold-follow', 'short-fade-plus-cold-follow-vol-long'].includes(
+    policy.conflictPolicy,
+  )
+}
+
+function blendLegAfterWeatherResolution(blend, position) {
+  if (position === 0) return 'index-fallback'
+  if (blend.followRow && blend.reversionRow) return blend.blendLeg
+  if (blend.followRow) return blend.followRow.thesisKind === 'cold-long' ? 'dual-cold-follow' : 'dual-follow'
+  if (blend.reversionRow) return blend.blendLeg
+  return 'index-fallback'
+}
+
+function applyWeatherResolution(policy, blend, weatherResolutionData) {
+  if (!blend.reversionRow || blend.reversionPosition === 0) {
+    return {
+      ...blend,
+      weatherResolution: {
+        policyId: policy.weatherResolutionPolicy?.id ?? DEFAULT_WEATHER_RESOLUTION_POLICY.id,
+        action: 'no-reversion',
+        scale: 1,
+      },
+    }
+  }
+
+  const decision = weatherResolutionDecision(policy, blend.reversionRow, blend.reversionPosition, weatherResolutionData)
+  const reversionPosition = blend.reversionPosition * decision.scale
+  let followRow = blend.followRow
+  let followPosition = blend.followPosition
+  let reversionRow = decision.scale === 0 ? null : blend.reversionRow
+
+  if (decision.scale === 0 && !followSurvivesDroppedReversion(policy, followRow)) {
+    followRow = null
+    followPosition = 0
+  }
+
+  const nextBlend = {
+    ...blend,
+    followRow,
+    reversionRow,
+    followPosition,
+    reversionPosition,
+    position: clamp(followPosition + reversionPosition, -policy.overlayCap, policy.overlayCap),
+    weatherResolution: decision,
+  }
+  return {
+    ...nextBlend,
+    blendLeg: blendLegAfterWeatherResolution(nextBlend, nextBlend.position),
+  }
+}
+
 function chooseDominantRow(followRow, reversionRow, position, policy) {
+  if (policy.conflictPolicy === 'vol-confirmed-fade-plus-cold-follow' && reversionRow) return reversionRow
   if (policy.conflictPolicy === 'net-position' && followRow && reversionRow) {
     return Math.abs(numberFrom(followRow.ungPosition)) >= Math.abs(numberFrom(reversionRow.ungPosition))
       ? followRow
@@ -228,11 +664,13 @@ function chooseDominantRow(followRow, reversionRow, position, policy) {
   return followRow ?? reversionRow
 }
 
-function blendPositionFor(policy, dualRow, weatherRow) {
+function blendPositionFor(policy, dualRow, weatherRow, volatilityRow) {
   const followRow = isFollowRow(dualRow) ? dualRow : null
   const reversionRow = isReversionRow(weatherRow) ? weatherRow : null
   const followPosition = numberFrom(followRow?.ungPosition)
   const reversionPosition = numberFrom(reversionRow?.ungPosition)
+  const volatilityPosition = volatilityDirection(volatilityRow)
+  const volatilityConfirmsReversion = reversionRow && volatilityPosition !== 0 && Math.sign(reversionPosition) === volatilityPosition
 
   if (policy.conflictPolicy === 'net-position') {
     return {
@@ -301,6 +739,98 @@ function blendPositionFor(policy, dualRow, weatherRow) {
         reversionPosition: 0,
         position: followPosition,
         blendLeg: 'dual-cold-follow',
+      }
+    }
+  }
+
+  if (policy.conflictPolicy === 'short-fade-plus-cold-follow') {
+    if (followRow?.thesisKind === 'cold-long') {
+      const includeReversion = reversionRow && sameDirection(followPosition, reversionPosition)
+      const scaledReversionPosition = includeReversion ? reversionPosition : 0
+      return {
+        followRow,
+        reversionRow: includeReversion ? reversionRow : null,
+        followPosition,
+        reversionPosition: scaledReversionPosition,
+        position: clamp(followPosition + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
+        blendLeg: includeReversion ? 'confirmed-follow+weather-hybrid-reversion' : 'dual-cold-follow',
+      }
+    }
+    if (reversionRow?.thesisKind === 'reversion-short') {
+      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
+      const scaledReversionPosition = reversionPosition * (includeFollow ? 1 : (policy.standaloneReversionScale ?? 1))
+      return {
+        followRow: includeFollow ? followRow : null,
+        reversionRow,
+        followPosition: includeFollow ? followPosition : 0,
+        reversionPosition: scaledReversionPosition,
+        position: clamp((includeFollow ? followPosition : 0) + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
+        blendLeg: includeFollow ? 'confirmed-follow+weather-hybrid-reversion' : 'weather-hybrid-reversion',
+      }
+    }
+  }
+
+  if (policy.conflictPolicy === 'vol-confirmed-fade-plus-cold-follow') {
+    if (volatilityConfirmsReversion) {
+      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
+      return {
+        followRow: includeFollow ? followRow : null,
+        reversionRow,
+        followPosition: includeFollow ? followPosition : 0,
+        reversionPosition,
+        position: clamp((includeFollow ? followPosition : 0) + reversionPosition, -policy.overlayCap, policy.overlayCap),
+        blendLeg: includeFollow ? 'vol-confirmed-follow+weather-hybrid-reversion' : 'vol-confirmed-weather-hybrid-reversion',
+      }
+    }
+    if (followRow?.thesisKind === 'cold-long') {
+      return {
+        followRow,
+        reversionRow: null,
+        followPosition,
+        reversionPosition: 0,
+        position: followPosition,
+        blendLeg: 'dual-cold-follow',
+      }
+    }
+  }
+
+  if (policy.conflictPolicy === 'short-fade-plus-cold-follow-vol-long') {
+    if (followRow?.thesisKind === 'cold-long') {
+      const includeReversion = reversionRow && sameDirection(followPosition, reversionPosition)
+      const scaledReversionPosition = includeReversion
+        ? reversionPosition * (reversionRow.thesisKind === 'reversion-long' ? (policy.reversionLongScale ?? 1) : 1)
+        : 0
+      return {
+        followRow,
+        reversionRow: includeReversion ? reversionRow : null,
+        followPosition,
+        reversionPosition: scaledReversionPosition,
+        position: clamp(followPosition + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
+        blendLeg: includeReversion ? 'confirmed-follow+weather-hybrid-reversion' : 'dual-cold-follow',
+      }
+    }
+    if (reversionRow?.thesisKind === 'reversion-long' && volatilityConfirmsReversion) {
+      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
+      const scaledReversionPosition = reversionPosition * (policy.reversionLongScale ?? 1)
+      return {
+        followRow: includeFollow ? followRow : null,
+        reversionRow,
+        followPosition: includeFollow ? followPosition : 0,
+        reversionPosition: scaledReversionPosition,
+        position: clamp((includeFollow ? followPosition : 0) + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
+        blendLeg: includeFollow ? 'vol-confirmed-follow+weather-hybrid-reversion' : 'vol-confirmed-weather-hybrid-reversion',
+      }
+    }
+    if (reversionRow?.thesisKind === 'reversion-short') {
+      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
+      const scaledReversionPosition = reversionPosition * (includeFollow ? 1 : (policy.standaloneReversionScale ?? 1))
+      return {
+        followRow: includeFollow ? followRow : null,
+        reversionRow,
+        followPosition: includeFollow ? followPosition : 0,
+        reversionPosition: scaledReversionPosition,
+        position: clamp((includeFollow ? followPosition : 0) + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
+        blendLeg: includeFollow ? 'confirmed-follow+weather-hybrid-reversion' : 'weather-hybrid-reversion',
       }
     }
   }
@@ -410,9 +940,14 @@ function indexRiskLabelFor(policy) {
     : 'Full index fallback for idle capital'
 }
 
-function buildRowsForPolicy(policy, dualRows, weatherRows, indexTrendRiskByDate) {
+function usesVolatilityConfirmation(policy) {
+  return ['vol-confirmed-fade-plus-cold-follow', 'short-fade-plus-cold-follow-vol-long'].includes(policy.conflictPolicy)
+}
+
+function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData) {
   const dualByDate = new Map(dualRows.map((row) => [row.entryTradeDate, row]))
   const weatherByDate = new Map(weatherRows.map((row) => [row.entryTradeDate, row]))
+  const volatilityByDate = new Map(volatilityRows.map((row) => [row.entryTradeDate, row]))
   const dates = [...new Set([...dualByDate.keys(), ...weatherByDate.keys()])].sort()
   const rows = []
   const curve = []
@@ -423,8 +958,10 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, indexTrendRiskByDate)
   for (const date of dates) {
     const dualRow = dualByDate.get(date)
     const weatherRow = weatherByDate.get(date)
+    const volatilityRow = volatilityByDate.get(date)
     const fallback = baseFallbackRow(dualRow, weatherRow)
-    const blend = blendPositionFor(policy, dualRow, weatherRow)
+    const rawBlend = blendPositionFor(policy, dualRow, weatherRow, volatilityRow)
+    const blend = applyWeatherResolution(policy, rawBlend, weatherResolutionData)
     const weatherActive = blend.position !== 0
     const activeFollowRow = weatherActive ? blend.followRow : null
     const activeReversionRow = weatherActive ? blend.reversionRow : null
@@ -459,11 +996,15 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, indexTrendRiskByDate)
       direction: blend.position < 0 ? 'short' : 'long',
       sourceId: isFallback
         ? 'US-INDEX-BASKET'
-        : blend.followRow && blend.reversionRow
-          ? 'dual-weather+weather-hybrid'
-          : blend.followRow
-            ? blend.followRow.sourceId
-            : blend.reversionRow?.sourceId,
+        : blend.followRow && blend.reversionRow && usesVolatilityConfirmation(policy)
+          ? 'dual-weather+weather-hybrid+volatility-reversion'
+          : blend.followRow && blend.reversionRow
+            ? 'dual-weather+weather-hybrid'
+            : blend.reversionRow && usesVolatilityConfirmation(policy)
+              ? 'weather-hybrid+volatility-reversion'
+              : blend.followRow
+                ? blend.followRow.sourceId
+                : blend.reversionRow?.sourceId,
       windowId: isFallback
         ? 'index-fallback'
         : blend.followRow && blend.reversionRow
@@ -496,16 +1037,34 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, indexTrendRiskByDate)
       rank: round(Math.max(numberFrom(activeFollowRow?.rank), numberFrom(activeReversionRow?.rank)), 4),
       sourceStrategyId: isFallback
         ? 'index-fallback'
-        : blend.followRow && blend.reversionRow
-          ? 'dual-weather-rotation+weather-hybrid-rotation'
-          : blend.followRow
-            ? 'dual-weather-rotation'
-            : 'weather-hybrid-rotation',
+        : blend.followRow && blend.reversionRow && usesVolatilityConfirmation(policy)
+          ? 'dual-weather-rotation+weather-hybrid-rotation+volatility-mean-reversion'
+          : blend.followRow && blend.reversionRow
+            ? 'dual-weather-rotation+weather-hybrid-rotation'
+            : blend.reversionRow && usesVolatilityConfirmation(policy)
+              ? 'weather-hybrid-rotation+volatility-mean-reversion'
+              : blend.followRow
+                ? 'dual-weather-rotation'
+                : 'weather-hybrid-rotation',
       blendLeg: blend.blendLeg,
       followPosition: round(blend.followPosition, 4),
       reversionPosition: round(blend.reversionPosition, 4),
       componentThesisKinds,
       positionPolicy: policy.id,
+      weatherResolutionPolicy: policy.weatherResolutionPolicy?.id ?? DEFAULT_WEATHER_RESOLUTION_POLICY.id,
+      weatherResolutionSource: blend.weatherResolution.source ?? '',
+      weatherResolutionIssueDate: blend.weatherResolution.issueDate ?? '',
+      weatherResolutionSourceIds: blend.weatherResolution.sourceIds ?? [],
+      weatherResolutionOriginalAnomalyF: Number.isFinite(blend.weatherResolution.originalAnomalyF)
+        ? round(blend.weatherResolution.originalAnomalyF, 3)
+        : '',
+      weatherResolutionAnomalyF: Number.isFinite(blend.weatherResolution.resolutionAnomalyF)
+        ? round(blend.weatherResolution.resolutionAnomalyF, 3)
+        : '',
+      weatherResolutionShiftF: Number.isFinite(blend.weatherResolution.shiftF) ? round(blend.weatherResolution.shiftF, 3) : '',
+      weatherResolutionReliefF: Number.isFinite(blend.weatherResolution.reliefF) ? round(blend.weatherResolution.reliefF, 3) : '',
+      weatherResolutionAction: blend.weatherResolution.action ?? '',
+      weatherResolutionScale: round(blend.weatherResolution.scale ?? 1, 4),
     }
 
     rows.push(row)
@@ -614,9 +1173,16 @@ function indexCurveFromRows(rows) {
   }))
 }
 
+function rowHasThesisKind(row, thesisKind) {
+  if (row.thesisKind === thesisKind) return true
+  return Array.isArray(row.componentThesisKinds)
+    ? row.componentThesisKinds.some((component) => component === thesisKind || component.endsWith(`:${thesisKind}`))
+    : false
+}
+
 function sideReturnSnapshot(rows, splitFilter = () => true) {
   const metricFor = (thesisKinds) => {
-    const selectedRows = rows.filter((row) => splitFilter(row) && thesisKinds.includes(row.thesisKind))
+    const selectedRows = rows.filter((row) => splitFilter(row) && thesisKinds.some((thesisKind) => rowHasThesisKind(row, thesisKind)))
     return metricsFromCurve(
       selectedRows.map((row) => ({
         date: row.entryTradeDate,
@@ -648,20 +1214,25 @@ function legCounts(rows, splitFilter = () => true) {
     dualFollow: scoped.filter((row) => row.blendLeg === 'dual-follow').length,
     dualColdFollow: scoped.filter((row) => row.blendLeg === 'dual-cold-follow').length,
     weatherHybridReversion: scoped.filter((row) => row.blendLeg === 'weather-hybrid-reversion').length,
+    volConfirmedReversion: scoped.filter((row) => row.blendLeg === 'vol-confirmed-weather-hybrid-reversion').length,
     blended: scoped.filter((row) => row.blendLeg === 'dual-follow+weather-hybrid-reversion').length,
     confirmedBlended: scoped.filter((row) =>
-      ['confirmed-follow+weather-hybrid-reversion', 'confirmed-warm-short+weather-hybrid-reversion'].includes(row.blendLeg),
+      [
+        'confirmed-follow+weather-hybrid-reversion',
+        'confirmed-warm-short+weather-hybrid-reversion',
+        'vol-confirmed-follow+weather-hybrid-reversion',
+      ].includes(row.blendLeg),
     ).length,
-    coldLong: scoped.filter((row) => row.thesisKind === 'cold-long').length,
-    warmShort: scoped.filter((row) => row.thesisKind === 'warm-short').length,
-    reversionLong: scoped.filter((row) => row.thesisKind === 'reversion-long').length,
-    reversionShort: scoped.filter((row) => row.thesisKind === 'reversion-short').length,
+    coldLong: scoped.filter((row) => rowHasThesisKind(row, 'cold-long')).length,
+    warmShort: scoped.filter((row) => rowHasThesisKind(row, 'warm-short')).length,
+    reversionLong: scoped.filter((row) => rowHasThesisKind(row, 'reversion-long')).length,
+    reversionShort: scoped.filter((row) => rowHasThesisKind(row, 'reversion-short')).length,
     indexRiskOff: scoped.filter((row) => row.indexRiskOn === false).length,
   }
 }
 
-function summarizePolicy(policy, dualRows, weatherRows, indexTrendRiskByDate) {
-  const { rows, curve } = buildRowsForPolicy(policy, dualRows, weatherRows, indexTrendRiskByDate)
+function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData) {
+  const { rows, curve } = buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData)
   const eventRows = rows.filter((row) => row.windowId !== 'index-fallback')
   const indexCurve = indexCurveFromRows(rows)
   const indexMetrics = {
@@ -693,10 +1264,17 @@ function summarizePolicy(policy, dualRows, weatherRows, indexTrendRiskByDate) {
     useFollowLeg: true,
     useReversionLeg: true,
     sourceSetId: 'parent-selected-weather-experts',
-    sourceSetLabel: 'Dual Weather follow plus Weather Hybrid reversion',
-    sourceIds: ['dual-weather-rotation', 'weather-hybrid-rotation'],
+    sourceSetLabel:
+      usesVolatilityConfirmation(policy)
+        ? 'Dual Weather follow plus Weather Hybrid reversion confirmed by Volatility Mean Reversion'
+        : 'Dual Weather follow plus Weather Hybrid reversion',
+    sourceIds:
+      usesVolatilityConfirmation(policy)
+        ? ['dual-weather-rotation', 'weather-hybrid-rotation', 'volatility-mean-reversion']
+        : ['dual-weather-rotation', 'weather-hybrid-rotation'],
     sourceWeightMode: 'parent-selected',
     sizingMode: policy.id,
+    weatherResolutionPolicy: policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY,
     indexRiskMode: policy.indexRiskMode,
     indexRiskLabel: indexRiskLabelFor(policy),
     indexTrendLookbackSessions:
@@ -706,6 +1284,8 @@ function summarizePolicy(policy, dualRows, weatherRows, indexTrendRiskByDate) {
     minConfidence: null,
     weatherFraction: 0.25,
     reversionFraction: 0.2,
+    reversionLongScale: policy.reversionLongScale ?? 1,
+    standaloneReversionScale: policy.standaloneReversionScale ?? 1,
     overlayCap: policy.overlayCap,
     followHoldDays: 3,
     reversionHoldDays: 2,
@@ -794,9 +1374,13 @@ function formatCandidateRow(candidate) {
     trainValidationRank: candidate.trainValidationRank,
     architectureId: candidate.architectureId,
     conflictPolicy: candidate.conflictPolicy,
+    weatherResolutionPolicy: candidate.weatherResolutionPolicy.id,
+    weatherResolutionKind: candidate.weatherResolutionPolicy.kind,
     indexRiskMode: candidate.indexRiskMode,
     selectionEligible: candidate.selectionEligible,
     overlayCap: candidate.overlayCap,
+    reversionLongScale: candidate.reversionLongScale,
+    standaloneReversionScale: candidate.standaloneReversionScale,
     trainReturnPct: candidate.trainMetrics.totalReturnPct,
     trainIndexReturnPct: candidate.indexMetrics.train.totalReturnPct,
     trainEdgePct: candidate.splitEdges.train,
@@ -868,6 +1452,16 @@ function selectedTradeRows(rows) {
     'reversionPosition',
     'componentThesisKinds',
     'positionPolicy',
+    'weatherResolutionPolicy',
+    'weatherResolutionSource',
+    'weatherResolutionIssueDate',
+    'weatherResolutionSourceIds',
+    'weatherResolutionOriginalAnomalyF',
+    'weatherResolutionAnomalyF',
+    'weatherResolutionShiftF',
+    'weatherResolutionReliefF',
+    'weatherResolutionAction',
+    'weatherResolutionScale',
   ]
   return { headers, rows }
 }
@@ -919,14 +1513,17 @@ Generated at ${summary.generatedAt}.
 
 ## Purpose
 
-This active QORE research strategy combines parent experts without fitting new weather thresholds: Dual Weather supplies the cold/warm forecast-follow context, and Weather Hybrid supplies post-window reversion context. The selected blend is ranked on train/validation only, with holdout reported after selection.
+This active QORE research strategy combines parent experts without fitting new weather thresholds: Dual Weather supplies the cold/warm forecast-follow context, Weather Hybrid supplies post-window reversion context, Volatility Mean Reversion can confirm same-direction overreaction fades, and optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade. The selected blend is ranked on train/validation only, with holdout reported after selection.
 
 ## Selected Candidate
 
 - Architecture: ${selected.architectureLabel}.
-- Parent experts: Dual Weather Rotation for forecast-follow and Weather Hybrid Rotation for post-window reversion.
+- Parent experts: Dual Weather Rotation for forecast-follow, Weather Hybrid Rotation for post-window reversion, and Volatility Mean Reversion for same-direction fade confirmation.
 - Position policy: ${selected.positionPolicy}
 - Max weather UNG overlay: ${selected.overlayCap}x; parent weather leg ${selected.weatherFraction}x and weather reversion leg ${selected.reversionFraction}x.
+- Vol-confirmed reversion-long size: ${selected.reversionLongScale}x of the parent reversion leg.
+- Standalone reversion fade size: ${selected.standaloneReversionScale}x of the parent reversion leg when no same-direction follow signal confirms it.
+- Weather-resolution overlay: ${selected.weatherResolutionPolicy.label}. ${selected.weatherResolutionPolicy.description}
 - Idle capital risk mode: ${selected.indexRiskLabel}.
 - Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on UNG position changes.
 - Selection: ${summary.contract.selectionPolicy}
@@ -969,6 +1566,7 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 - Eligible candidates: ${summary.search.eligibleCandidateCount}.
 - Eligibility requires a selectable gas-alpha policy, positive train and validation edge, lower train and validation drawdown than the index basket, and train/validation volatility under a 20% annualized risk budget.
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
+- Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
 - Holdout was not used for selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
 - Block-bootstrap p-value versus index active daily return: ${summary.validation.realityCheck.pValue}.
 - Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks.
@@ -993,13 +1591,17 @@ Load this as an active needs-more-validation strategy, not broker-ready. The sel
 function main() {
   const weatherSummary = JSON.parse(readText(path.join(WEATHER_HYBRID_DIR, 'run-summary.json')))
   const dualSummary = JSON.parse(readText(path.join(DUAL_WEATHER_DIR, 'run-summary.json')))
+  const volatilitySummary = JSON.parse(readText(path.join(VOLATILITY_REVERSION_DIR, 'run-summary.json')))
   const weatherRows = parseCsv(path.join(WEATHER_HYBRID_DIR, 'selected-trades.csv'))
   const dualRows = parseCsv(path.join(DUAL_WEATHER_DIR, 'selected-trades.csv'))
+  const volatilityRows = parseCsv(path.join(VOLATILITY_REVERSION_DIR, 'selected-trades.csv'))
   const indexMarketRows = parseCsv(INDEX_MARKET_FILE)
   const indexTrendRiskByDate = buildIndexTrendRiskMap(indexMarketRows)
-  const candidates = BLEND_POLICIES.map((policy) => summarizePolicy(policy, dualRows, weatherRows, indexTrendRiskByDate)).sort(
-    (a, b) => b.trainValidationRank - a.trainValidationRank,
-  )
+  const weatherResolutionData = loadWeatherResolutionData()
+  const policies = expandedBlendPolicies()
+  const candidates = policies
+    .map((policy) => summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData))
+    .sort((a, b) => b.trainValidationRank - a.trainValidationRank)
   const selected = candidates.find((candidate) => candidate.eligible) ?? candidates[0]
   const realityCheck = blockBootstrapRealityCheck(selected.curve)
   const { headers, rows } = selectedTradeRows(selected.rows)
@@ -1011,6 +1613,9 @@ function main() {
       weatherHybridTrades: path.relative(REPO_ROOT, path.join(WEATHER_HYBRID_DIR, 'selected-trades.csv')),
       dualWeatherSummary: path.relative(REPO_ROOT, path.join(DUAL_WEATHER_DIR, 'run-summary.json')),
       dualWeatherTrades: path.relative(REPO_ROOT, path.join(DUAL_WEATHER_DIR, 'selected-trades.csv')),
+      volatilityReversionSummary: path.relative(REPO_ROOT, path.join(VOLATILITY_REVERSION_DIR, 'run-summary.json')),
+      volatilityReversionTrades: path.relative(REPO_ROOT, path.join(VOLATILITY_REVERSION_DIR, 'selected-trades.csv')),
+      weatherResolutionInputs: weatherResolutionData.inputFiles,
       marketStartDate: selected.allMetrics.firstEntry,
       marketEndDate: selected.allMetrics.lastExit,
       marketDays: selected.rows.length,
@@ -1027,7 +1632,9 @@ function main() {
       selectionPolicy:
         'Only predeclared parent-blend policies are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
       overfitControl:
-        'No new weather thresholds are fit here; parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy while reporting portfolio-level risk-off overlays as diagnostics.',
+        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
+      weatherResolutionTiming:
+        'Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate, or NASA POWER actual anomalies only when targetDate < entryTradeDate.',
       indexTrendLookbackSessions: INDEX_TREND_LOOKBACK_SESSIONS,
     },
     parents: {
@@ -1040,6 +1647,11 @@ function main() {
         strategyId: dualSummary.strategyId,
         candidateId: dualSummary.selected.candidateId,
         role: 'cold-long and warm-short forecast-follow expert',
+      },
+      volatilityReversion: {
+        strategyId: volatilitySummary.strategyId,
+        candidateId: volatilitySummary.selected.candidateId,
+        role: 'same-direction winter overreaction fade confirmer',
       },
     },
     selected: {

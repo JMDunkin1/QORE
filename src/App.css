@@ -802,6 +802,23 @@ dd {
   gap: 15px;
 }
 
+.control-panel .section-heading {
+  margin-bottom: 0;
+}
+
+.control-panel .chart-title-strategy-meta {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.control-panel .chart-title-strategy-meta em {
+  flex: 1 1 150px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .select-control {
   display: grid;
   gap: 7px;
