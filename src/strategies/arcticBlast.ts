@@ -83,6 +83,36 @@ type HybridSummaryMetrics = {
   averageHoldDays: number
 }
 
+type RealityCheckPercentiles = {
+  p05: number
+  p50: number
+  p95: number
+}
+
+type RealityCheckSummary = {
+  observedAverageDailyEdgePct: number
+  pValue: number
+  iterations: number
+  blockLength: number
+  method?: string
+  comparison?: string
+  alternative?: string
+  singleCandidatePValue?: number
+  selectionAdjustedPValue?: number | null
+  observedAnnualizedEdgePct?: number
+  dailyActiveVolPct?: number
+  standardErrorDailyEdgePct?: number
+  meanConfidenceIntervalDailyEdgePct?: RealityCheckPercentiles
+  nullConfidenceIntervalDailyEdgePct?: RealityCheckPercentiles
+  nullMaxMeanDailyEdgePct?: RealityCheckPercentiles | null
+  candidateFamilySize?: number
+  bestObservedCandidateId?: string | null
+  bestObservedAverageDailyEdgePct?: number | null
+  sampleCount?: number
+  activeOverlayDays?: number
+  minimumResolvablePValue?: number
+}
+
 type HybridSummary = {
   strategyId: string
   selected: {
@@ -151,12 +181,7 @@ type DualWeatherSummary = HybridSummary & {
     selectionUsedHoldout: boolean
   }
   validation: {
-    realityCheck: {
-      observedAverageDailyEdgePct: number
-      pValue: number
-      iterations: number
-      blockLength: number
-    }
+    realityCheck: RealityCheckSummary
   }
 }
 
@@ -248,12 +273,7 @@ type WinterAlphaSummary = {
     selectionUsedHoldout: boolean
   }
   validation: {
-    realityCheck: {
-      observedAverageDailyEdgePct: number
-      pValue: number
-      iterations: number
-      blockLength: number
-    }
+    realityCheck: RealityCheckSummary
   }
   outputFiles: {
     selectedTrades: string
@@ -622,7 +642,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
     metrics,
     caveat:
       holdoutEdge > 0
-        ? `Holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)}, but bootstrap p-value is ${realityCheckPValue}; keep this behind paper validation.`
+        ? `Holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)}; primary bootstrap p-value is ${realityCheckPValue}. Keep this behind paper validation.`
         : `Needs more validation: train/validation edge is strong, but holdout edge versus the index basket is ${signedSplitEdge(holdoutEdge)} and bootstrap p-value is ${realityCheckPValue}.`,
   }
 }

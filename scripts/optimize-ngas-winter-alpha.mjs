@@ -1474,26 +1474,124 @@ function createSeededRandom(seed = 1987) {
   }
 }
 
-function blockBootstrapRealityCheck(curve) {
-  const activeReturns = curve.map((point) => point.activeReturnPct / 100)
-  const observed = mean(activeReturns)
-  const random = createSeededRandom()
-  let count = 0
+function activeReturnSeries(curve) {
+  return curve.map((point) => numberFrom(point.activeReturnPct) / 100)
+}
+
+function blockBootstrapMeans(values, { seed = 1987 } = {}) {
+  const random = createSeededRandom(seed)
+  const means = []
 
   for (let iteration = 0; iteration < BOOTSTRAP_ITERATIONS; iteration += 1) {
     const sampled = []
-    while (sampled.length < activeReturns.length) {
-      const start = Math.floor(random() * activeReturns.length)
-      for (let offset = 0; offset < BLOCK_LENGTH && sampled.length < activeReturns.length; offset += 1) {
-        sampled.push(activeReturns[(start + offset) % activeReturns.length])
+    while (sampled.length < values.length) {
+      const start = Math.floor(random() * values.length)
+      for (let offset = 0; offset < BLOCK_LENGTH && sampled.length < values.length; offset += 1) {
+        sampled.push(values[(start + offset) % values.length])
       }
     }
-    if (mean(sampled) >= observed) count += 1
+    means.push(mean(sampled))
   }
 
+  return means
+}
+
+function pValueFromNullMeans(nullMeans, observed) {
+  const exceedances = nullMeans.filter((value) => value >= observed).length
+  return round((exceedances + 1) / (BOOTSTRAP_ITERATIONS + 1), 4)
+}
+
+function pctSummary(values) {
   return {
+    p05: round(percentile(values, 0.05) * 100, 5),
+    p50: round(percentile(values, 0.5) * 100, 5),
+    p95: round(percentile(values, 0.95) * 100, 5),
+  }
+}
+
+function candidateFamilyRealityCheck(selectedCurve, candidates, observed) {
+  const selectedDates = selectedCurve.map((point) => point.date)
+  const family = candidates
+    .filter((candidate) => candidate.eligible && candidate.curve?.length)
+    .map((candidate) => {
+      const byDate = new Map(candidate.curve.map((point) => [point.date, numberFrom(point.activeReturnPct) / 100]))
+      const returns = selectedDates.map((date) => byDate.get(date) ?? 0)
+      const candidateObserved = mean(returns)
+      return {
+        candidateId: candidate.candidateId,
+        observed: candidateObserved,
+        centeredReturns: returns.map((value) => value - candidateObserved),
+      }
+    })
+
+  if (!family.length) return null
+
+  const random = createSeededRandom(7919)
+  const maxNullMeans = []
+  for (let iteration = 0; iteration < BOOTSTRAP_ITERATIONS; iteration += 1) {
+    const sums = Array.from({ length: family.length }, () => 0)
+    let sampledCount = 0
+
+    while (sampledCount < selectedDates.length) {
+      const start = Math.floor(random() * selectedDates.length)
+      for (let offset = 0; offset < BLOCK_LENGTH && sampledCount < selectedDates.length; offset += 1) {
+        const sampleIndex = (start + offset) % selectedDates.length
+        family.forEach((candidate, candidateIndex) => {
+          sums[candidateIndex] += candidate.centeredReturns[sampleIndex]
+        })
+        sampledCount += 1
+      }
+    }
+
+    maxNullMeans.push(Math.max(...sums.map((sum) => sum / selectedDates.length)))
+  }
+
+  const bestObserved = family.reduce((best, candidate) => (candidate.observed > best.observed ? candidate : best), family[0])
+
+  return {
+    candidateFamilySize: family.length,
+    pValue: pValueFromNullMeans(maxNullMeans, observed),
+    nullMaxMeanDailyEdgePct: pctSummary(maxNullMeans),
+    bestObservedCandidateId: bestObserved.candidateId,
+    bestObservedAverageDailyEdgePct: round(bestObserved.observed * 100, 5),
+  }
+}
+
+function blockBootstrapRealityCheck(curve, candidates = []) {
+  const activeReturns = activeReturnSeries(curve)
+  const observed = mean(activeReturns)
+  const centered = activeReturns.map((value) => value - observed)
+  const meanBootstrapMeans = blockBootstrapMeans(activeReturns, { seed: 1987 })
+  const nullBootstrapMeans = blockBootstrapMeans(centered, { seed: 1987 })
+  const familyCheck = candidateFamilyRealityCheck(curve, candidates, observed)
+  const singleCandidatePValue = pValueFromNullMeans(nullBootstrapMeans, observed)
+  const primaryPValue = familyCheck?.pValue ?? singleCandidatePValue
+
+  const meanInterval = pctSummary(meanBootstrapMeans)
+  const nullInterval = pctSummary(nullBootstrapMeans)
+
+  return {
+    method: familyCheck
+      ? 'selection-adjusted centered circular block bootstrap'
+      : 'centered circular block bootstrap',
+    comparison: 'strategy net daily return minus US index basket daily return',
+    alternative: 'greater-than-zero daily active edge',
+    pValue: primaryPValue,
+    singleCandidatePValue,
+    selectionAdjustedPValue: familyCheck?.pValue ?? null,
     observedAverageDailyEdgePct: round(observed * 100, 5),
-    pValue: round((count + 1) / (BOOTSTRAP_ITERATIONS + 1), 4),
+    observedAnnualizedEdgePct: round(observed * TRADING_DAYS * 100, 2),
+    dailyActiveVolPct: round(std(activeReturns) * 100, 4),
+    standardErrorDailyEdgePct: round(std(activeReturns) / Math.sqrt(activeReturns.length) * 100, 5),
+    meanConfidenceIntervalDailyEdgePct: meanInterval,
+    nullConfidenceIntervalDailyEdgePct: nullInterval,
+    candidateFamilySize: familyCheck?.candidateFamilySize ?? 1,
+    bestObservedCandidateId: familyCheck?.bestObservedCandidateId ?? null,
+    bestObservedAverageDailyEdgePct: familyCheck?.bestObservedAverageDailyEdgePct ?? null,
+    nullMaxMeanDailyEdgePct: familyCheck?.nullMaxMeanDailyEdgePct ?? null,
+    sampleCount: activeReturns.length,
+    activeOverlayDays: curve.filter((point) => Math.abs(numberFrom(point.position)) > 1e-9).length,
+    minimumResolvablePValue: round(1 / (BOOTSTRAP_ITERATIONS + 1), 4),
     iterations: BOOTSTRAP_ITERATIONS,
     blockLength: BLOCK_LENGTH,
   }
@@ -1501,6 +1599,21 @@ function blockBootstrapRealityCheck(curve) {
 
 function sideRow(label, metrics) {
   return `| ${label} | ${metrics.tradeCount} | ${metrics.totalReturnPct}% | ${metrics.sharpe} | ${metrics.maxDrawdownPct}% |`
+}
+
+function winterAlphaPromotionStatus(summary) {
+  const holdoutEdge = numberFrom(summary.selected?.splitEdges?.holdout, Number.NEGATIVE_INFINITY)
+  const pValue = numberFrom(summary.validation?.realityCheck?.pValue, Number.POSITIVE_INFINITY)
+  return holdoutEdge > 0 && pValue <= 0.1 ? 'research-baseline' : 'needs-more-validation'
+}
+
+function winterAlphaVerdict(summary) {
+  const status = winterAlphaPromotionStatus(summary)
+  if (status === 'research-baseline') {
+    return 'Load this as an active research-baseline strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. It has cleared the current holdout-edge and bootstrap reality checks, but still needs non-overlapping paper validation before any broker adapter exists.'
+  }
+
+  return 'Load this as an active needs-more-validation strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. Holdout and the bootstrap reality check remain the promotion gates.'
 }
 
 function buildReport(summary) {
@@ -1568,8 +1681,13 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
 - Holdout was not used for selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
-- Block-bootstrap p-value versus index active daily return: ${summary.validation.realityCheck.pValue}.
-- Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks.
+- Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
+- Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
+- Selection-adjusted p-value: ${summary.validation.realityCheck.selectionAdjustedPValue ?? 'n/a'} across ${summary.validation.realityCheck.candidateFamilySize} eligible candidates.
+- Observed active edge: ${summary.validation.realityCheck.observedAverageDailyEdgePct}% per day / ${summary.validation.realityCheck.observedAnnualizedEdgePct}% annualized.
+- Mean daily-edge 90% bootstrap interval: ${summary.validation.realityCheck.meanConfidenceIntervalDailyEdgePct.p05}% to ${summary.validation.realityCheck.meanConfidenceIntervalDailyEdgePct.p95}%.
+- Zero-edge null 90% interval: ${summary.validation.realityCheck.nullConfidenceIntervalDailyEdgePct.p05}% to ${summary.validation.realityCheck.nullConfidenceIntervalDailyEdgePct.p95}%.
+- Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks, minimum resolvable p-value ${summary.validation.realityCheck.minimumResolvablePValue}.
 
 ## Top Train/Validation-Ranked Candidates
 
@@ -1584,7 +1702,7 @@ ${topCandidates
 
 ## Verdict
 
-Load this as an active needs-more-validation strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. Holdout is still one winter and the bootstrap reality check remains the promotion gate.
+${winterAlphaVerdict(summary)}
 `
 }
 
@@ -1603,7 +1721,7 @@ function main() {
     .map((policy) => summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData))
     .sort((a, b) => b.trainValidationRank - a.trainValidationRank)
   const selected = candidates.find((candidate) => candidate.eligible) ?? candidates[0]
-  const realityCheck = blockBootstrapRealityCheck(selected.curve)
+  const realityCheck = blockBootstrapRealityCheck(selected.curve, candidates)
   const { headers, rows } = selectedTradeRows(selected.rows)
   const summary = {
     generatedAt: new Date().toISOString(),

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-12T03:12:31.982Z",
+  "generatedAt": "2026-06-12T03:52:40.523Z",
   "strategyId": "ngas-winter-alpha",
   "data": {
     "weatherHybridSummary": "data/qore/research/strategy-agent-runs/weather-hybrid-rotation/run-summary.json",
@@ -4956,8 +4956,37 @@
   },
   "validation": {
     "realityCheck": {
+      "method": "selection-adjusted centered circular block bootstrap",
+      "comparison": "strategy net daily return minus US index basket daily return",
+      "alternative": "greater-than-zero daily active edge",
+      "pValue": 0.0283,
+      "singleCandidatePValue": 0.0117,
+      "selectionAdjustedPValue": 0.0283,
       "observedAverageDailyEdgePct": 0.03619,
-      "pValue": 0.4946,
+      "observedAnnualizedEdgePct": 9.12,
+      "dailyActiveVolPct": 0.5898,
+      "standardErrorDailyEdgePct": 0.01598,
+      "meanConfidenceIntervalDailyEdgePct": {
+        "p05": 0.01218,
+        "p50": 0.03595,
+        "p95": 0.06185
+      },
+      "nullConfidenceIntervalDailyEdgePct": {
+        "p05": -0.02401,
+        "p50": -0.00024,
+        "p95": 0.02566
+      },
+      "candidateFamilySize": 67,
+      "bestObservedCandidateId": "ngas-alpha-short-fade-plus-cold-follow-vol-long-graded-shift-sizing",
+      "bestObservedAverageDailyEdgePct": 0.03619,
+      "nullMaxMeanDailyEdgePct": {
+        "p05": 0.00029,
+        "p50": 0.01379,
+        "p95": 0.0329
+      },
+      "sampleCount": 1362,
+      "activeOverlayDays": 239,
+      "minimumResolvablePValue": 0.0008,
       "iterations": 1200,
       "blockLength": 10
     }

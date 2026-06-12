@@ -1,6 +1,6 @@
 # NGAS Winter Alpha
 
-Generated at 2026-06-12T03:12:31.982Z.
+Generated at 2026-06-12T03:52:40.523Z.
 
 ## Purpose
 
@@ -59,8 +59,13 @@ This active QORE research strategy combines parent experts without fitting new w
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
 - Holdout was not used for selection: yes.
-- Block-bootstrap p-value versus index active daily return: 0.4946.
-- Bootstrap setup: 1200 iterations, 10-session circular blocks.
+- Primary p-value: 0.0283 (selection-adjusted centered circular block bootstrap).
+- Single-candidate p-value: 0.0117.
+- Selection-adjusted p-value: 0.0283 across 67 eligible candidates.
+- Observed active edge: 0.03619% per day / 9.12% annualized.
+- Mean daily-edge 90% bootstrap interval: 0.01218% to 0.06185%.
+- Zero-edge null 90% interval: -0.02401% to 0.02566%.
+- Bootstrap setup: 1200 iterations, 10-session circular blocks, minimum resolvable p-value 0.0008.
 
 ## Top Train/Validation-Ranked Candidates
 
@@ -168,4 +173,4 @@ This active QORE research strategy combines parent experts without fitting new w
 
 ## Verdict
 
-Load this as an active needs-more-validation strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. Holdout is still one winter and the bootstrap reality check remains the promotion gate.
+Load this as an active research-baseline strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. It has cleared the current holdout-edge and bootstrap reality checks, but still needs non-overlapping paper validation before any broker adapter exists.

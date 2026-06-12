@@ -142,6 +142,34 @@ type ChartRange = {
 }
 type SplitEdgeName = 'train' | 'validation' | 'holdout' | 'all'
 type WeatherSideSeason = 'winter' | 'summer' | 'all-year'
+type RealityCheckPercentiles = {
+  p05: number
+  p50: number
+  p95: number
+}
+type RealityCheckMetrics = {
+  method?: string
+  comparison?: string
+  alternative?: string
+  pValue: number
+  singleCandidatePValue?: number
+  selectionAdjustedPValue?: number | null
+  observedAverageDailyEdgePct?: number
+  observedAnnualizedEdgePct?: number
+  dailyActiveVolPct?: number
+  standardErrorDailyEdgePct?: number
+  meanConfidenceIntervalDailyEdgePct?: RealityCheckPercentiles
+  nullConfidenceIntervalDailyEdgePct?: RealityCheckPercentiles
+  nullMaxMeanDailyEdgePct?: RealityCheckPercentiles | null
+  candidateFamilySize?: number
+  bestObservedCandidateId?: string | null
+  bestObservedAverageDailyEdgePct?: number | null
+  sampleCount?: number
+  activeOverlayDays?: number
+  minimumResolvablePValue?: number
+  iterations?: number
+  blockLength?: number
+}
 type WeatherSideDefinition = {
   id: string
   label: string
@@ -173,6 +201,32 @@ function splitEdgeForStrategy(strategy: ResearchBacktestResult['strategy'] | nul
   if (!splitEdges || typeof splitEdges !== 'object') return null
   const value = (splitEdges as Partial<Record<SplitEdgeName, unknown>>)[split]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function realityCheckForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): RealityCheckMetrics | null {
+  const realityCheck = strategy?.params.realityCheck
+  if (!realityCheck || typeof realityCheck !== 'object') return null
+  const value = realityCheck as Partial<RealityCheckMetrics>
+  return typeof value.pValue === 'number' && Number.isFinite(value.pValue) ? (value as RealityCheckMetrics) : null
+}
+
+function evidenceForPValue(pValue: number): { label: string; tone: Tone } {
+  if (pValue <= 0.01) return { label: 'Very strong', tone: 'positive' }
+  if (pValue <= 0.05) return { label: 'Strong', tone: 'positive' }
+  if (pValue <= 0.1) return { label: 'Watchlist', tone: 'warning' }
+  return { label: 'Weak', tone: 'negative' }
+}
+
+function formatPValue(value: number | null | undefined, minimum?: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  if (minimum && value <= minimum) return `<=${formatNumber(minimum, 4)}`
+  if (value < 0.0001) return '<0.0001'
+  return formatNumber(value, 4)
+}
+
+function formatDailyEdgeInterval(interval: RealityCheckPercentiles | null | undefined) {
+  if (!interval) return '-'
+  return `${signedPercent(interval.p05, 4)} to ${signedPercent(interval.p95, 4)}`
 }
 
 function roundNumber(value: number, digits = 2) {
@@ -942,6 +996,8 @@ function App() {
     ? selectedBacktest.metrics.cagrPct - selectedIndexBenchmarkAnnualReturnPct
     : 0
   const selectedHoldoutEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
+  const selectedRealityCheck = realityCheckForStrategy(selectedBacktest?.strategy)
+  const selectedRealityEvidence = selectedRealityCheck ? evidenceForPValue(selectedRealityCheck.pValue) : null
   const visibleStrategyBounds = chartRangeDataBounds(clampedStrategyChartRange, chartData.length)
   const visibleStrategyChartData = chartData.slice(visibleStrategyBounds.startIndex, visibleStrategyBounds.endIndex + 1)
   const showStrategyDetailLines = visibleStrategyChartData.length <= strategyDetailLineMaxPoints
@@ -982,6 +1038,60 @@ function App() {
           { label: 'Worst row', value: signedPercent(worstRowPct), tone: classForSigned(worstRowPct) },
         ]
       })()
+    : []
+  const selectedValidationStats = selectedRealityCheck
+    ? [
+        {
+          label: 'Primary p',
+          value: formatPValue(selectedRealityCheck.pValue, selectedRealityCheck.minimumResolvablePValue),
+          detail: selectedRealityCheck.selectionAdjustedPValue === null || selectedRealityCheck.selectionAdjustedPValue === undefined
+            ? 'Single strategy'
+            : 'Selection adjusted',
+          tone: selectedRealityEvidence?.tone ?? 'neutral',
+        },
+        {
+          label: 'Single p',
+          value: formatPValue(selectedRealityCheck.singleCandidatePValue ?? selectedRealityCheck.pValue, selectedRealityCheck.minimumResolvablePValue),
+          detail: 'Centered bootstrap',
+          tone: evidenceForPValue(selectedRealityCheck.singleCandidatePValue ?? selectedRealityCheck.pValue).tone,
+        },
+        {
+          label: 'Daily edge',
+          value: signedPercent(selectedRealityCheck.observedAverageDailyEdgePct ?? 0, 4),
+          detail: `${formatNumber(selectedRealityCheck.sampleCount ?? chartData.length, 0)} rows / ${formatNumber(selectedRealityCheck.activeOverlayDays ?? selectedBacktest?.metrics.tradeCount ?? 0, 0)} active`,
+          tone: classForSigned(selectedRealityCheck.observedAverageDailyEdgePct ?? 0),
+        },
+        {
+          label: 'Annual edge',
+          value: signedPercent(selectedRealityCheck.observedAnnualizedEdgePct ?? 0),
+          detail: `${formatNumber(selectedRealityCheck.dailyActiveVolPct ?? 0, 2)}% active vol`,
+          tone: classForSigned(selectedRealityCheck.observedAnnualizedEdgePct ?? 0),
+        },
+        {
+          label: 'Mean 90%',
+          value: formatDailyEdgeInterval(selectedRealityCheck.meanConfidenceIntervalDailyEdgePct),
+          detail: 'Bootstrapped daily edge',
+          tone: classForSigned(selectedRealityCheck.meanConfidenceIntervalDailyEdgePct?.p05 ?? 0),
+        },
+        {
+          label: 'Null 90%',
+          value: formatDailyEdgeInterval(selectedRealityCheck.nullConfidenceIntervalDailyEdgePct),
+          detail: 'Zero-edge resamples',
+          tone: 'neutral' as Tone,
+        },
+        {
+          label: 'Family',
+          value: formatNumber(selectedRealityCheck.candidateFamilySize ?? 1, 0),
+          detail: selectedRealityCheck.bestObservedCandidateId ? 'Eligible candidates' : 'Candidate path',
+          tone: (selectedRealityCheck.candidateFamilySize ?? 1) > 1 ? 'warning' : 'neutral',
+        },
+        {
+          label: 'Bootstrap',
+          value: `${formatNumber(selectedRealityCheck.iterations ?? 0, 0)} x ${formatNumber(selectedRealityCheck.blockLength ?? 0, 0)}d`,
+          detail: `Min p ${formatPValue(selectedRealityCheck.minimumResolvablePValue)}`,
+          tone: 'neutral' as Tone,
+        },
+      ]
     : []
   const emptyStats = [
     ['Win rate', '-', 'Positive return rows'],
@@ -1553,6 +1663,23 @@ function App() {
                     />
                   )}
                 </div>
+                {!!selectedValidationStats.length && selectedRealityEvidence && (
+                  <section className="validation-panel" aria-label="Statistical validation">
+                    <div className="validation-heading">
+                      <span>Statistical validation</span>
+                      <strong className={selectedRealityEvidence.tone}>{selectedRealityEvidence.label}</strong>
+                    </div>
+                    <dl className="validation-grid">
+                      {selectedValidationStats.map((stat) => (
+                        <div key={stat.label}>
+                          <dt>{stat.label}</dt>
+                          <dd className={stat.tone}>{stat.value}</dd>
+                          <em>{stat.detail}</em>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                )}
                 {!!selectedRangeStats.length && (
                   <dl className="chart-range-stats" aria-label="Visible strategy range">
                     {selectedRangeStats.map((stat) => (
