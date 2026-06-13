@@ -52,7 +52,16 @@ const HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS = 3
 const STORAGE_AVAILABLE_LAG_DAYS = 7
 const STORAGE_SEASONAL_LOOKBACK_YEARS = 5
 const STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER = 1.25
-const STORAGE_DEFICIT_HEAT_MAX_FRACTION = 0.4
+const STORAGE_DEFICIT_HEAT_MAX_FRACTION = 0.4375
+const COOLING_DEMAND_BASE_F = 65
+const COOLING_DEMAND_SOLID_ANOMALY_F = 5
+const COOLING_DEMAND_EXTREME_ANOMALY_F = 8
+const COOLING_DEMAND_LOW_REVERSION_SUBTRACT = 0.15
+const COOLING_DEMAND_SOLID_REVERSION_ADD = 0.05
+const COOLING_DEMAND_EXTREME_REVERSION_ADD = 0.15
+const COOLING_DEMAND_REVERSION_MIN_FRACTION = 0.2
+const COOLING_DEMAND_REVERSION_SOLID_MAX_FRACTION = 0.45
+const COOLING_DEMAND_REVERSION_EXTREME_MAX_FRACTION = 0.5
 
 const SOURCE_SETS = [
   {
@@ -104,11 +113,12 @@ const SIZING_MODES = ['fixed', 'confidence-scaled', 'vol-target']
 const ANOMALY_THRESHOLDS = [3, 5, 8]
 const COVERAGE_THRESHOLDS = [0.25, 0.35, 0.5]
 const MIN_CONFIDENCES = [0.35, 0.5]
-const WEATHER_FRACTIONS = [0.15, 0.25]
-const REVERSION_FRACTIONS = [0.1, 0.2, 0.3]
+const WEATHER_FRACTIONS = [0.15, 0.25, 0.35]
+const REVERSION_FRACTIONS = [0.1, 0.2, 0.3, 0.35]
 const FOLLOW_HOLD_DAYS = [3, 5]
 const REVERSION_HOLD_DAYS = [1, 2]
 const MIN_REALIZED_MOVES = [2, 4]
+const REVERSION_DEMAND_MODES = ['fixed', 'cooling-demand-tiered']
 const VOL_TARGETS = [18, 24]
 
 function readText(filePath) {
@@ -232,6 +242,13 @@ function scoreKey(row) {
   return [row.issueDate, row.targetDate, row.leadDays, row.windowId, row.modelId].join('|')
 }
 
+function coolingDemandAnomalyF(row) {
+  const forecastMeanF = numberFrom(row.forecastMeanF, Number.NaN)
+  const normalMeanF = numberFrom(row.normalMeanF, Number.NaN)
+  if (!Number.isFinite(forecastMeanF) || !Number.isFinite(normalMeanF)) return Number.NaN
+  return Math.max(0, forecastMeanF - COOLING_DEMAND_BASE_F) - Math.max(0, normalMeanF - COOLING_DEMAND_BASE_F)
+}
+
 function locationBreadthByScore(filePath) {
   const grouped = new Map()
 
@@ -244,14 +261,25 @@ function locationBreadthByScore(filePath) {
         coldExtremeCount: 0,
         warmWeight: 0,
         warmExtremeCount: 0,
+        coolingDemandWeightedSum: 0,
+        coolingDemandWeight: 0,
+        coolingDemandSolidWeight: 0,
+        coolingDemandExtremeCount: 0,
       }
     const weight = numberFrom(row.weight)
     const anomalyF = numberFrom(row.forecastAnomalyF, Number.NaN)
+    const coolingDemand = coolingDemandAnomalyF(row)
     current.sampledWeight += weight
     if (Number.isFinite(anomalyF) && anomalyF <= COOL_COVERAGE_MAX_ANOMALY_F) current.coldWeight += weight
     if (Number.isFinite(anomalyF) && anomalyF <= COOL_EXTREME_ANOMALY_F) current.coldExtremeCount += 1
     if (Number.isFinite(anomalyF) && anomalyF >= WARM_COVERAGE_MIN_ANOMALY_F) current.warmWeight += weight
     if (Number.isFinite(anomalyF) && anomalyF >= WARM_EXTREME_ANOMALY_F) current.warmExtremeCount += 1
+    if (Number.isFinite(coolingDemand)) {
+      current.coolingDemandWeightedSum += coolingDemand * weight
+      current.coolingDemandWeight += weight
+      if (coolingDemand >= COOLING_DEMAND_SOLID_ANOMALY_F) current.coolingDemandSolidWeight += weight
+      if (coolingDemand >= COOLING_DEMAND_EXTREME_ANOMALY_F) current.coolingDemandExtremeCount += 1
+    }
     grouped.set(key, current)
   }
 
@@ -263,6 +291,9 @@ function locationBreadthByScore(filePath) {
         coldExtremeCount: value.coldExtremeCount,
         warmCoveragePct: value.sampledWeight ? value.warmWeight / value.sampledWeight : 0,
         warmExtremeCount: value.warmExtremeCount,
+        coolingDemandAnomalyF: value.coolingDemandWeight ? value.coolingDemandWeightedSum / value.coolingDemandWeight : 0,
+        coolingDemandCoveragePct: value.coolingDemandWeight ? value.coolingDemandSolidWeight / value.coolingDemandWeight : 0,
+        coolingDemandExtremeCount: value.coolingDemandExtremeCount,
       },
     ]),
   )
@@ -300,6 +331,9 @@ function loadForecastScores() {
         coldExtremeCount: warm?.coldExtremeCount ?? 0,
         warmCoveragePct: warm?.warmCoveragePct ?? 0,
         warmExtremeCount: warm?.warmExtremeCount ?? 0,
+        coolingDemandAnomalyF: warm?.coolingDemandAnomalyF ?? 0,
+        coolingDemandCoveragePct: warm?.coolingDemandCoveragePct ?? 0,
+        coolingDemandExtremeCount: warm?.coolingDemandExtremeCount ?? 0,
         sampledWeight: numberFrom(row.sampledWeight),
         locationCount: numberFrom(row.locationCount),
       })
@@ -562,6 +596,9 @@ function createSignalFromIssueRows(rows, candidate, reliabilityWeights) {
     sourceGroups: winner.stats.groups,
     sourceFamilies: winner.stats.families,
     weightedAnomalyF: round(mean(scopedRows.map((row) => row.weightedAnomalyF)), 3),
+    coolingDemandAnomalyF: round(mean(scopedRows.map((row) => row.coolingDemandAnomalyF)), 3),
+    coolingDemandCoveragePct: round(mean(scopedRows.map((row) => row.coolingDemandCoveragePct)), 4),
+    coolingDemandExtremeCount: Math.max(...scopedRows.map((row) => row.coolingDemandExtremeCount), 0),
     sideStrength: winner.stats.maxStrength,
     oppositeStrength: winner.loser.maxStrength,
     coveragePct: winner.stats.averageCoverage,
@@ -620,6 +657,22 @@ function heatStorageAdjustedFraction(baseFraction, signal, day) {
   return Math.min(STORAGE_DEFICIT_HEAT_MAX_FRACTION, baseFraction * STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER)
 }
 
+function demandAdjustedReversionFraction(baseFraction, signal, candidate) {
+  if (candidate.reversionDemandMode !== 'cooling-demand-tiered' || signal.thesisKind !== 'summer-heat-long') return baseFraction
+  const coolingDemand = numberFrom(signal.coolingDemandAnomalyF, Number.NaN)
+  if (!Number.isFinite(coolingDemand)) return baseFraction
+  if (coolingDemand >= COOLING_DEMAND_EXTREME_ANOMALY_F) {
+    return Math.min(COOLING_DEMAND_REVERSION_EXTREME_MAX_FRACTION, baseFraction + COOLING_DEMAND_EXTREME_REVERSION_ADD)
+  }
+  if (coolingDemand >= COOLING_DEMAND_SOLID_ANOMALY_F) {
+    return Math.min(COOLING_DEMAND_REVERSION_SOLID_MAX_FRACTION, baseFraction + COOLING_DEMAND_SOLID_REVERSION_ADD)
+  }
+  return Math.min(
+    baseFraction,
+    Math.max(COOLING_DEMAND_REVERSION_MIN_FRACTION, baseFraction - COOLING_DEMAND_LOW_REVERSION_SUBTRACT),
+  )
+}
+
 function scheduleOverlay(days, signals, candidate) {
   const byIndex = new Map()
   const eventRows = []
@@ -649,6 +702,9 @@ function scheduleOverlay(days, signals, candidate) {
       sourceId: signal.sourceId,
       leadDays: signal.leadDays,
       weightedAnomalyF: signal.weightedAnomalyF,
+      coolingDemandAnomalyF: signal.coolingDemandAnomalyF,
+      coolingDemandCoveragePct: signal.coolingDemandCoveragePct,
+      coolingDemandExtremeCount: signal.coolingDemandExtremeCount,
       coveragePct: signal.coveragePct,
       extremeCount: signal.extremeCount,
       confidence: signal.confidence,
@@ -700,10 +756,18 @@ function scheduleOverlay(days, signals, candidate) {
     if (Math.sign(realizedMovePct) !== signal.direction) continue
 
     const reversionEntryIndex = followEndIndex + 1
+    if (signal.thesisKind === 'summer-heat-long' && days[reversionEntryIndex]?.storageDeficitHeatTilt) continue
     const reversionExitIndex = Math.min(days.length - 1, reversionEntryIndex + candidate.reversionHoldDays - 1)
     for (let index = reversionEntryIndex; index <= reversionExitIndex; index += 1) {
-      const reversionPosition =
-        -signal.direction * scaledFraction(candidate.reversionFraction, signal.confidence, candidate.sizingMode, days[index], candidate.volTargetPct)
+      const baseReversionFraction = scaledFraction(
+        candidate.reversionFraction,
+        signal.confidence,
+        candidate.sizingMode,
+        days[index],
+        candidate.volTargetPct,
+      )
+      const reversionFraction = demandAdjustedReversionFraction(baseReversionFraction, signal, candidate)
+      const reversionPosition = -signal.direction * reversionFraction
       setPosition(index, {
         ...eventBase,
         position: reversionPosition,
@@ -716,6 +780,7 @@ function scheduleOverlay(days, signals, candidate) {
         storageSeasonalDiffPct: days[index].storageSeasonalDiffPct,
         storageDeficitHeatTilt: days[index].storageDeficitHeatTilt,
         heatSizeMultiplier: 1,
+        reversionDemandMode: candidate.reversionDemandMode,
         rank: signal.rank + 5,
         realizedMovePct: round(realizedMovePct, 4),
       })
@@ -776,6 +841,9 @@ function buildCurve(days, overlayByIndex) {
       leadDays: overlay?.leadDays ?? 0,
       confidence: overlay?.confidence ?? 0,
       weightedAnomalyF: overlay?.weightedAnomalyF ?? 0,
+      coolingDemandAnomalyF: overlay?.coolingDemandAnomalyF ?? 0,
+      coolingDemandCoveragePct: overlay?.coolingDemandCoveragePct ?? 0,
+      coolingDemandExtremeCount: overlay?.coolingDemandExtremeCount ?? 0,
       coveragePct: overlay?.coveragePct ?? 0,
       coldCoveragePct: overlay?.thesisKind === 'summer-cold-short' ? overlay.coveragePct : 0,
       warmCoveragePct: overlay?.thesisKind === 'summer-heat-long' ? overlay.coveragePct : 0,
@@ -798,6 +866,7 @@ function buildCurve(days, overlayByIndex) {
       drawdownPct: round(drawdownPct, 4),
       rank: overlay?.rank ?? 0,
       realizedMovePct: overlay?.realizedMovePct ?? '',
+      reversionDemandMode: overlay?.reversionDemandMode ?? 'fixed',
     }
     rows.push(row)
     curve.push({
@@ -832,6 +901,9 @@ function executedEventRowsFromRows(rows) {
       thesisKind: row.thesisKind,
       leadDays: row.leadDays,
       weightedAnomalyF: row.weightedAnomalyF,
+      coolingDemandAnomalyF: row.coolingDemandAnomalyF,
+      coolingDemandCoveragePct: row.coolingDemandCoveragePct,
+      coolingDemandExtremeCount: row.coolingDemandExtremeCount,
       coveragePct: row.coveragePct,
       extremeCount: row.extremeCount,
       confidence: row.confidence,
@@ -842,6 +914,7 @@ function executedEventRowsFromRows(rows) {
       storageDeficitHeatTilt: row.storageDeficitHeatTilt,
       heatSizeMultiplier: row.heatSizeMultiplier,
       realizedMovePct: row.realizedMovePct,
+      reversionDemandMode: row.reversionDemandMode,
     }))
 }
 
@@ -1016,6 +1089,7 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
       `q${candidate.minConfidence}`,
       `wf${candidate.weatherFraction}`,
       `rf${candidate.reversionFraction}`,
+      `rd${candidate.reversionDemandMode}`,
       `fh${candidate.followHoldDays}`,
       `rh${candidate.reversionHoldDays}`,
       `mv${candidate.minRealizedMovePct}`,
@@ -1025,9 +1099,9 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
       candidate.sizingMode,
     ].join('-'),
     architectureId: 'summer-weather-follow-and-fade',
-    architectureLabel: 'Confirmed heat follow plus same-direction fade',
+    architectureLabel: 'Confirmed heat follow plus storage-aware same-direction fade',
     architectureDescription:
-      'Use multi-model forecast consensus to trade summer heat demand first, then fade only gas moves that overextend in the weather-demand direction.',
+      'Use multi-model forecast consensus to trade summer heat demand first, then fade only gas moves that overextend in the weather-demand direction when storage is not tight.',
     useFollowLeg: true,
     useReversionLeg: true,
     ...candidate,
@@ -1046,6 +1120,9 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
     scheduledEventCount: scheduledEventRows.length,
     skippedHeatFollowSignals,
     storageDeficitHeatTiltRows: overlayRows.filter((row) => row.thesisKind === 'summer-heat-long' && row.storageDeficitHeatTilt).length,
+    coolingDemandReversionRows: overlayRows.filter(
+      (row) => row.windowId === 'weather-reversion' && row.reversionDemandMode === 'cooling-demand-tiered',
+    ).length,
     completedEventCount: completedEvents,
     overlayDayCount: overlayRows.length,
     fallbackDayCount: rows.length - overlayRows.length,
@@ -1140,6 +1217,7 @@ function formatCandidateRow(candidate) {
     minConfidence: candidate.minConfidence,
     weatherFraction: candidate.weatherFraction,
     reversionFraction: candidate.reversionFraction,
+    reversionDemandMode: candidate.reversionDemandMode,
     followHoldDays: candidate.followHoldDays,
     reversionHoldDays: candidate.reversionHoldDays,
     minRealizedMovePct: candidate.minRealizedMovePct,
@@ -1153,6 +1231,7 @@ function formatCandidateRow(candidate) {
     scheduledEvents: candidate.scheduledEventCount,
     executedRows: candidate.completedEventCount,
     storageDeficitHeatTiltRows: candidate.storageDeficitHeatTiltRows,
+    coolingDemandReversionRows: candidate.coolingDemandReversionRows,
     weatherFollowRows: candidate.legCounts.all.weatherFollow,
     reversionRows: candidate.legCounts.all.weatherReversion,
     summerColdShortRows: candidate.legCounts.all.summerColdShort,
@@ -1266,6 +1345,11 @@ function blockBootstrapRealityCheck(curve) {
   }
 }
 
+function reversionDemandModeDescription(mode) {
+  if (mode !== 'cooling-demand-tiered') return 'fixed reversion sizing'
+  return `cooling-demand tiered sizing: CDD anomaly < ${COOLING_DEMAND_SOLID_ANOMALY_F}F trims the fade, ${COOLING_DEMAND_SOLID_ANOMALY_F}-${COOLING_DEMAND_EXTREME_ANOMALY_F}F modestly adds size, and >= ${COOLING_DEMAND_EXTREME_ANOMALY_F}F can lift the fade up to ${COOLING_DEMAND_REVERSION_EXTREME_MAX_FRACTION}x`
+}
+
 function buildReport(summary) {
   const selected = summary.selected
   const topCandidates = summary.candidates.slice(0, 12)
@@ -1286,6 +1370,8 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Freshness link: the heat-follow leg only buys the first broad heat signal after a quiet period, because repeated heat forecasts are more likely already priced.
 - Storage-deficit link: the heat-follow leg gets a modest size tilt only when lagged EIA Lower 48 storage is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal norm, because summer heat should matter more when the supply cushion is thinner.
 - Overreaction link: the fade leg is a constrained contrarian response only when gas first moves in the weather-demand direction, not a standalone price-only reversal.
+- Cooling-demand fade sizing link: the fade can size heat-rally shorts by forecast CDD anomaly, because CDD is closer to summer power-sector gas burn than raw temperature anomaly alone.
+- Storage-aware fade link: heat-driven rallies are not faded when lagged Lower 48 storage is below its trailing seasonal norm, because a tight balance sheet can let weather risk persist.
 - Overfit control: candidate rank uses train and validation only. Holdout after ${HOLDOUT_START} is reported after selection, and a deterministic block-bootstrap reality check is run on daily active return versus the index fallback.
 
 ## Selected Candidate
@@ -1295,7 +1381,8 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Source weighting: ${selected.sourceWeightMode === 'bg-shrink' ? 'train-only inverse forecast-error shrinkage' : 'equal forecast weights'}.
 - Weather leg: ${selected.weatherFraction}x max NG futures overlay for ${selected.followHoldDays} trading day(s), long only on fresh broad summer heat after ${selected.freshHeatLookbackDays} quiet calendar day(s). Cool-short rows remain diagnostic until the data produces enough confirmed cool events.
 - Storage tilt: fresh heat-follow rows are scaled by ${STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER}x, capped at ${STORAGE_DEFICIT_HEAT_MAX_FRACTION}x notional, only when EIA storage available with a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day lag is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal average.
-- Reversion leg: ${selected.reversionFraction}x max NG futures overlay for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized same-direction gas move, opposite the weather-driven move.
+- Reversion leg: ${selected.reversionFraction}x max NG futures overlay for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized same-direction gas move, opposite the weather-driven move. Heat-rally fades are skipped when lagged storage is below its trailing seasonal norm.
+- Reversion demand sizing: ${reversionDemandModeDescription(selected.reversionDemandMode)}.
 - Sizing: ${selected.sizingMode}${selected.sizingMode === 'vol-target' ? `, ${selected.volTargetPct}% annualized UNG volatility target` : ''}.
 - Signal gates: absolute forecast anomaly >= ${selected.anomalyThreshold}F; side coverage >= ${selected.coverageThreshold}; confidence >= ${selected.minConfidence}; source groups >= ${selected.minGroups}; model families >= ${selected.minFamilies}; heat-follow freshness lookback ${selected.freshHeatLookbackDays} calendar day(s).
 - Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on gas position changes.
@@ -1336,6 +1423,7 @@ Train/validation side gates used for selection:
 - Eligible dual-leg candidates: ${summary.search.eligibleCandidateCount}.
 - Skipped clustered heat-follow signals: ${selected.skippedHeatFollowSignals}.
 - Storage-deficit boosted heat-follow rows: ${selected.storageDeficitHeatTiltRows}.
+- Cooling-demand-sized reversion rows: ${selected.coolingDemandReversionRows}.
 - Block-bootstrap p-value versus index daily active return: ${summary.validation.realityCheck.pValue}.
 - Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks.
 
@@ -1352,7 +1440,7 @@ ${topCandidates
 
 ## Verdict
 
-Load this as an active needs-more-validation strategy, not broker-ready. It fixes the prior underperformance by using the futures-grade gas series, requiring multi-model confirmation, buying only fresh broad heat signals, and fading same-direction heat overreactions. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
+Load this as an active needs-more-validation strategy, not broker-ready. It fixes the prior underperformance by using the futures-grade gas series, requiring multi-model confirmation, buying only fresh broad heat signals, and fading same-direction heat overreactions only when lagged storage is not below its trailing seasonal norm. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
 `
 }
 
@@ -1385,39 +1473,43 @@ function main() {
             for (const minConfidence of MIN_CONFIDENCES) {
               for (const weatherFraction of WEATHER_FRACTIONS) {
                 for (const reversionFraction of REVERSION_FRACTIONS) {
-                  for (const followHoldDays of FOLLOW_HOLD_DAYS) {
-                    for (const reversionHoldDays of REVERSION_HOLD_DAYS) {
-                      for (const minRealizedMovePct of MIN_REALIZED_MOVES) {
-                        const volTargets = sizingMode === 'vol-target' ? VOL_TARGETS : [0]
-                        for (const volTargetPct of volTargets) {
-                          candidates.push(
-                            summarizeCandidate(
-                              days,
-                              rowsByIssueDate,
-                              indexBenchmarks,
-                              {
-                                sourceSetId: sourceSet.id,
-                                sourceSetLabel: sourceSet.label,
-                                sourceIds: sourceSet.sourceIds,
-                                minGroups: sourceSet.minGroups,
-                                minFamilies: sourceSet.minFamilies,
-                                sourceWeightMode,
-                                sizingMode,
-                                anomalyThreshold,
-                                coverageThreshold,
-                                minConfidence,
-                                weatherFraction,
-                                reversionFraction,
-                                followHoldDays,
-                                reversionHoldDays,
-                                minRealizedMovePct,
-                                freshHeatLookbackDays: HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS,
-                                volTargetPct,
-                              },
-                              reliability.weights,
-                              signalCache,
-                            ),
-                          )
+                  const reversionDemandModes = sizingMode === 'fixed' ? REVERSION_DEMAND_MODES : ['fixed']
+                  for (const reversionDemandMode of reversionDemandModes) {
+                    for (const followHoldDays of FOLLOW_HOLD_DAYS) {
+                      for (const reversionHoldDays of REVERSION_HOLD_DAYS) {
+                        for (const minRealizedMovePct of MIN_REALIZED_MOVES) {
+                          const volTargets = sizingMode === 'vol-target' ? VOL_TARGETS : [0]
+                          for (const volTargetPct of volTargets) {
+                            candidates.push(
+                              summarizeCandidate(
+                                days,
+                                rowsByIssueDate,
+                                indexBenchmarks,
+                                {
+                                  sourceSetId: sourceSet.id,
+                                  sourceSetLabel: sourceSet.label,
+                                  sourceIds: sourceSet.sourceIds,
+                                  minGroups: sourceSet.minGroups,
+                                  minFamilies: sourceSet.minFamilies,
+                                  sourceWeightMode,
+                                  sizingMode,
+                                  anomalyThreshold,
+                                  coverageThreshold,
+                                  minConfidence,
+                                  weatherFraction,
+                                  reversionFraction,
+                                  reversionDemandMode,
+                                  followHoldDays,
+                                  reversionHoldDays,
+                                  minRealizedMovePct,
+                                  freshHeatLookbackDays: HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS,
+                                  volTargetPct,
+                                },
+                                reliability.weights,
+                                signalCache,
+                              ),
+                            )
+                          }
                         }
                       }
                     }
@@ -1489,7 +1581,9 @@ function main() {
       fallback: 'Unallocated capital remains in US-INDEX-BASKET close-to-close.',
       signalTiming: 'Forecast issue-date signals are used only on trading sessions strictly after the issue date.',
       reversionTiming:
-        'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, and start no earlier than the next trading session.',
+        'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, start no earlier than the next trading session, and skip heat-rally fades when lagged storage is below its trailing seasonal norm.',
+      reversionDemandSizing:
+        `When selected, cooling-demand-tiered fade sizing uses forecast CDD anomaly versus a ${COOLING_DEMAND_BASE_F}F base: below ${COOLING_DEMAND_SOLID_ANOMALY_F}F trims reversion size, ${COOLING_DEMAND_SOLID_ANOMALY_F}-${COOLING_DEMAND_EXTREME_ANOMALY_F}F modestly adds size, and at least ${COOLING_DEMAND_EXTREME_ANOMALY_F}F can lift the reversion sleeve up to ${COOLING_DEMAND_REVERSION_EXTREME_MAX_FRACTION}x.`,
       heatSignalFreshness:
         'Summer heat-follow exposure is allowed only when no prior broad summer heat signal was issued within the fixed freshness lookback window; repeated heat signals can still qualify for the same-direction fade.',
       storageDeficitHeatTilt:
@@ -1497,7 +1591,7 @@ function main() {
       storageTiming:
         `Storage rows are treated as available only after a conservative ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day lag from the EIA row date.`,
       selectionPolicy:
-        'The architecture requires fresh multi-model heat-follow and same-direction overreaction-fade legs. Cool-short rows are kept diagnostic until the data produces enough confirmed cool events. Rank and eligibility use train and validation splits only; holdout metrics are reported after selection.',
+        'The architecture requires fresh multi-model heat-follow and storage-aware same-direction overreaction-fade legs. Cool-short rows are kept diagnostic until the data produces enough confirmed cool events. Rank and eligibility use train and validation splits only; holdout metrics are reported after selection.',
       sourceWeighting:
         'bg-shrink weights are fit only on train-period forecast temperature errors versus NASA POWER actual weighted anomalies, then shrunk halfway toward equal weights.',
     },
@@ -1543,6 +1637,9 @@ function main() {
     'leadDays',
     'confidence',
     'weightedAnomalyF',
+    'coolingDemandAnomalyF',
+    'coolingDemandCoveragePct',
+    'coolingDemandExtremeCount',
     'coveragePct',
     'coldCoveragePct',
     'warmCoveragePct',
@@ -1565,6 +1662,7 @@ function main() {
     'drawdownPct',
     'rank',
     'realizedMovePct',
+    'reversionDemandMode',
   ]))
 
   writeText(path.join(OUTPUT_DIR, 'selected-events.csv'), rowsToCsv(selected.eventRows, [
@@ -1578,6 +1676,9 @@ function main() {
     'thesisKind',
     'leadDays',
     'weightedAnomalyF',
+    'coolingDemandAnomalyF',
+    'coolingDemandCoveragePct',
+    'coolingDemandExtremeCount',
     'coveragePct',
     'extremeCount',
     'confidence',
@@ -1588,6 +1689,7 @@ function main() {
     'storageDeficitHeatTilt',
     'heatSizeMultiplier',
     'realizedMovePct',
+    'reversionDemandMode',
   ]))
 
   writeText(path.join(OUTPUT_DIR, 'candidate-summary.csv'), rowsToCsv(summaryCandidates, [
@@ -1603,6 +1705,7 @@ function main() {
     'minConfidence',
     'weatherFraction',
     'reversionFraction',
+    'reversionDemandMode',
     'followHoldDays',
     'reversionHoldDays',
     'minRealizedMovePct',
@@ -1616,6 +1719,7 @@ function main() {
     'scheduledEvents',
     'executedRows',
     'storageDeficitHeatTiltRows',
+    'coolingDemandReversionRows',
     'weatherFollowRows',
     'reversionRows',
     'summerColdShortRows',

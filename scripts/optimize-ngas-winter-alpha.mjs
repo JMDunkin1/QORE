@@ -30,7 +30,9 @@ const WEATHER_RESOLUTION_SOURCE_IDS = new Set(['gfs', 'gefs-mean'])
 const MAX_EFFECTIVE_OVERLAY_CAP = 0.6
 const STORAGE_SEASON_START_MONTH = 9
 const STORAGE_SEASONAL_WINDOW_DAYS = 10
-const STORAGE_AVAILABLE_LAG_DAYS = 7
+const EIA_STORAGE_STANDARD_RELEASE_WEEKDAY_UTC = 4
+const EIA_STORAGE_STANDARD_RELEASE_LAG_DAYS = 6
+const EIA_STORAGE_STANDARD_RELEASE_TIME_ET = '10:30 a.m. ET'
 
 const OVERLAY_RISK_MULTIPLIER_VARIANTS = [
   {
@@ -55,6 +57,64 @@ const OVERLAY_RISK_MULTIPLIER_VARIANTS = [
   },
 ]
 
+const DEFAULT_HOLD_PERIOD_POLICY = {
+  id: 'parent-selected',
+  label: 'Parent selected hold periods',
+  kind: 'parent-selected',
+  followHoldDays: null,
+  reversionHoldDays: null,
+  description:
+    'Keep the parent strategy daily ledgers unchanged; Dual Weather and Weather Hybrid already selected their own follow and reversion hold periods.',
+}
+
+const HOLD_PERIOD_POLICIES = [
+  {
+    id: 'fh1-rh1',
+    label: 'One-day follow and one-day reversion hold',
+    kind: 'daily-ledger-cap',
+    followHoldDays: 1,
+    reversionHoldDays: 1,
+    description:
+      'Keep only the first parent daily ledger row for each forecast-follow setup and each post-window reversion setup.',
+  },
+  {
+    id: 'fh1-rh2',
+    label: 'One-day follow and two-day reversion hold',
+    kind: 'daily-ledger-cap',
+    followHoldDays: 1,
+    reversionHoldDays: 2,
+    description:
+      'Keep only the first parent daily ledger row for each forecast-follow setup, while allowing up to two post-window reversion rows.',
+  },
+  {
+    id: 'fh2-rh1',
+    label: 'Two-day follow and one-day reversion hold',
+    kind: 'daily-ledger-cap',
+    followHoldDays: 2,
+    reversionHoldDays: 1,
+    description:
+      'Allow one follow-through day after the first forecast-follow row, but keep only the first post-window reversion row.',
+  },
+  {
+    id: 'fh2-rh2',
+    label: 'Two-day follow and two-day reversion hold',
+    kind: 'daily-ledger-cap',
+    followHoldDays: 2,
+    reversionHoldDays: 2,
+    description:
+      'Allow one follow-through day after the first forecast-follow row and keep up to two post-window reversion rows.',
+  },
+  {
+    id: 'fh3-rh1',
+    label: 'Parent follow and one-day reversion hold',
+    kind: 'daily-ledger-cap',
+    followHoldDays: 3,
+    reversionHoldDays: 1,
+    description:
+      'Keep the parent forecast-follow hold length, but shorten each post-window reversion setup to its first daily ledger row.',
+  },
+]
+
 const DEFAULT_WEATHER_RESOLUTION_POLICY = {
   id: 'none',
   label: 'No close-in weather confirmation',
@@ -76,7 +136,7 @@ const COLD_FOLLOW_STORAGE_POLICIES = [
     kind: 'season-drawdown',
     minSeasonDrawdownBcf: 400,
     description:
-      `Allow cold-follow gas longs only after lagged EIA working gas storage available with a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day delay has drawn down at least 400 Bcf from the current withdrawal-season peak.`,
+      `Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 400 Bcf drawdown from the current withdrawal-season peak.`,
   },
   {
     id: 'storage-drawdown-600bcf',
@@ -84,7 +144,7 @@ const COLD_FOLLOW_STORAGE_POLICIES = [
     kind: 'season-drawdown',
     minSeasonDrawdownBcf: 600,
     description:
-      `Allow cold-follow gas longs only after lagged EIA working gas storage available with a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day delay has drawn down at least 600 Bcf from the current withdrawal-season peak.`,
+      `Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 600 Bcf drawdown from the current withdrawal-season peak.`,
   },
 ]
 
@@ -127,6 +187,13 @@ const WEATHER_RESOLUTION_POLICIES = [
     kind: 'graded-shift',
     description:
       'Scale reversion exposure up when the close-in or already-known actual anomaly confirms the reversion, and shrink it when the weather shift argues against the trade.',
+  },
+  {
+    id: 'graded-shift-standalone-adverse-veto',
+    label: 'Grade reversion size and veto adverse standalone fades',
+    kind: 'graded-shift-standalone-adverse-veto',
+    description:
+      'Scale confirmed reversion exposure up, shrink confirmed fades when close-in weather argues against them, and drop unconfirmed standalone fades when close-in weather still supports the original move.',
   },
 ]
 
@@ -354,12 +421,25 @@ function policySupportsWeatherResolution(policy) {
   )
 }
 
+function isGradedShiftResolutionPolicy(policy) {
+  return ['graded-shift', 'graded-shift-standalone-adverse-veto'].includes(policy.weatherResolutionPolicy?.kind)
+}
+
 function policySupportsOverlayRiskMultiplier(policy) {
   return (
     policy.selectionEligible &&
     policy.indexRiskMode === 'full-index-fallback' &&
     policy.conflictPolicy === 'short-fade-plus-cold-follow-vol-long' &&
-    policy.weatherResolutionPolicy?.id === 'graded-shift-sizing'
+    isGradedShiftResolutionPolicy(policy)
+  )
+}
+
+function policySupportsHoldPeriodOverlay(policy) {
+  return (
+    policy.selectionEligible &&
+    policy.indexRiskMode === 'full-index-fallback' &&
+    policy.conflictPolicy === 'short-fade-plus-cold-follow-vol-long' &&
+    isGradedShiftResolutionPolicy(policy)
   )
 }
 
@@ -374,6 +454,26 @@ function policySupportsColdFollowStorage(policy) {
       'short-fade-plus-cold-follow-vol-long',
     ].includes(policy.conflictPolicy)
   )
+}
+
+function expandedHoldPeriodPolicies(policies) {
+  return policies.flatMap((policy) => {
+    const basePolicy = {
+      ...policy,
+      holdPeriodPolicy: policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY,
+    }
+    if (!policySupportsHoldPeriodOverlay(basePolicy)) return [basePolicy]
+
+    const holdVariants = HOLD_PERIOD_POLICIES.map((holdPolicy) => ({
+      ...basePolicy,
+      id: `${basePolicy.id}-${holdPolicy.id}`,
+      label: `${basePolicy.label} + ${holdPolicy.label}`,
+      positionPolicy: `${basePolicy.positionPolicy} Hold-period overlay: ${holdPolicy.description}`,
+      holdPeriodPolicy: holdPolicy,
+    }))
+
+    return [basePolicy, ...holdVariants]
+  })
 }
 
 function expandedColdFollowStoragePolicies(policies) {
@@ -433,7 +533,7 @@ function expandedBlendPolicies() {
       overlayRiskMultiplier: 1,
     })),
   )
-  return expandedOverlayRiskPolicies(expandedColdFollowStoragePolicies([...baselines, ...weatherResolved]))
+  return expandedOverlayRiskPolicies(expandedHoldPeriodPolicies(expandedColdFollowStoragePolicies([...baselines, ...weatherResolved])))
 }
 
 function readText(filePath) {
@@ -531,6 +631,16 @@ function addCalendarDays(isoDate, days) {
   return new Date(Date.parse(isoDate) + days * 86400000).toISOString().slice(0, 10)
 }
 
+function daysUntilNextWeekday(isoDate, weekdayUtc) {
+  const currentWeekday = new Date(`${isoDate}T00:00:00Z`).getUTCDay()
+  const daysUntil = (weekdayUtc - currentWeekday + 7) % 7
+  return daysUntil === 0 ? 7 : daysUntil
+}
+
+function standardEiaStorageReleaseDate(storageDate) {
+  return addCalendarDays(storageDate, daysUntilNextWeekday(storageDate, EIA_STORAGE_STANDARD_RELEASE_WEEKDAY_UTC))
+}
+
 function storageSeasonStartFor(isoDate) {
   const year = Number(isoDate.slice(0, 4))
   const month = Number(isoDate.slice(5, 7))
@@ -550,6 +660,7 @@ function loadStorageData() {
     .map((row, index) => ({
       ...row,
       index,
+      releaseDate: standardEiaStorageReleaseDate(row.date),
       dayOfYear: dayOfYear(row.date),
       year: Number(row.date.slice(0, 4)),
     }))
@@ -557,11 +668,10 @@ function loadStorageData() {
   const cache = new Map()
 
   function latestStorageRow(date) {
-    const cutoffDate = addCalendarDays(date, -STORAGE_AVAILABLE_LAG_DAYS)
     let latest = null
     for (const row of rows) {
-      if (row.date <= cutoffDate) latest = row
-      if (row.date > cutoffDate) break
+      if (row.releaseDate <= date) latest = row
+      if (row.releaseDate > date) break
     }
     return latest
   }
@@ -603,6 +713,7 @@ function loadStorageData() {
     const context = {
       available: true,
       storageDate: latest.date,
+      storageReleaseDate: latest.releaseDate,
       storageBcf: round(latest.storageBcf, 2),
       storageSeasonPeakBcf: round(seasonPeakBcf, 2),
       storageSeasonDrawdownBcf: round(seasonPeakBcf - latest.storageBcf, 2),
@@ -684,6 +795,77 @@ function isReversionRow(row) {
   return row?.windowId === 'weather-reversion'
 }
 
+function activeParentHoldLimit(row, holdPeriodPolicy) {
+  if (!holdPeriodPolicy || holdPeriodPolicy.kind === 'parent-selected') return null
+  if (isFollowRow(row)) return holdPeriodPolicy.followHoldDays
+  if (isReversionRow(row)) return holdPeriodPolicy.reversionHoldDays
+  return null
+}
+
+function parentHoldKey(row) {
+  return [row.issueDate, row.targetDate, row.windowId, row.thesisKind, row.direction].join('|')
+}
+
+function parentHoldFallbackRow(row, holdPeriodPolicy, holdDay, holdLimit) {
+  return {
+    ...row,
+    direction: 'long',
+    sourceId: 'US-INDEX-BASKET',
+    windowId: 'index-fallback',
+    thesisKind: 'index-fallback',
+    confidence: 0,
+    indexFraction: 1,
+    ungPosition: 0,
+    grossReturnPct: numberFrom(row.indexReturnPct),
+    tradingCostPct: 0,
+    netReturnPct: numberFrom(row.indexReturnPct),
+    rank: 0,
+    parentHoldPeriodPolicy: holdPeriodPolicy.id,
+    parentHoldDay: holdDay,
+    parentHoldLimit: holdLimit,
+    parentHoldAction: 'trimmed-by-winter-alpha-hold-policy',
+  }
+}
+
+function applyParentHoldPeriodPolicy(rows, holdPeriodPolicy) {
+  if (!holdPeriodPolicy || holdPeriodPolicy.kind === 'parent-selected') {
+    return rows.map((row) => ({
+      ...row,
+      parentHoldPeriodPolicy: DEFAULT_HOLD_PERIOD_POLICY.id,
+      parentHoldDay: '',
+      parentHoldLimit: '',
+      parentHoldAction: isFollowRow(row) || isReversionRow(row) ? 'parent-kept' : 'not-parent-weather',
+    }))
+  }
+
+  const counts = new Map()
+  return rows.map((row) => {
+    const holdLimit = activeParentHoldLimit(row, holdPeriodPolicy)
+    if (!holdLimit || numberFrom(row.ungPosition) === 0) {
+      return {
+        ...row,
+        parentHoldPeriodPolicy: holdPeriodPolicy.id,
+        parentHoldDay: '',
+        parentHoldLimit: holdLimit ?? '',
+        parentHoldAction: 'not-parent-weather',
+      }
+    }
+
+    const key = parentHoldKey(row)
+    const holdDay = (counts.get(key) ?? 0) + 1
+    counts.set(key, holdDay)
+    if (holdDay > holdLimit) return parentHoldFallbackRow(row, holdPeriodPolicy, holdDay, holdLimit)
+
+    return {
+      ...row,
+      parentHoldPeriodPolicy: holdPeriodPolicy.id,
+      parentHoldDay: holdDay,
+      parentHoldLimit: holdLimit,
+      parentHoldAction: 'kept-by-winter-alpha-hold-policy',
+    }
+  })
+}
+
 function volatilityDirection(row) {
   if (row?.direction === 'long') return 1
   if (row?.direction === 'short') return -1
@@ -755,7 +937,7 @@ function weatherResolutionForRow(row, position, weatherResolutionData) {
   }
 }
 
-function weatherResolutionDecision(policy, reversionRow, reversionPosition, weatherResolutionData) {
+function weatherResolutionDecision(policy, reversionRow, reversionPosition, weatherResolutionData, blendLeg) {
   const resolutionPolicy = policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY
   const resolution = weatherResolutionForRow(reversionRow, reversionPosition, weatherResolutionData)
 
@@ -798,7 +980,20 @@ function weatherResolutionDecision(policy, reversionRow, reversionPosition, weat
     }
   }
 
-  if (resolutionPolicy.kind === 'graded-shift') {
+  if (isGradedShiftResolutionPolicy(policy)) {
+    const standaloneAdverseVeto =
+      resolutionPolicy.kind === 'graded-shift-standalone-adverse-veto' &&
+      blendLeg === 'weather-hybrid-reversion' &&
+      resolution.adverseDirectionShift
+    if (standaloneAdverseVeto) {
+      return {
+        ...resolution,
+        policyId: resolutionPolicy.id,
+        action: 'standalone-adverse-dropped',
+        scale: 0,
+      }
+    }
+
     const scale = resolution.sameDirectionShift
       ? clamp(0.75 + resolution.absShiftF / 8, 0.75, 1.25)
       : resolution.adverseDirectionShift
@@ -915,7 +1110,7 @@ function applyWeatherResolution(policy, blend, weatherResolutionData) {
     }
   }
 
-  const decision = weatherResolutionDecision(policy, blend.reversionRow, blend.reversionPosition, weatherResolutionData)
+  const decision = weatherResolutionDecision(policy, blend.reversionRow, blend.reversionPosition, weatherResolutionData, blend.blendLeg)
   const reversionPosition = blend.reversionPosition * decision.scale
   let followRow = blend.followRow
   let followPosition = blend.followPosition
@@ -1258,8 +1453,11 @@ function usesVolatilityConfirmation(policy) {
 }
 
 function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData) {
-  const dualByDate = new Map(dualRows.map((row) => [row.entryTradeDate, row]))
-  const weatherByDate = new Map(weatherRows.map((row) => [row.entryTradeDate, row]))
+  const holdPeriodPolicy = policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY
+  const dualRowsForPolicy = applyParentHoldPeriodPolicy(dualRows, holdPeriodPolicy)
+  const weatherRowsForPolicy = applyParentHoldPeriodPolicy(weatherRows, holdPeriodPolicy)
+  const dualByDate = new Map(dualRowsForPolicy.map((row) => [row.entryTradeDate, row]))
+  const weatherByDate = new Map(weatherRowsForPolicy.map((row) => [row.entryTradeDate, row]))
   const volatilityByDate = new Map(volatilityRows.map((row) => [row.entryTradeDate, row]))
   const dates = [...new Set([...dualByDate.keys(), ...weatherByDate.keys()])].sort()
   const rows = []
@@ -1367,6 +1565,16 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
       reversionPosition: round(blend.reversionPosition, 4),
       componentThesisKinds,
       positionPolicy: policy.id,
+      holdPeriodPolicy: holdPeriodPolicy.id,
+      holdPeriodAction: [
+        activeFollowRow?.parentHoldAction,
+        activeReversionRow?.parentHoldAction,
+        isFallback ? dominant.parentHoldAction : null,
+      ]
+        .filter(Boolean)
+        .join('|'),
+      holdPeriodParentDay: Math.max(numberFrom(activeFollowRow?.parentHoldDay), numberFrom(activeReversionRow?.parentHoldDay), numberFrom(isFallback ? dominant.parentHoldDay : 0)) || '',
+      holdPeriodLimit: Math.max(numberFrom(activeFollowRow?.parentHoldLimit), numberFrom(activeReversionRow?.parentHoldLimit), numberFrom(isFallback ? dominant.parentHoldLimit : 0)) || '',
       weatherResolutionPolicy: policy.weatherResolutionPolicy?.id ?? DEFAULT_WEATHER_RESOLUTION_POLICY.id,
       weatherResolutionSource: blend.weatherResolution.source ?? '',
       weatherResolutionIssueDate: blend.weatherResolution.issueDate ?? '',
@@ -1387,6 +1595,7 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
         ? round(blend.coldFollowStorage.minSeasonDrawdownBcf, 2)
         : '',
       storageDate: storageContext.storageDate ?? '',
+      storageReleaseDate: storageContext.storageReleaseDate ?? '',
       storageBcf: Number.isFinite(storageContext.storageBcf) ? round(storageContext.storageBcf, 2) : '',
       storageSeasonPeakBcf: Number.isFinite(storageContext.storageSeasonPeakBcf) ? round(storageContext.storageSeasonPeakBcf, 2) : '',
       storageSeasonDrawdownBcf: Number.isFinite(storageContext.storageSeasonDrawdownBcf)
@@ -1618,6 +1827,7 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
         : ['dual-weather-rotation', 'weather-hybrid-rotation'],
     sourceWeightMode: 'parent-selected',
     sizingMode: policy.id,
+    holdPeriodPolicy: policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY,
     weatherResolutionPolicy: policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY,
     coldFollowStoragePolicy: policy.coldFollowStoragePolicy ?? DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
     indexRiskMode: policy.indexRiskMode,
@@ -1634,8 +1844,8 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
     overlayRiskMultiplier: policy.overlayRiskMultiplier ?? 1,
     effectiveOverlayCap: Math.min(MAX_EFFECTIVE_OVERLAY_CAP, policy.overlayCap * (policy.overlayRiskMultiplier ?? 1)),
     overlayCap: policy.overlayCap,
-    followHoldDays: 3,
-    reversionHoldDays: 2,
+    followHoldDays: (policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY).followHoldDays ?? 3,
+    reversionHoldDays: (policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY).reversionHoldDays ?? 2,
     minRealizedMovePct: 2,
     positionPolicy: policy.positionPolicy,
     conflictPolicy: policy.conflictPolicy,
@@ -1725,6 +1935,9 @@ function formatCandidateRow(candidate) {
     weatherResolutionKind: candidate.weatherResolutionPolicy.kind,
     coldFollowStoragePolicy: candidate.coldFollowStoragePolicy.id,
     coldFollowStorageMinSeasonDrawdownBcf: candidate.coldFollowStoragePolicy.minSeasonDrawdownBcf ?? '',
+    holdPeriodPolicy: candidate.holdPeriodPolicy.id,
+    holdFollowDays: candidate.holdPeriodPolicy.followHoldDays ?? '',
+    holdReversionDays: candidate.holdPeriodPolicy.reversionHoldDays ?? '',
     indexRiskMode: candidate.indexRiskMode,
     selectionEligible: candidate.selectionEligible,
     overlayCap: candidate.overlayCap,
@@ -1803,6 +2016,10 @@ function selectedTradeRows(rows) {
     'reversionPosition',
     'componentThesisKinds',
     'positionPolicy',
+    'holdPeriodPolicy',
+    'holdPeriodAction',
+    'holdPeriodParentDay',
+    'holdPeriodLimit',
     'weatherResolutionPolicy',
     'weatherResolutionSource',
     'weatherResolutionIssueDate',
@@ -1817,6 +2034,7 @@ function selectedTradeRows(rows) {
     'coldFollowStorageAction',
     'coldFollowStorageMinSeasonDrawdownBcf',
     'storageDate',
+    'storageReleaseDate',
     'storageBcf',
     'storageSeasonPeakBcf',
     'storageSeasonDrawdownBcf',
@@ -1999,6 +2217,8 @@ This active QORE research strategy combines parent experts without fitting new w
 - Parent experts: Dual Weather Rotation for forecast-follow, Weather Hybrid Rotation for post-window reversion, and Volatility Mean Reversion for same-direction fade confirmation.
 - Position policy: ${selected.positionPolicy}
 - Max weather UNG overlay: ${selected.overlayCap}x; parent weather leg ${selected.weatherFraction}x and weather reversion leg ${selected.reversionFraction}x.
+- Winter-alpha hold overlay: ${selected.holdPeriodPolicy.label}. ${selected.holdPeriodPolicy.description}
+- Effective parent-ledger holds: forecast-follow ${selected.followHoldDays} trading day(s), post-window reversion ${selected.reversionHoldDays} trading day(s).
 - Gas-overlay risk multiplier: ${selected.overlayRiskMultiplier}x; effective max weather UNG overlay ${selected.effectiveOverlayCap}x.
 - Vol-confirmed reversion-long size: ${selected.reversionLongScale}x of the parent reversion leg.
 - Standalone reversion fade size: ${selected.standaloneReversionScale}x of the parent reversion leg when no same-direction follow signal confirms it.
@@ -2047,7 +2267,8 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 - Eligibility requires a selectable gas-alpha policy, positive train and validation edge, lower train and validation drawdown than the index basket, and train/validation volatility under a 20% annualized risk budget.
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
-- Cold-follow storage gates use EIA Lower 48 working gas storage rows only after a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day availability lag. The seasonal drawdown is measured from the current withdrawal-season storage peak.
+- Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally six calendar days after the Friday week-ending storage date. The seasonal drawdown is measured from the current withdrawal-season storage peak.
+- Hold-period overlays only shorten parent-selected daily ledger holds for the selected graded vol-confirmed family; they do not create new weather signals, extend a parent hold, alter forecast thresholds, or use holdout rows for selection.
 - Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, parent signals, or weather thresholds.
 - Holdout was not used for selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
 - Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
@@ -2060,12 +2281,12 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 
 ## Top Train/Validation-Ranked Candidates
 
-| candidate | eligible | storage gate | risk mult | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| candidate | eligible | hold | storage gate | risk mult | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 ${topCandidates
   .map(
     (candidate) =>
-      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.coldFollowStoragePolicy} | ${candidate.overlayRiskMultiplier}x | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
+      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.holdPeriodPolicy} | ${candidate.coldFollowStoragePolicy} | ${candidate.overlayRiskMultiplier}x | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
   )
   .join('\n')}
 
@@ -2119,13 +2340,13 @@ function main() {
       signalTiming:
         'Parent strategies already enforce post-signal execution; NGAS Winter Alpha only combines parent daily ledgers and recalculates costs.',
       selectionPolicy:
-        'Only predeclared parent-blend policies, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
+        'Only predeclared parent-blend policies, parent daily-ledger hold overlays, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
       overfitControl:
-        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay, one predeclared cold-follow storage-drawdown gate, and one bounded gas-overlay risk multiplier. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
+        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay, one predeclared parent daily-ledger hold overlay, one predeclared cold-follow storage-drawdown gate, and one bounded gas-overlay risk multiplier. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
       weatherResolutionTiming:
         'Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate, or NASA POWER actual anomalies only when targetDate < entryTradeDate.',
       storageTiming:
-        `Cold-follow storage gates use EIA Lower 48 working gas storage rows only after a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day availability lag; historical seasonal comparisons use only prior storage years.`,
+        `Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally ${EIA_STORAGE_STANDARD_RELEASE_LAG_DAYS} calendar days after the Friday week-ending storage date; historical seasonal comparisons use only prior storage years.`,
       indexTrendLookbackSessions: INDEX_TREND_LOOKBACK_SESSIONS,
     },
     parents: {
@@ -2177,6 +2398,7 @@ function main() {
       `return=${selected.allMetrics.totalReturnPct}%`,
       `edge=${selected.splitEdges.all}%`,
       `holdoutEdge=${selected.splitEdges.holdout}%`,
+      `holdPolicy=${selected.holdPeriodPolicy.id}`,
       `storageGate=${selected.coldFollowStoragePolicy.id}`,
       `pValue=${realityCheck.pValue}`,
     ].join(' '),

@@ -68,6 +68,7 @@ const strategyChartMargin = { top: 16, right: 18, bottom: 12, left: 0 }
 const maxChartWheelZoomPower = 4
 const primaryRankMinTrades = 8
 const minZoomWindow = 4
+const sparseStrategyGapBreakDays = 45
 const strategyDetailLineMaxPoints = 80
 const millisecondsPerYear = 365.25 * 24 * 60 * 60 * 1000
 const benchmarkLabel = 'UNG buy/hold'
@@ -123,6 +124,7 @@ type DashboardChartPoint = {
   position: number | null
   signal: number | null
   gasReturnPct: number
+  activeTradeReturnPct: number | null
   demandScore: number
   storageBcf: number
   closeScaled: number | null
@@ -316,10 +318,10 @@ function strategyPerformanceChartSeries(strategyColor: string | undefined, showD
     {
       axis: 'left',
       color: strategyColor ?? '#0891b2',
-      dataKey: 'gasReturnPct',
+      dataKey: 'activeTradeReturnPct',
       fillOpacity: 0.2,
-      id: 'gasReturnPct',
-      label: 'Trade return %',
+      id: 'activeTradeReturnPct',
+      label: 'Active leg return %',
       mode: 'bar',
       strokeOpacity: 0.3,
       valueFormatter: (value) => signedPercent(roundNumber(value)),
@@ -728,6 +730,7 @@ function OverviewPerformancePanel({
       />
       <div className="chart-frame tall">
         <SmoothZoomChart
+          breakLinesAfterDays={selectedBacktest ? sparseStrategyGapBreakDays : undefined}
           data={chartData}
           formatDate={formatShortDate}
           minWindow={minZoomWindow}
@@ -913,6 +916,7 @@ function App() {
             ...point,
             chartIndex,
             gasReturnPct: point.gasReturnPct,
+            activeTradeReturnPct: point.windowId === 'index-fallback' ? null : point.gasReturnPct,
             demandScore: point.demandScore,
             storageBcf: point.storageBcf,
             closeScaled: point.closeScaled,
@@ -933,6 +937,7 @@ function App() {
             signal: null,
             closeScaled: point.close * 1000,
             gasReturnPct: point.dailyReturn * 100,
+            activeTradeReturnPct: null,
             demandScore: point.demandScore,
             storageBcf: point.storageBcf,
             benchmarkPct: benchmarkByDate.get(point.date) ?? null,
@@ -1649,6 +1654,7 @@ function App() {
                 </p>
                 <div className="chart-frame tall">
                   <SmoothZoomChart
+                    breakLinesAfterDays={selectedBacktest ? sparseStrategyGapBreakDays : undefined}
                     data={chartData}
                     formatDate={formatShortDate}
                     minWindow={minZoomWindow}

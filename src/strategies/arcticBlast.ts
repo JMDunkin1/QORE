@@ -716,7 +716,7 @@ function curveFromTrades(trades: ArcticBlastTrade[]): ArcticBlastEquityPoint[] {
       peak = Math.max(peak, equity)
       const direction = Number.isFinite(trade.ungPosition) ? trade.ungPosition ?? 0 : trade.direction === 'short' ? -1 : 1
       return {
-        date: trade.targetTradeDate,
+        date: trade.entryTradeDate || trade.targetTradeDate,
         equity: round(equity, 2),
         equityPct: Number.isFinite(trade.equityPct) ? round(trade.equityPct ?? 0, 2) : round((equity / initialCapital - 1) * 100, 2),
         dailyPnlPct: round(previousEquity ? ((equity - previousEquity) / previousEquity) * 100 : 0, 3),
