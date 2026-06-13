@@ -208,21 +208,24 @@ type WinterAlphaSummary = {
     storageTiming?: string
     indexTrendLookbackSessions: number
   }
-  parents: {
-    weatherHybrid: {
+  inputs: {
+    weatherReversion: {
       strategyId: string
       candidateId: string
       role: string
+      tradeFile: string
     }
-    dualWeather: {
+    weatherFollow: {
       strategyId: string
       candidateId: string
       role: string
+      tradeFile: string
     }
-    volatilityReversion: {
+    volatilityConfirmation: {
       strategyId: string
       candidateId: string
       role: string
+      tradeFile: string
     }
   }
   selected: {
@@ -379,8 +382,8 @@ const summerWeatherStrategyColor = '#db2777'
 export const arcticBlastPromotionGates = [
   'Keep all gas overlay entries strictly after the signal-date close.',
   'Select alpha candidates using train/validation data only; holdout rows stay report-only.',
-  'Keep parent weather and volatility lanes archived as inputs, not active strategies.',
-  'Keep NGAS Winter Alpha marked needs-more-validation unless the parent blend clears holdout edge and bootstrap reality checks.',
+  'Keep NGAS Winter Alpha weather and volatility inputs frozen inside its own lane, not active strategies.',
+  'Keep NGAS Winter Alpha marked needs-more-validation unless the frozen-input blend clears holdout edge and bootstrap reality checks.',
   'Keep NGAS Summer Alpha marked needs-more-validation unless both cooling-season sides clear holdout edge and bootstrap reality checks.',
   'Prove a non-overlapping paper ledger before any broker adapter exists.',
   'Separate ETF proxy results from futures-grade Henry Hub contract results.',
@@ -632,7 +635,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
     instrument: 'UNG',
     desk: 'Winter natural gas alpha blend',
     thesis:
-      'Blend parent experts conservatively: Dual Weather supplies cold-follow and warm-short context, Weather Hybrid supplies post-window fades, Volatility Mean Reversion confirms long fades, close-in weather resolution sizes reversion exposure, EIA storage-drawdown gates can block premature cold-follow longs, and idle capital remains in the index fallback.',
+      'Blend frozen Winter Alpha inputs conservatively: embedded weather-follow rows supply cold-follow and warm-short context, embedded weather-reversion rows supply post-window fades, volatility confirmation checks long fades, close-in weather resolution sizes reversion exposure, EIA storage-drawdown gates can block premature cold-follow longs, and idle capital remains in the index fallback.',
     directionPolicy:
       `${selected.positionPolicy} Idle capital uses ${selected.indexRiskLabel.toLowerCase()}.`,
     promotionStatus,
@@ -644,7 +647,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
     returnColumn: 'netReturnPct',
     universe: `UNG and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
     theoryAlignment:
-      'Parent-expert blend of winter forecast-follow demand risk, same-direction weather fades, volatility-confirmed long-fade sizing, and non-lookahead close-in or already-known actual weather-resolution sizing.',
+      'Frozen-input blend of winter forecast-follow demand risk, same-direction weather fades, volatility-confirmed long-fade sizing, and non-lookahead close-in or already-known actual weather-resolution sizing.',
     samplePolicy:
       `${selected.architectureLabel}; train through ${contract.trainEnd}, validation through ${contract.validationEnd}, holdout from ${contract.holdoutStart}. ${contract.overfitControl}`,
     tradeFile: summary.outputFiles.selectedTrades,
@@ -675,7 +678,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
       positionPolicy: selected.positionPolicy,
       conflictPolicy: selected.conflictPolicy,
       requiredSideChecks: selected.requiredSideChecks,
-      parents: summary.parents,
+      inputs: summary.inputs,
       fallback: contract.fallback,
       roundTripCostPct: contract.roundTripCostPct,
       oneWayCostPct: contract.oneWayCostPct,

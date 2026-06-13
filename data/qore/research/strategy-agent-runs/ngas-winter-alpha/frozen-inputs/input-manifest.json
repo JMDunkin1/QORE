@@ -1,0 +1,23 @@
+{
+  "description": "Frozen Winter Alpha blend inputs. These files are stored inside the NGAS Winter Alpha lane so the optimizer does not depend on archived strategy folders.",
+  "inputs": {
+    "weatherReversion": {
+      "strategyId": "winter-alpha-weather-reversion",
+      "candidateId": "fade-only-gfs-gefs-core-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-fixed",
+      "role": "post-window overreaction fade expert",
+      "tradeFile": "weather-hybrid-selected-trades.csv"
+    },
+    "weatherFollow": {
+      "strategyId": "winter-alpha-weather-follow",
+      "candidateId": "dual-ncep-complex-bg-shrink-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-vol0-fixed",
+      "role": "cold-long and warm-short forecast-follow expert",
+      "tradeFile": "dual-weather-selected-trades.csv"
+    },
+    "volatilityConfirmation": {
+      "strategyId": "winter-alpha-volatility-confirmation",
+      "candidateId": "lb40-z0.8-vol2.5-6",
+      "role": "same-direction winter overreaction fade confirmer",
+      "tradeFile": "volatility-reversion-selected-trades.csv"
+    }
+  }
+}

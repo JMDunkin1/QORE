@@ -1,27 +1,27 @@
 # NGAS Winter Alpha
 
-Generated at 2026-06-13T05:07:31.628Z.
+Generated at 2026-06-13T05:37:21.410Z.
 
 ## Purpose
 
-This active QORE research strategy combines parent experts without fitting new weather thresholds: Dual Weather supplies the cold/warm forecast-follow context, Weather Hybrid supplies post-window reversion context, Volatility Mean Reversion can confirm same-direction overreaction fades, optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade, and optional EIA storage-drawdown gates test whether cold-follow longs are allowed only after the withdrawal season has consumed enough inventory. The selected blend is ranked on train/validation only, with holdout reported after selection.
+This active QORE research strategy is self-contained around frozen Winter Alpha input ledgers: the embedded weather-follow input supplies cold/warm forecast-follow context, the embedded weather-reversion input supplies post-window reversion context, and the embedded volatility-confirmation input can confirm same-direction overreaction fades. Optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade, and optional EIA storage-drawdown gates test whether cold-follow longs are allowed only after the withdrawal season has consumed enough inventory. The selected blend is ranked on train/validation only, with holdout reported after selection.
 
 ## Selected Candidate
 
 - Architecture: Short fade plus cold follow and vol-confirmed long fade + Grade reversion size and veto adverse standalone fades + Cold-follow requires 400 Bcf storage drawdown + 1.25x gas-overlay risk budget.
-- Parent experts: Dual Weather Rotation for forecast-follow, Weather Hybrid Rotation for post-window reversion, and Volatility Mean Reversion for same-direction fade confirmation.
-- Position policy: Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction. Weather-resolution overlay: Scale confirmed reversion exposure up, shrink confirmed fades when close-in weather argues against them, and drop unconfirmed standalone fades when close-in weather still supports the original move. Storage gate: Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 400 Bcf drawdown from the current withdrawal-season peak. Portfolio risk-budget overlay: scale active gas exposure by 1.25x, capped at 0.6x, without changing signal selection.
-- Max weather UNG overlay: 0.45x; parent weather leg 0.25x and weather reversion leg 0.2x.
-- Winter-alpha hold overlay: Parent selected hold periods. Keep the parent strategy daily ledgers unchanged; Dual Weather and Weather Hybrid already selected their own follow and reversion hold periods.
-- Effective parent-ledger holds: forecast-follow 3 trading day(s), post-window reversion 2 trading day(s).
+- Frozen inputs: weather-follow, weather-reversion, and volatility-confirmation ledgers stored under the NGAS Winter Alpha lane.
+- Position policy: Take frozen cold-follow setups directly; keep frozen reversion-short setups, adding frozen warm-short exposure when both embedded experts point short, and add frozen reversion-long setups only when volatility confirmation agrees with the same long-fade direction. Weather-resolution overlay: Scale confirmed reversion exposure up, shrink confirmed fades when close-in weather argues against them, and drop unconfirmed standalone fades when close-in weather still supports the original move. Storage gate: Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 400 Bcf drawdown from the current withdrawal-season peak. Portfolio risk-budget overlay: scale active gas exposure by 1.25x, capped at 0.6x, without changing signal selection.
+- Max weather UNG overlay: 0.45x; frozen weather-follow leg 0.25x and weather-reversion leg 0.2x.
+- Winter-alpha hold overlay: Frozen-input selected hold periods. Keep the frozen daily ledgers unchanged; the embedded weather-follow and weather-reversion inputs already selected their own hold periods.
+- Effective frozen-ledger holds: forecast-follow 3 trading day(s), post-window reversion 2 trading day(s).
 - Gas-overlay risk multiplier: 1.25x; effective max weather UNG overlay 0.5625x.
-- Vol-confirmed reversion-long size: 1x of the parent reversion leg.
-- Standalone reversion fade size: 1x of the parent reversion leg when no same-direction follow signal confirms it.
+- Vol-confirmed reversion-long size: 1x of the frozen reversion leg.
+- Standalone reversion fade size: 1x of the frozen reversion leg when no same-direction follow signal confirms it.
 - Weather-resolution overlay: Grade reversion size and veto adverse standalone fades. Scale confirmed reversion exposure up, shrink confirmed fades when close-in weather argues against them, and drop unconfirmed standalone fades when close-in weather still supports the original move.
 - Cold-follow storage gate: Cold-follow requires 400 Bcf storage drawdown. Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 400 Bcf drawdown from the current withdrawal-season peak.
 - Idle capital risk mode: Full index fallback for idle capital.
 - Cost: 0.064% round trip, charged as 0.032% one-way on UNG position changes.
-- Selection: Only predeclared parent-blend policies, parent daily-ledger hold overlays, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.
+- Selection: Only predeclared frozen-input blend policies, daily-ledger hold overlays, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.
 
 ## Metrics
 
@@ -63,8 +63,8 @@ This active QORE research strategy combines parent experts without fitting new w
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
 - Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard 10:30 a.m. ET Thursday release date, normally six calendar days after the Friday week-ending storage date. The seasonal drawdown is measured from the current withdrawal-season storage peak.
-- Hold-period overlays only shorten parent-selected daily ledger holds for the selected graded vol-confirmed family; they do not create new weather signals, extend a parent hold, alter forecast thresholds, or use holdout rows for selection.
-- Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, parent signals, or weather thresholds.
+- Hold-period overlays only shorten frozen daily ledger holds for the selected graded vol-confirmed family; they do not create new weather signals, extend an input hold, alter forecast thresholds, or use holdout rows for selection.
+- Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, frozen input signals, or weather thresholds.
 - Holdout was not used for selection: yes.
 - Primary p-value: 0.0075 (selection-adjusted centered circular block bootstrap).
 - Single-candidate p-value: 0.0058.

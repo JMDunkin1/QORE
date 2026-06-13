@@ -8,14 +8,16 @@ const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
 const MANIFEST_PATH = path.join(DATA_ROOT, 'dataset-manifest.json')
 const OUTPUT_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/ngas-winter-alpha')
-const WEATHER_HYBRID_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/weather-hybrid-rotation')
-const DUAL_WEATHER_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/dual-weather-rotation')
-const VOLATILITY_REVERSION_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/volatility-mean-reversion')
+const FROZEN_INPUT_DIR = path.join(OUTPUT_DIR, 'frozen-inputs')
+const FROZEN_INPUT_MANIFEST_FILE = path.join(FROZEN_INPUT_DIR, 'input-manifest.json')
 const INDEX_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/US-INDEX-BASKET-qore-market.csv')
 const ACTUAL_DAILY_FILE = path.join(DATA_ROOT, 'weather/events/arctic-blast-actual-daily-2021-01-01-2026-03-31.csv')
 const STORAGE_FILE = path.join(DATA_ROOT, 'fundamentals/eia/working-gas-storage-lower48-weekly.csv')
 
 const STRATEGY_ID = 'ngas-winter-alpha'
+const FROZEN_WEATHER_FOLLOW_ID = 'winter-alpha-weather-follow'
+const FROZEN_WEATHER_REVERSION_ID = 'winter-alpha-weather-reversion'
+const FROZEN_VOLATILITY_CONFIRMATION_ID = 'winter-alpha-volatility-confirmation'
 const INITIAL_CAPITAL = 100000
 const TRAIN_END = '2024-03-31'
 const VALIDATION_END = '2025-10-31'
@@ -59,12 +61,12 @@ const OVERLAY_RISK_MULTIPLIER_VARIANTS = [
 
 const DEFAULT_HOLD_PERIOD_POLICY = {
   id: 'parent-selected',
-  label: 'Parent selected hold periods',
+  label: 'Frozen-input selected hold periods',
   kind: 'parent-selected',
   followHoldDays: null,
   reversionHoldDays: null,
   description:
-    'Keep the parent strategy daily ledgers unchanged; Dual Weather and Weather Hybrid already selected their own follow and reversion hold periods.',
+    'Keep the frozen daily ledgers unchanged; the embedded weather-follow and weather-reversion inputs already selected their own hold periods.',
 }
 
 const HOLD_PERIOD_POLICIES = [
@@ -75,7 +77,7 @@ const HOLD_PERIOD_POLICIES = [
     followHoldDays: 1,
     reversionHoldDays: 1,
     description:
-      'Keep only the first parent daily ledger row for each forecast-follow setup and each post-window reversion setup.',
+      'Keep only the first frozen daily ledger row for each forecast-follow setup and each post-window reversion setup.',
   },
   {
     id: 'fh1-rh2',
@@ -84,7 +86,7 @@ const HOLD_PERIOD_POLICIES = [
     followHoldDays: 1,
     reversionHoldDays: 2,
     description:
-      'Keep only the first parent daily ledger row for each forecast-follow setup, while allowing up to two post-window reversion rows.',
+      'Keep only the first frozen daily ledger row for each forecast-follow setup, while allowing up to two post-window reversion rows.',
   },
   {
     id: 'fh2-rh1',
@@ -106,12 +108,12 @@ const HOLD_PERIOD_POLICIES = [
   },
   {
     id: 'fh3-rh1',
-    label: 'Parent follow and one-day reversion hold',
+    label: 'Frozen follow and one-day reversion hold',
     kind: 'daily-ledger-cap',
     followHoldDays: 3,
     reversionHoldDays: 1,
     description:
-      'Keep the parent forecast-follow hold length, but shorten each post-window reversion setup to its first daily ledger row.',
+      'Keep the frozen forecast-follow hold length, but shorten each post-window reversion setup to its first daily ledger row.',
   },
 ]
 
@@ -119,7 +121,7 @@ const DEFAULT_WEATHER_RESOLUTION_POLICY = {
   id: 'none',
   label: 'No close-in weather confirmation',
   kind: 'none',
-  description: 'Keep parent reversion legs unchanged.',
+  description: 'Keep frozen reversion legs unchanged.',
 }
 
 const DEFAULT_COLD_FOLLOW_STORAGE_POLICY = {
@@ -179,7 +181,7 @@ const WEATHER_RESOLUTION_POLICIES = [
     kind: 'block-adverse',
     minAdverseShiftF: 2,
     description:
-      'Keep the parent reversion unless the close-in or already-known actual anomaly shifts at least 2F against the reversion direction.',
+      'Keep the frozen reversion row unless the close-in or already-known actual anomaly shifts at least 2F against the reversion direction.',
   },
   {
     id: 'graded-shift-sizing',
@@ -193,9 +195,9 @@ const WEATHER_RESOLUTION_POLICIES = [
 const BLEND_POLICIES = [
   {
     id: 'net-additive-parent-overlay',
-    label: 'Net additive parent overlay',
+    label: 'Net additive frozen-input overlay',
     positionPolicy:
-      'Use Dual Weather forecast-follow position plus Weather Hybrid reversion position; opposite signals reduce exposure and same-side signals add, capped at the sum of parent risk budgets.',
+      'Use frozen weather-follow position plus frozen weather-reversion position; opposite signals reduce exposure and same-side signals add, capped at the sum of embedded input risk budgets.',
     conflictPolicy: 'net-position',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -205,7 +207,7 @@ const BLEND_POLICIES = [
   {
     id: 'dual-follow-first',
     label: 'Dual follow first',
-    positionPolicy: 'Use Dual Weather follow legs first; use Weather Hybrid reversion only when no follow leg is active.',
+    positionPolicy: 'Use frozen weather-follow legs first; use frozen weather-reversion only when no follow leg is active.',
     conflictPolicy: 'follow-first',
     overlayCap: 0.25,
     indexRiskMode: 'full-index-fallback',
@@ -214,8 +216,8 @@ const BLEND_POLICIES = [
   },
   {
     id: 'weather-fade-first',
-    label: 'Weather Hybrid fade first',
-    positionPolicy: 'Use Weather Hybrid reversion first; use Dual Weather follow only when no reversion leg is active.',
+    label: 'Frozen weather-reversion fade first',
+    positionPolicy: 'Use frozen weather-reversion first; use frozen weather-follow only when no reversion leg is active.',
     conflictPolicy: 'fade-first',
     overlayCap: 0.25,
     indexRiskMode: 'full-index-fallback',
@@ -226,7 +228,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-priority',
     label: 'Reversion-short priority',
     positionPolicy:
-      'Use Weather Hybrid reversion-short first, then Dual Weather follow, then other Weather Hybrid reversion rows.',
+      'Use frozen reversion-short first, then frozen weather-follow, then other frozen weather-reversion rows.',
     conflictPolicy: 'short-fade-first',
     overlayCap: 0.25,
     indexRiskMode: 'full-index-fallback',
@@ -237,7 +239,7 @@ const BLEND_POLICIES = [
     id: 'fade-primary-confirmed-follow',
     label: 'Fade primary, confirmed follow',
     positionPolicy:
-      'Use Weather Hybrid reversion as the primary gas overlay; add Dual Weather follow exposure only when the parent signals point the same way.',
+      'Use the frozen weather-reversion input as the primary gas overlay; add frozen weather-follow exposure only when both inputs point the same way.',
     conflictPolicy: 'fade-confirmed-follow',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -248,7 +250,7 @@ const BLEND_POLICIES = [
     id: 'fade-primary-confirmed-follow-risk-off',
     label: 'Fade primary, confirmed follow, index risk-off',
     positionPolicy:
-      'Use Weather Hybrid reversion as the primary gas overlay; add Dual Weather follow exposure only when the parent signals point the same way, and move idle index capital to cash when the index is below its 200-session trend.',
+      'Use the frozen weather-reversion input as the primary gas overlay; add frozen weather-follow exposure only when both inputs point the same way, and move idle index capital to cash when the index is below its 200-session trend.',
     conflictPolicy: 'fade-confirmed-follow',
     overlayCap: 0.45,
     indexRiskMode: 'idle-index-200d-trend',
@@ -259,7 +261,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-confirmed-long',
     label: 'Short fade plus confirmed long fade',
     positionPolicy:
-      'Take Weather Hybrid reversion-short setups directly; take reversion-long setups only when Dual Weather confirms cold demand in the same direction.',
+      'Take frozen reversion-short setups directly; take reversion-long setups only when the frozen weather-follow input confirms cold demand in the same direction.',
     conflictPolicy: 'short-fade-confirmed-long',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -270,7 +272,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-plus-cold-follow',
     label: 'Short fade plus cold follow',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short.',
+      'Take frozen cold-follow setups directly; keep frozen reversion-short setups, adding frozen warm-short exposure when both embedded experts point short.',
     conflictPolicy: 'short-fade-plus-cold-follow',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -281,7 +283,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-plus-cold-follow-shrunk-standalone',
     label: 'Short fade plus cold follow with shrunk standalone fade',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; take same-direction warm-short plus reversion-short blends at full size, but shrink standalone Weather Hybrid reversion-short exposure because its train/validation edge is thinner and less balanced than confirmed blends.',
+      'Take frozen cold-follow setups directly; take same-direction warm-short plus reversion-short blends at full size, but shrink standalone reversion-short exposure because its train/validation edge is thinner and less balanced than confirmed blends.',
     conflictPolicy: 'short-fade-plus-cold-follow',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -293,7 +295,7 @@ const BLEND_POLICIES = [
     id: 'vol-confirmed-fade-plus-cold-follow',
     label: 'Vol-confirmed fade plus cold follow',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; take Weather Hybrid reversion setups only when Volatility Mean Reversion confirms the same overreaction-fade direction, adding same-direction Dual Weather follow exposure as confirmation.',
+      'Take frozen cold-follow setups directly; take frozen reversion setups only when volatility confirmation agrees with the same overreaction-fade direction, adding same-direction weather-follow exposure as confirmation.',
     conflictPolicy: 'vol-confirmed-fade-plus-cold-follow',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -304,7 +306,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-plus-cold-follow-vol-long',
     label: 'Short fade plus cold follow and vol-confirmed long fade',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+      'Take frozen cold-follow setups directly; keep frozen reversion-short setups, adding frozen warm-short exposure when both embedded experts point short, and add frozen reversion-long setups only when volatility confirmation agrees with the same long-fade direction.',
     conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -316,7 +318,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-plus-cold-follow-vol-long-75',
     label: 'Short fade plus cold follow and 75% vol-confirmed long fade',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add 75%-sized Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+      'Take frozen cold-follow setups directly; keep frozen reversion-short setups, adding frozen warm-short exposure when both embedded experts point short, and add 75%-sized frozen reversion-long setups only when volatility confirmation agrees with the same long-fade direction.',
     conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -328,7 +330,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-plus-cold-follow-vol-long-50',
     label: 'Short fade plus cold follow and 50% vol-confirmed long fade',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add half-sized Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+      'Take frozen cold-follow setups directly; keep frozen reversion-short setups, adding frozen warm-short exposure when both embedded experts point short, and add half-sized frozen reversion-long setups only when volatility confirmation agrees with the same long-fade direction.',
     conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -340,7 +342,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-plus-cold-follow-vol-long-25',
     label: 'Short fade plus cold follow and 25% vol-confirmed long fade',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; keep Weather Hybrid reversion-short setups, adding Dual Weather warm-short exposure when both parent experts point short, and add quarter-sized Weather Hybrid reversion-long setups only when Volatility Mean Reversion confirms the same long-fade direction.',
+      'Take frozen cold-follow setups directly; keep frozen reversion-short setups, adding frozen warm-short exposure when both embedded experts point short, and add quarter-sized frozen reversion-long setups only when volatility confirmation agrees with the same long-fade direction.',
     conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -352,7 +354,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-plus-cold-follow-vol-long-50-shrunk-standalone',
     label: 'Short fade plus cold follow, 50% vol-confirmed long fade, shrunk standalone short fade',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; keep same-direction warm-short plus reversion-short blends at full size, add half-sized volatility-confirmed reversion-long exposure, and shrink standalone reversion-short exposure.',
+      'Take frozen cold-follow setups directly; keep same-direction warm-short plus reversion-short blends at full size, add half-sized volatility-confirmed reversion-long exposure, and shrink standalone reversion-short exposure.',
     conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -365,7 +367,7 @@ const BLEND_POLICIES = [
     id: 'confirmed-warm-short-plus-cold-follow',
     label: 'Confirmed warm short plus cold follow',
     positionPolicy:
-      'Take Dual Weather cold-follow setups directly; take warm-short exposure only when Dual Weather and Weather Hybrid agree on the same short direction.',
+      'Take frozen cold-follow setups directly; take warm-short exposure only when the embedded weather-follow and weather-reversion inputs agree on the same short direction.',
     conflictPolicy: 'confirmed-warm-short-plus-cold-follow',
     overlayCap: 0.45,
     indexRiskMode: 'full-index-fallback',
@@ -376,7 +378,7 @@ const BLEND_POLICIES = [
     id: 'short-fade-confirmed-long-risk-off',
     label: 'Short fade plus confirmed long fade, index risk-off',
     positionPolicy:
-      'Take Weather Hybrid reversion-short setups directly; take reversion-long setups only when Dual Weather confirms cold demand in the same direction, and move idle index capital to cash when the index is below its 200-session trend.',
+      'Take frozen reversion-short setups directly; take reversion-long setups only when the frozen weather-follow input confirms cold demand in the same direction, and move idle index capital to cash when the index is below its 200-session trend.',
     conflictPolicy: 'short-fade-confirmed-long',
     overlayCap: 0.45,
     indexRiskMode: 'idle-index-200d-trend',
@@ -385,9 +387,9 @@ const BLEND_POLICIES = [
   },
   {
     id: 'weather-hybrid-parent-risk-off',
-    label: 'Weather Hybrid parent with index risk-off',
+    label: 'Frozen weather-reversion input with index risk-off',
     positionPolicy:
-      'Use the selected Weather Hybrid reversion parent unchanged, but move idle index capital to cash when the index is below its 200-session trend.',
+      'Use the frozen weather-reversion input unchanged, but move idle index capital to cash when the index is below its 200-session trend.',
     conflictPolicy: 'weather-hybrid-parent',
     overlayCap: 0.2,
     indexRiskMode: 'idle-index-200d-trend',
@@ -396,8 +398,8 @@ const BLEND_POLICIES = [
   },
   {
     id: 'short-fade-only',
-    label: 'Weather Hybrid short fade only',
-    positionPolicy: 'Use only Weather Hybrid reversion-short setups and leave all other gas overlays inactive.',
+    label: 'Frozen weather-reversion short fade only',
+    positionPolicy: 'Use only frozen reversion-short setups and leave all other gas overlays inactive.',
     conflictPolicy: 'short-fade-only',
     overlayCap: 0.2,
     indexRiskMode: 'full-index-fallback',
@@ -544,6 +546,12 @@ function parseCsv(filePath) {
     skipEmptyLines: true,
     transformHeader: (header) => header.trim(),
   }).data
+}
+
+function frozenInputTradePath(inputManifest, inputKey) {
+  const input = inputManifest.inputs[inputKey]
+  if (!input?.tradeFile) throw new Error(`Missing frozen Winter Alpha input tradeFile for ${inputKey}`)
+  return path.join(FROZEN_INPUT_DIR, input.tradeFile)
 }
 
 function loadWeatherResolutionData() {
@@ -1502,11 +1510,11 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
       sourceId: isFallback
         ? 'US-INDEX-BASKET'
         : blend.followRow && blend.reversionRow && usesVolatilityConfirmation(policy)
-          ? 'dual-weather+weather-hybrid+volatility-reversion'
+          ? `${FROZEN_WEATHER_FOLLOW_ID}+${FROZEN_WEATHER_REVERSION_ID}+${FROZEN_VOLATILITY_CONFIRMATION_ID}`
           : blend.followRow && blend.reversionRow
-            ? 'dual-weather+weather-hybrid'
+            ? `${FROZEN_WEATHER_FOLLOW_ID}+${FROZEN_WEATHER_REVERSION_ID}`
             : blend.reversionRow && usesVolatilityConfirmation(policy)
-              ? 'weather-hybrid+volatility-reversion'
+              ? `${FROZEN_WEATHER_REVERSION_ID}+${FROZEN_VOLATILITY_CONFIRMATION_ID}`
               : blend.followRow
                 ? blend.followRow.sourceId
                 : blend.reversionRow?.sourceId,
@@ -1543,14 +1551,14 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
       sourceStrategyId: isFallback
         ? 'index-fallback'
         : blend.followRow && blend.reversionRow && usesVolatilityConfirmation(policy)
-          ? 'dual-weather-rotation+weather-hybrid-rotation+volatility-mean-reversion'
+          ? `${FROZEN_WEATHER_FOLLOW_ID}+${FROZEN_WEATHER_REVERSION_ID}+${FROZEN_VOLATILITY_CONFIRMATION_ID}`
           : blend.followRow && blend.reversionRow
-            ? 'dual-weather-rotation+weather-hybrid-rotation'
+            ? `${FROZEN_WEATHER_FOLLOW_ID}+${FROZEN_WEATHER_REVERSION_ID}`
             : blend.reversionRow && usesVolatilityConfirmation(policy)
-              ? 'weather-hybrid-rotation+volatility-mean-reversion'
+              ? `${FROZEN_WEATHER_REVERSION_ID}+${FROZEN_VOLATILITY_CONFIRMATION_ID}`
               : blend.followRow
-                ? 'dual-weather-rotation'
-                : 'weather-hybrid-rotation',
+                ? FROZEN_WEATHER_FOLLOW_ID
+                : FROZEN_WEATHER_REVERSION_ID,
       blendLeg: blend.blendLeg,
       followPosition: round(blend.followPosition, 4),
       reversionPosition: round(blend.reversionPosition, 4),
@@ -1802,21 +1810,21 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
   }
   const result = {
     candidateId: `ngas-alpha-${policy.id}`,
-    architectureId: 'parent-expert-blend',
+    architectureId: 'frozen-input-blend',
     architectureLabel: policy.label,
     architectureDescription: policy.positionPolicy,
     useFollowLeg: true,
     useReversionLeg: true,
-    sourceSetId: 'parent-selected-weather-experts',
+    sourceSetId: 'frozen-input-weather-experts',
     sourceSetLabel:
       usesVolatilityConfirmation(policy)
-        ? 'Dual Weather follow plus Weather Hybrid reversion confirmed by Volatility Mean Reversion'
-        : 'Dual Weather follow plus Weather Hybrid reversion',
+        ? 'Frozen weather-follow plus weather-reversion confirmed by volatility input'
+        : 'Frozen weather-follow plus weather-reversion',
     sourceIds:
       usesVolatilityConfirmation(policy)
-        ? ['dual-weather-rotation', 'weather-hybrid-rotation', 'volatility-mean-reversion']
-        : ['dual-weather-rotation', 'weather-hybrid-rotation'],
-    sourceWeightMode: 'parent-selected',
+        ? [FROZEN_WEATHER_FOLLOW_ID, FROZEN_WEATHER_REVERSION_ID, FROZEN_VOLATILITY_CONFIRMATION_ID]
+        : [FROZEN_WEATHER_FOLLOW_ID, FROZEN_WEATHER_REVERSION_ID],
+    sourceWeightMode: 'frozen-input-selected',
     sizingMode: policy.id,
     holdPeriodPolicy: policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY,
     weatherResolutionPolicy: policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY,
@@ -2200,19 +2208,19 @@ Generated at ${summary.generatedAt}.
 
 ## Purpose
 
-This active QORE research strategy combines parent experts without fitting new weather thresholds: Dual Weather supplies the cold/warm forecast-follow context, Weather Hybrid supplies post-window reversion context, Volatility Mean Reversion can confirm same-direction overreaction fades, optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade, and optional EIA storage-drawdown gates test whether cold-follow longs are allowed only after the withdrawal season has consumed enough inventory. The selected blend is ranked on train/validation only, with holdout reported after selection.
+This active QORE research strategy is self-contained around frozen Winter Alpha input ledgers: the embedded weather-follow input supplies cold/warm forecast-follow context, the embedded weather-reversion input supplies post-window reversion context, and the embedded volatility-confirmation input can confirm same-direction overreaction fades. Optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade, and optional EIA storage-drawdown gates test whether cold-follow longs are allowed only after the withdrawal season has consumed enough inventory. The selected blend is ranked on train/validation only, with holdout reported after selection.
 
 ## Selected Candidate
 
 - Architecture: ${selected.architectureLabel}.
-- Parent experts: Dual Weather Rotation for forecast-follow, Weather Hybrid Rotation for post-window reversion, and Volatility Mean Reversion for same-direction fade confirmation.
+- Frozen inputs: weather-follow, weather-reversion, and volatility-confirmation ledgers stored under the NGAS Winter Alpha lane.
 - Position policy: ${selected.positionPolicy}
-- Max weather UNG overlay: ${selected.overlayCap}x; parent weather leg ${selected.weatherFraction}x and weather reversion leg ${selected.reversionFraction}x.
+- Max weather UNG overlay: ${selected.overlayCap}x; frozen weather-follow leg ${selected.weatherFraction}x and weather-reversion leg ${selected.reversionFraction}x.
 - Winter-alpha hold overlay: ${selected.holdPeriodPolicy.label}. ${selected.holdPeriodPolicy.description}
-- Effective parent-ledger holds: forecast-follow ${selected.followHoldDays} trading day(s), post-window reversion ${selected.reversionHoldDays} trading day(s).
+- Effective frozen-ledger holds: forecast-follow ${selected.followHoldDays} trading day(s), post-window reversion ${selected.reversionHoldDays} trading day(s).
 - Gas-overlay risk multiplier: ${selected.overlayRiskMultiplier}x; effective max weather UNG overlay ${selected.effectiveOverlayCap}x.
-- Vol-confirmed reversion-long size: ${selected.reversionLongScale}x of the parent reversion leg.
-- Standalone reversion fade size: ${selected.standaloneReversionScale}x of the parent reversion leg when no same-direction follow signal confirms it.
+- Vol-confirmed reversion-long size: ${selected.reversionLongScale}x of the frozen reversion leg.
+- Standalone reversion fade size: ${selected.standaloneReversionScale}x of the frozen reversion leg when no same-direction follow signal confirms it.
 - Weather-resolution overlay: ${selected.weatherResolutionPolicy.label}. ${selected.weatherResolutionPolicy.description}
 - Cold-follow storage gate: ${selected.coldFollowStoragePolicy.label}. ${selected.coldFollowStoragePolicy.description}
 - Idle capital risk mode: ${selected.indexRiskLabel}.
@@ -2259,8 +2267,8 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
 - Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally six calendar days after the Friday week-ending storage date. The seasonal drawdown is measured from the current withdrawal-season storage peak.
-- Hold-period overlays only shorten parent-selected daily ledger holds for the selected graded vol-confirmed family; they do not create new weather signals, extend a parent hold, alter forecast thresholds, or use holdout rows for selection.
-- Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, parent signals, or weather thresholds.
+- Hold-period overlays only shorten frozen daily ledger holds for the selected graded vol-confirmed family; they do not create new weather signals, extend an input hold, alter forecast thresholds, or use holdout rows for selection.
+- Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, frozen input signals, or weather thresholds.
 - Holdout was not used for selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
 - Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
 - Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
@@ -2288,12 +2296,10 @@ ${winterAlphaVerdict(summary)}
 }
 
 function main() {
-  const weatherSummary = JSON.parse(readText(path.join(WEATHER_HYBRID_DIR, 'run-summary.json')))
-  const dualSummary = JSON.parse(readText(path.join(DUAL_WEATHER_DIR, 'run-summary.json')))
-  const volatilitySummary = JSON.parse(readText(path.join(VOLATILITY_REVERSION_DIR, 'run-summary.json')))
-  const weatherRows = parseCsv(path.join(WEATHER_HYBRID_DIR, 'selected-trades.csv'))
-  const dualRows = parseCsv(path.join(DUAL_WEATHER_DIR, 'selected-trades.csv'))
-  const volatilityRows = parseCsv(path.join(VOLATILITY_REVERSION_DIR, 'selected-trades.csv'))
+  const inputManifest = JSON.parse(readText(FROZEN_INPUT_MANIFEST_FILE))
+  const weatherRows = parseCsv(frozenInputTradePath(inputManifest, 'weatherReversion'))
+  const dualRows = parseCsv(frozenInputTradePath(inputManifest, 'weatherFollow'))
+  const volatilityRows = parseCsv(frozenInputTradePath(inputManifest, 'volatilityConfirmation'))
   const indexMarketRows = parseCsv(INDEX_MARKET_FILE)
   const indexTrendRiskByDate = buildIndexTrendRiskMap(indexMarketRows)
   const weatherResolutionData = loadWeatherResolutionData()
@@ -2309,12 +2315,10 @@ function main() {
     generatedAt: new Date().toISOString(),
     strategyId: STRATEGY_ID,
     data: {
-      weatherHybridSummary: path.relative(REPO_ROOT, path.join(WEATHER_HYBRID_DIR, 'run-summary.json')),
-      weatherHybridTrades: path.relative(REPO_ROOT, path.join(WEATHER_HYBRID_DIR, 'selected-trades.csv')),
-      dualWeatherSummary: path.relative(REPO_ROOT, path.join(DUAL_WEATHER_DIR, 'run-summary.json')),
-      dualWeatherTrades: path.relative(REPO_ROOT, path.join(DUAL_WEATHER_DIR, 'selected-trades.csv')),
-      volatilityReversionSummary: path.relative(REPO_ROOT, path.join(VOLATILITY_REVERSION_DIR, 'run-summary.json')),
-      volatilityReversionTrades: path.relative(REPO_ROOT, path.join(VOLATILITY_REVERSION_DIR, 'selected-trades.csv')),
+      frozenInputManifest: path.relative(REPO_ROOT, FROZEN_INPUT_MANIFEST_FILE),
+      weatherReversionTrades: path.relative(REPO_ROOT, frozenInputTradePath(inputManifest, 'weatherReversion')),
+      weatherFollowTrades: path.relative(REPO_ROOT, frozenInputTradePath(inputManifest, 'weatherFollow')),
+      volatilityConfirmationTrades: path.relative(REPO_ROOT, frozenInputTradePath(inputManifest, 'volatilityConfirmation')),
       weatherResolutionInputs: weatherResolutionData.inputFiles,
       storageInputs: storageData.inputFiles,
       marketStartDate: selected.allMetrics.firstEntry,
@@ -2329,34 +2333,18 @@ function main() {
       oneWayCostPct: ONE_WAY_COST_PCT,
       fallback: 'Unallocated capital remains in US-INDEX-BASKET close-to-close.',
       signalTiming:
-        'Parent strategies already enforce post-signal execution; NGAS Winter Alpha only combines parent daily ledgers and recalculates costs.',
+        'Frozen Winter Alpha inputs already enforce post-signal execution; NGAS Winter Alpha combines those daily ledgers and recalculates costs.',
       selectionPolicy:
-        'Only predeclared parent-blend policies, parent daily-ledger hold overlays, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
+        'Only predeclared frozen-input blend policies, daily-ledger hold overlays, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
       overfitControl:
-        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay, one predeclared parent daily-ledger hold overlay, one predeclared cold-follow storage-drawdown gate, and one bounded gas-overlay risk multiplier. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
+        'No holdout rows are used for selection. Frozen input candidates are embedded inside the Winter Alpha lane, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay, one predeclared daily-ledger hold overlay, one predeclared cold-follow storage-drawdown gate, and one bounded gas-overlay risk multiplier. Volatility confirmation is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
       weatherResolutionTiming:
         'Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate, or NASA POWER actual anomalies only when targetDate < entryTradeDate.',
       storageTiming:
         `Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally ${EIA_STORAGE_STANDARD_RELEASE_LAG_DAYS} calendar days after the Friday week-ending storage date; historical seasonal comparisons use only prior storage years.`,
       indexTrendLookbackSessions: INDEX_TREND_LOOKBACK_SESSIONS,
     },
-    parents: {
-      weatherHybrid: {
-        strategyId: weatherSummary.strategyId,
-        candidateId: weatherSummary.selected.candidateId,
-        role: 'post-window overreaction fade expert',
-      },
-      dualWeather: {
-        strategyId: dualSummary.strategyId,
-        candidateId: dualSummary.selected.candidateId,
-        role: 'cold-long and warm-short forecast-follow expert',
-      },
-      volatilityReversion: {
-        strategyId: volatilitySummary.strategyId,
-        candidateId: volatilitySummary.selected.candidateId,
-        role: 'same-direction winter overreaction fade confirmer',
-      },
-    },
+    inputs: inputManifest.inputs,
     selected: {
       ...selected,
       rows: undefined,

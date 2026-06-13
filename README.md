@@ -80,7 +80,7 @@ These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS fore
 - Opens on the tracked `data/qore` research catalog without bundled starter rows.
 - Shows source-backed market, weather, forecast-calendar, signal-score, and signal-return inventory.
 - Loads two active research strategies: NGAS Summer Alpha and NGAS Winter Alpha.
-- Keeps the older weather, volatility, and strict-theory lanes archived as parent research evidence instead of active baselines.
+- Keeps older weather, volatility, and strict-theory lanes archived as research evidence instead of active baselines.
 - Joins explicitly imported weather and market rows by `date` for session-only lab checks.
 - Tracks imported weather forecast quality with HDD/CDD MAE, RMSE, R2, directional accuracy, cold-surprise recall, and calibration.
 - Provides CSV import lanes for intentionally loading local or external backtest rows.
@@ -119,13 +119,13 @@ npm run optimize:ngas-summer-alpha
 
 The selected summer run made `317.48%` full-sample versus `91.47%` for the index basket, with `-20.15%` max drawdown. Train return was `83.73%`, validation was `43.8%`, and holdout was `58%`; holdout edge versus the index basket was `28.62%`. The selected overlay uses `0.35x` base NG exposure, allows the storage-deficit heat tilt to reach `0.4375x`, and lets CDD-tiered fade sizing lift qualifying heat-rally shorts up to `0.5x`. It remains needs-more-validation, not broker-ready.
 
-The second active strategy is `ngas-winter-alpha`. It combines archived parent experts without fitting new weather thresholds: Dual Weather supplies cold-follow and warm-short context, Weather Hybrid supplies post-window fade context, Volatility Mean Reversion confirms selected same-direction fades, and the winter layer can shorten parent daily ledger holds when train/validation prefers faster exits. Those parent lanes are retained as research inputs, not active dashboard strategies.
+The second active strategy is `ngas-winter-alpha`. It now owns frozen weather-follow, weather-reversion, and volatility-confirmation ledgers inside its own lane instead of reading archived strategy folders. The frozen inputs preserve the current winter blend exactly: cold-follow and warm-short context, post-window fade context, selected same-direction fade confirmation, and optional shorter daily-ledger holds when train/validation prefers faster exits.
 
 ```bash
 npm run optimize:ngas-winter-alpha
 ```
 
-The selected winter run made `282.46%` full-sample versus `91.47%` for the index basket, with `-22.04%` max drawdown. Train return was `81.03%`, validation was `53.97%`, and holdout was `37.22%`; holdout edge versus the index basket was `26.28%`. The selected blend uses parent-selected holds, a `400 Bcf` cold-follow storage-drawdown gate, adverse standalone-fade vetoes, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+The selected winter run made `282.46%` full-sample versus `91.47%` for the index basket, with `-22.04%` max drawdown. Train return was `81.03%`, validation was `53.97%`, and holdout was `37.22%`; holdout edge versus the index basket was `26.28%`. The selected blend uses frozen-input holds, a `400 Bcf` cold-follow storage-drawdown gate, adverse standalone-fade vetoes, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
 
 ## Non-Live Execution Architecture
 
