@@ -205,6 +205,7 @@ type WinterAlphaSummary = {
     selectionPolicy: string
     overfitControl: string
     weatherResolutionTiming: string
+    storageTiming?: string
     indexTrendLookbackSessions: number
   }
   parents: {
@@ -236,6 +237,13 @@ type WinterAlphaSummary = {
       label: string
       kind: string
       description: string
+    }
+    coldFollowStoragePolicy?: {
+      id: string
+      label: string
+      kind: string
+      description: string
+      minSeasonDrawdownBcf?: number
     }
     indexRiskMode: string
     indexRiskLabel: string
@@ -328,6 +336,18 @@ export type ArcticBlastTrade = {
   weatherResolutionReliefF?: number
   weatherResolutionAction?: string
   weatherResolutionScale?: number
+  coldFollowStoragePolicy?: string
+  coldFollowStorageAction?: string
+  coldFollowStorageMinSeasonDrawdownBcf?: number
+  storageDate?: string
+  storageBcf?: number
+  storageSeasonPeakBcf?: number
+  storageSeasonDrawdownBcf?: number
+  storageSeasonalAverageBcf?: number
+  storageVsSeasonalAverageBcf?: number
+  storageSeasonalPercentile?: number
+  storageWeeklyChangeBcf?: number
+  storageWeeklyChangeVsSeasonalAverageBcf?: number
   overlayRiskMultiplier?: number
   effectiveOverlayCap?: number
 }
@@ -456,6 +476,22 @@ function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVar
     weatherResolutionReliefF: row.weatherResolutionReliefF ? numberFrom(row.weatherResolutionReliefF) : undefined,
     weatherResolutionAction: row.weatherResolutionAction || undefined,
     weatherResolutionScale: row.weatherResolutionScale ? numberFrom(row.weatherResolutionScale) : undefined,
+    coldFollowStoragePolicy: row.coldFollowStoragePolicy || undefined,
+    coldFollowStorageAction: row.coldFollowStorageAction || undefined,
+    coldFollowStorageMinSeasonDrawdownBcf: row.coldFollowStorageMinSeasonDrawdownBcf
+      ? numberFrom(row.coldFollowStorageMinSeasonDrawdownBcf)
+      : undefined,
+    storageDate: row.storageDate || undefined,
+    storageBcf: row.storageBcf ? numberFrom(row.storageBcf) : undefined,
+    storageSeasonPeakBcf: row.storageSeasonPeakBcf ? numberFrom(row.storageSeasonPeakBcf) : undefined,
+    storageSeasonDrawdownBcf: row.storageSeasonDrawdownBcf ? numberFrom(row.storageSeasonDrawdownBcf) : undefined,
+    storageSeasonalAverageBcf: row.storageSeasonalAverageBcf ? numberFrom(row.storageSeasonalAverageBcf) : undefined,
+    storageVsSeasonalAverageBcf: row.storageVsSeasonalAverageBcf ? numberFrom(row.storageVsSeasonalAverageBcf) : undefined,
+    storageSeasonalPercentile: row.storageSeasonalPercentile ? numberFrom(row.storageSeasonalPercentile) : undefined,
+    storageWeeklyChangeBcf: row.storageWeeklyChangeBcf ? numberFrom(row.storageWeeklyChangeBcf) : undefined,
+    storageWeeklyChangeVsSeasonalAverageBcf: row.storageWeeklyChangeVsSeasonalAverageBcf
+      ? numberFrom(row.storageWeeklyChangeVsSeasonalAverageBcf)
+      : undefined,
     overlayRiskMultiplier: row.overlayRiskMultiplier ? numberFrom(row.overlayRiskMultiplier) : undefined,
     effectiveOverlayCap: row.effectiveOverlayCap ? numberFrom(row.effectiveOverlayCap) : undefined,
   }))
@@ -596,7 +632,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
     instrument: 'UNG',
     desk: 'Winter natural gas alpha blend',
     thesis:
-      'Blend parent experts conservatively: Dual Weather supplies cold-follow and warm-short context, Weather Hybrid supplies post-window fades, Volatility Mean Reversion confirms long fades, close-in weather resolution sizes reversion exposure, and idle capital remains in the index fallback.',
+      'Blend parent experts conservatively: Dual Weather supplies cold-follow and warm-short context, Weather Hybrid supplies post-window fades, Volatility Mean Reversion confirms long fades, close-in weather resolution sizes reversion exposure, EIA storage-drawdown gates can block premature cold-follow longs, and idle capital remains in the index fallback.',
     directionPolicy:
       `${selected.positionPolicy} Idle capital uses ${selected.indexRiskLabel.toLowerCase()}.`,
     promotionStatus,
@@ -622,6 +658,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
       sourceWeightMode: selected.sourceWeightMode,
       sizingMode: selected.sizingMode,
       weatherResolutionPolicy: selected.weatherResolutionPolicy,
+      coldFollowStoragePolicy: selected.coldFollowStoragePolicy,
       indexRiskMode: selected.indexRiskMode,
       indexRiskLabel: selected.indexRiskLabel,
       indexTrendLookbackSessions: selected.indexTrendLookbackSessions,
@@ -651,6 +688,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
       selectionPolicy: contract.selectionPolicy,
       signalTiming: contract.signalTiming,
       weatherResolutionTiming: contract.weatherResolutionTiming,
+      storageTiming: contract.storageTiming,
       sourceUniverse: sourceUniverseFor(trades),
     },
     metrics,
@@ -690,7 +728,7 @@ function curveFromTrades(trades: ArcticBlastTrade[]): ArcticBlastEquityPoint[] {
         signal: Number.isFinite(trade.confidence) ? round((trade.confidence ?? 0) * Math.sign(direction), 3) : direction,
         gasReturnPct: round(trade.netReturnPct, 3),
         demandScore: Number.isFinite(trade.confidence) ? round(trade.confidence ?? 0, 3) : round(trade.rank, 3),
-        storageBcf: Number.isFinite(trade.indexFraction) ? round((trade.indexFraction ?? 0) * 100, 2) : 0,
+        storageBcf: Number.isFinite(trade.storageBcf) ? round(trade.storageBcf ?? 0, 2) : 0,
         closeScaled: null,
         sourceId: trade.sourceId,
         windowId: trade.windowId,

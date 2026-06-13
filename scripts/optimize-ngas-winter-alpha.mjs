@@ -13,6 +13,7 @@ const DUAL_WEATHER_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/dual
 const VOLATILITY_REVERSION_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/volatility-mean-reversion')
 const INDEX_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/US-INDEX-BASKET-qore-market.csv')
 const ACTUAL_DAILY_FILE = path.join(DATA_ROOT, 'weather/events/arctic-blast-actual-daily-2021-01-01-2026-03-31.csv')
+const STORAGE_FILE = path.join(DATA_ROOT, 'fundamentals/eia/working-gas-storage-lower48-weekly.csv')
 
 const STRATEGY_ID = 'ngas-winter-alpha'
 const INITIAL_CAPITAL = 100000
@@ -27,6 +28,9 @@ const BLOCK_LENGTH = 10
 const INDEX_TREND_LOOKBACK_SESSIONS = 200
 const WEATHER_RESOLUTION_SOURCE_IDS = new Set(['gfs', 'gefs-mean'])
 const MAX_EFFECTIVE_OVERLAY_CAP = 0.6
+const STORAGE_SEASON_START_MONTH = 9
+const STORAGE_SEASONAL_WINDOW_DAYS = 10
+const STORAGE_AVAILABLE_LAG_DAYS = 7
 
 const OVERLAY_RISK_MULTIPLIER_VARIANTS = [
   {
@@ -57,6 +61,32 @@ const DEFAULT_WEATHER_RESOLUTION_POLICY = {
   kind: 'none',
   description: 'Keep parent reversion legs unchanged.',
 }
+
+const DEFAULT_COLD_FOLLOW_STORAGE_POLICY = {
+  id: 'none',
+  label: 'No cold-follow storage gate',
+  kind: 'none',
+  description: 'Do not alter cold-follow exposure based on EIA storage.',
+}
+
+const COLD_FOLLOW_STORAGE_POLICIES = [
+  {
+    id: 'storage-drawdown-400bcf',
+    label: 'Cold-follow requires 400 Bcf storage drawdown',
+    kind: 'season-drawdown',
+    minSeasonDrawdownBcf: 400,
+    description:
+      `Allow cold-follow gas longs only after lagged EIA working gas storage available with a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day delay has drawn down at least 400 Bcf from the current withdrawal-season peak.`,
+  },
+  {
+    id: 'storage-drawdown-600bcf',
+    label: 'Cold-follow requires 600 Bcf storage drawdown',
+    kind: 'season-drawdown',
+    minSeasonDrawdownBcf: 600,
+    description:
+      `Allow cold-follow gas longs only after lagged EIA working gas storage available with a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day delay has drawn down at least 600 Bcf from the current withdrawal-season peak.`,
+  },
+]
 
 const WEATHER_RESOLUTION_POLICIES = [
   {
@@ -333,6 +363,39 @@ function policySupportsOverlayRiskMultiplier(policy) {
   )
 }
 
+function policySupportsColdFollowStorage(policy) {
+  return (
+    policy.selectionEligible &&
+    policy.indexRiskMode === 'full-index-fallback' &&
+    [
+      'confirmed-warm-short-plus-cold-follow',
+      'short-fade-plus-cold-follow',
+      'vol-confirmed-fade-plus-cold-follow',
+      'short-fade-plus-cold-follow-vol-long',
+    ].includes(policy.conflictPolicy)
+  )
+}
+
+function expandedColdFollowStoragePolicies(policies) {
+  return policies.flatMap((policy) => {
+    const basePolicy = {
+      ...policy,
+      coldFollowStoragePolicy: policy.coldFollowStoragePolicy ?? DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
+    }
+    if (!policySupportsColdFollowStorage(basePolicy)) return [basePolicy]
+
+    const storagePolicies = COLD_FOLLOW_STORAGE_POLICIES.map((storagePolicy) => ({
+      ...basePolicy,
+      id: `${basePolicy.id}-${storagePolicy.id}`,
+      label: `${basePolicy.label} + ${storagePolicy.label}`,
+      positionPolicy: `${basePolicy.positionPolicy} Storage gate: ${storagePolicy.description}`,
+      coldFollowStoragePolicy: storagePolicy,
+    }))
+
+    return [basePolicy, ...storagePolicies]
+  })
+}
+
 function expandedOverlayRiskPolicies(policies) {
   return policies.flatMap((policy) => {
     const basePolicy = {
@@ -356,6 +419,7 @@ function expandedBlendPolicies() {
   const baselines = BLEND_POLICIES.map((policy) => ({
     ...policy,
     weatherResolutionPolicy: DEFAULT_WEATHER_RESOLUTION_POLICY,
+    coldFollowStoragePolicy: DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
     overlayRiskMultiplier: 1,
   }))
   const weatherResolved = BLEND_POLICIES.filter(policySupportsWeatherResolution).flatMap((policy) =>
@@ -365,10 +429,11 @@ function expandedBlendPolicies() {
       label: `${policy.label} + ${resolutionPolicy.label}`,
       positionPolicy: `${policy.positionPolicy} Weather-resolution overlay: ${resolutionPolicy.description}`,
       weatherResolutionPolicy: resolutionPolicy,
+      coldFollowStoragePolicy: DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
       overlayRiskMultiplier: 1,
     })),
   )
-  return expandedOverlayRiskPolicies([...baselines, ...weatherResolved])
+  return expandedOverlayRiskPolicies(expandedColdFollowStoragePolicies([...baselines, ...weatherResolved]))
 }
 
 function readText(filePath) {
@@ -454,6 +519,110 @@ function loadWeatherResolutionData() {
   )
 
   return { forecastsByTargetDate, actualByDate, inputFiles }
+}
+
+function dayOfYear(isoDate) {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  return Math.floor((date - yearStart) / 86400000) + 1
+}
+
+function addCalendarDays(isoDate, days) {
+  return new Date(Date.parse(isoDate) + days * 86400000).toISOString().slice(0, 10)
+}
+
+function storageSeasonStartFor(isoDate) {
+  const year = Number(isoDate.slice(0, 4))
+  const month = Number(isoDate.slice(5, 7))
+  const seasonYear = month >= STORAGE_SEASON_START_MONTH ? year : year - 1
+  return `${seasonYear}-${String(STORAGE_SEASON_START_MONTH).padStart(2, '0')}-01`
+}
+
+function loadStorageData() {
+  const rows = parseCsv(STORAGE_FILE)
+    .map((row, index) => ({
+      index,
+      date: row.date,
+      storageBcf: numberFrom(row.storageBcf, Number.NaN),
+    }))
+    .filter((row) => row.date && Number.isFinite(row.storageBcf) && row.storageBcf > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((row, index) => ({
+      ...row,
+      index,
+      dayOfYear: dayOfYear(row.date),
+      year: Number(row.date.slice(0, 4)),
+    }))
+
+  const cache = new Map()
+
+  function latestStorageRow(date) {
+    const cutoffDate = addCalendarDays(date, -STORAGE_AVAILABLE_LAG_DAYS)
+    let latest = null
+    for (const row of rows) {
+      if (row.date <= cutoffDate) latest = row
+      if (row.date > cutoffDate) break
+    }
+    return latest
+  }
+
+  function contextForDate(date) {
+    if (cache.has(date)) return cache.get(date)
+
+    const latest = latestStorageRow(date)
+    if (!latest) {
+      const missing = { available: false }
+      cache.set(date, missing)
+      return missing
+    }
+
+    const seasonStart = storageSeasonStartFor(latest.date)
+    const seasonRows = rows.filter((row) => row.date >= seasonStart && row.date <= latest.date)
+    const seasonPeakBcf = Math.max(...seasonRows.map((row) => row.storageBcf))
+    const historicalRows = rows.filter(
+      (row) =>
+        row.year < latest.year &&
+        Math.abs(row.dayOfYear - latest.dayOfYear) <= STORAGE_SEASONAL_WINDOW_DAYS,
+    )
+    const historicalStorageValues = historicalRows.map((row) => row.storageBcf)
+    const seasonalAverageBcf = mean(historicalStorageValues)
+    const sortedStorageValues = [...historicalStorageValues].sort((a, b) => a - b)
+    const storageSeasonalPercentile = sortedStorageValues.length
+      ? (sortedStorageValues.filter((value) => value <= latest.storageBcf).length / sortedStorageValues.length) * 100
+      : Number.NaN
+    const prior = rows[latest.index - 1]
+    const weeklyChangeBcf = prior ? latest.storageBcf - prior.storageBcf : Number.NaN
+    const historicalWeeklyChanges = historicalRows
+      .map((row) => {
+        const priorHistorical = rows[row.index - 1]
+        return priorHistorical ? row.storageBcf - priorHistorical.storageBcf : Number.NaN
+      })
+      .filter(Number.isFinite)
+    const seasonalAverageWeeklyChangeBcf = mean(historicalWeeklyChanges)
+
+    const context = {
+      available: true,
+      storageDate: latest.date,
+      storageBcf: round(latest.storageBcf, 2),
+      storageSeasonPeakBcf: round(seasonPeakBcf, 2),
+      storageSeasonDrawdownBcf: round(seasonPeakBcf - latest.storageBcf, 2),
+      storageSeasonalAverageBcf: Number.isFinite(seasonalAverageBcf) ? round(seasonalAverageBcf, 2) : '',
+      storageVsSeasonalAverageBcf: Number.isFinite(seasonalAverageBcf) ? round(latest.storageBcf - seasonalAverageBcf, 2) : '',
+      storageSeasonalPercentile: Number.isFinite(storageSeasonalPercentile) ? round(storageSeasonalPercentile, 2) : '',
+      storageWeeklyChangeBcf: Number.isFinite(weeklyChangeBcf) ? round(weeklyChangeBcf, 2) : '',
+      storageWeeklyChangeVsSeasonalAverageBcf:
+        Number.isFinite(weeklyChangeBcf) && Number.isFinite(seasonalAverageWeeklyChangeBcf)
+          ? round(weeklyChangeBcf - seasonalAverageWeeklyChangeBcf, 2)
+          : '',
+    }
+    cache.set(date, context)
+    return context
+  }
+
+  return {
+    inputFiles: [path.relative(REPO_ROOT, STORAGE_FILE)],
+    contextForDate,
+  }
 }
 
 function numberFrom(value, fallback = 0) {
@@ -658,6 +827,72 @@ function followSurvivesDroppedReversion(policy, followRow) {
   return ['short-fade-plus-cold-follow', 'vol-confirmed-fade-plus-cold-follow', 'short-fade-plus-cold-follow-vol-long'].includes(
     policy.conflictPolicy,
   )
+}
+
+function coldFollowStorageDecision(policy, blend, storageContext) {
+  const storagePolicy = policy.coldFollowStoragePolicy ?? DEFAULT_COLD_FOLLOW_STORAGE_POLICY
+  if (storagePolicy.kind === 'none') {
+    return {
+      policyId: storagePolicy.id,
+      action: blend.followRow?.thesisKind === 'cold-long' ? 'not-gated' : 'not-cold-follow',
+      allowed: true,
+    }
+  }
+
+  if (blend.followRow?.thesisKind !== 'cold-long' || blend.followPosition === 0) {
+    return {
+      policyId: storagePolicy.id,
+      action: 'not-cold-follow',
+      allowed: true,
+    }
+  }
+
+  if (!storageContext?.available) {
+    return {
+      policyId: storagePolicy.id,
+      action: 'missing-storage-blocked',
+      allowed: false,
+    }
+  }
+
+  if (storagePolicy.kind === 'season-drawdown') {
+    const seasonDrawdownBcf = numberFrom(storageContext.storageSeasonDrawdownBcf, Number.NaN)
+    const allowed = seasonDrawdownBcf >= storagePolicy.minSeasonDrawdownBcf
+    return {
+      policyId: storagePolicy.id,
+      action: allowed ? 'storage-drawdown-confirmed' : 'blocked-insufficient-storage-drawdown',
+      allowed,
+      minSeasonDrawdownBcf: storagePolicy.minSeasonDrawdownBcf,
+      storageSeasonDrawdownBcf: Number.isFinite(seasonDrawdownBcf) ? round(seasonDrawdownBcf, 2) : '',
+    }
+  }
+
+  return {
+    policyId: storagePolicy.id,
+    action: 'kept',
+    allowed: true,
+  }
+}
+
+function applyColdFollowStorageGate(policy, blend, storageContext) {
+  const decision = coldFollowStorageDecision(policy, blend, storageContext)
+  if (decision.allowed) {
+    return {
+      ...blend,
+      coldFollowStorage: decision,
+    }
+  }
+
+  return {
+    ...blend,
+    followRow: null,
+    reversionRow: null,
+    followPosition: 0,
+    reversionPosition: 0,
+    position: 0,
+    blendLeg: 'index-fallback',
+    coldFollowStorage: decision,
+  }
 }
 
 function blendLegAfterWeatherResolution(blend, position) {
@@ -1022,7 +1257,7 @@ function usesVolatilityConfirmation(policy) {
   return ['vol-confirmed-fade-plus-cold-follow', 'short-fade-plus-cold-follow-vol-long'].includes(policy.conflictPolicy)
 }
 
-function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData) {
+function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData) {
   const dualByDate = new Map(dualRows.map((row) => [row.entryTradeDate, row]))
   const weatherByDate = new Map(weatherRows.map((row) => [row.entryTradeDate, row]))
   const volatilityByDate = new Map(volatilityRows.map((row) => [row.entryTradeDate, row]))
@@ -1038,8 +1273,10 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
     const weatherRow = weatherByDate.get(date)
     const volatilityRow = volatilityByDate.get(date)
     const fallback = baseFallbackRow(dualRow, weatherRow)
+    const storageContext = storageData.contextForDate(date)
     const rawBlend = blendPositionFor(policy, dualRow, weatherRow, volatilityRow)
-    const resolvedBlend = applyWeatherResolution(policy, rawBlend, weatherResolutionData)
+    const storageGatedBlend = applyColdFollowStorageGate(policy, rawBlend, storageContext)
+    const resolvedBlend = applyWeatherResolution(policy, storageGatedBlend, weatherResolutionData)
     const blend = applyOverlayRiskMultiplier(policy, resolvedBlend)
     const weatherActive = blend.position !== 0
     const activeFollowRow = weatherActive ? blend.followRow : null
@@ -1144,6 +1381,30 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
       weatherResolutionReliefF: Number.isFinite(blend.weatherResolution.reliefF) ? round(blend.weatherResolution.reliefF, 3) : '',
       weatherResolutionAction: blend.weatherResolution.action ?? '',
       weatherResolutionScale: round(blend.weatherResolution.scale ?? 1, 4),
+      coldFollowStoragePolicy: policy.coldFollowStoragePolicy?.id ?? DEFAULT_COLD_FOLLOW_STORAGE_POLICY.id,
+      coldFollowStorageAction: blend.coldFollowStorage?.action ?? '',
+      coldFollowStorageMinSeasonDrawdownBcf: Number.isFinite(blend.coldFollowStorage?.minSeasonDrawdownBcf)
+        ? round(blend.coldFollowStorage.minSeasonDrawdownBcf, 2)
+        : '',
+      storageDate: storageContext.storageDate ?? '',
+      storageBcf: Number.isFinite(storageContext.storageBcf) ? round(storageContext.storageBcf, 2) : '',
+      storageSeasonPeakBcf: Number.isFinite(storageContext.storageSeasonPeakBcf) ? round(storageContext.storageSeasonPeakBcf, 2) : '',
+      storageSeasonDrawdownBcf: Number.isFinite(storageContext.storageSeasonDrawdownBcf)
+        ? round(storageContext.storageSeasonDrawdownBcf, 2)
+        : '',
+      storageSeasonalAverageBcf: Number.isFinite(storageContext.storageSeasonalAverageBcf)
+        ? round(storageContext.storageSeasonalAverageBcf, 2)
+        : '',
+      storageVsSeasonalAverageBcf: Number.isFinite(storageContext.storageVsSeasonalAverageBcf)
+        ? round(storageContext.storageVsSeasonalAverageBcf, 2)
+        : '',
+      storageSeasonalPercentile: Number.isFinite(storageContext.storageSeasonalPercentile)
+        ? round(storageContext.storageSeasonalPercentile, 2)
+        : '',
+      storageWeeklyChangeBcf: Number.isFinite(storageContext.storageWeeklyChangeBcf) ? round(storageContext.storageWeeklyChangeBcf, 2) : '',
+      storageWeeklyChangeVsSeasonalAverageBcf: Number.isFinite(storageContext.storageWeeklyChangeVsSeasonalAverageBcf)
+        ? round(storageContext.storageWeeklyChangeVsSeasonalAverageBcf, 2)
+        : '',
       overlayRiskMultiplier: round(blend.overlayRiskMultiplier ?? 1, 4),
       effectiveOverlayCap: round(blend.effectiveOverlayCap ?? policy.overlayCap, 4),
     }
@@ -1308,12 +1569,14 @@ function legCounts(rows, splitFilter = () => true) {
     warmShort: scoped.filter((row) => rowHasThesisKind(row, 'warm-short')).length,
     reversionLong: scoped.filter((row) => rowHasThesisKind(row, 'reversion-long')).length,
     reversionShort: scoped.filter((row) => rowHasThesisKind(row, 'reversion-short')).length,
+    coldFollowStorageConfirmed: scoped.filter((row) => row.coldFollowStorageAction === 'storage-drawdown-confirmed').length,
+    coldFollowStorageBlocked: scoped.filter((row) => row.coldFollowStorageAction === 'blocked-insufficient-storage-drawdown').length,
     indexRiskOff: scoped.filter((row) => row.indexRiskOn === false).length,
   }
 }
 
-function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData) {
-  const { rows, curve } = buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData)
+function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData) {
+  const { rows, curve } = buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData)
   const eventRows = rows.filter((row) => row.windowId !== 'index-fallback')
   const indexCurve = indexCurveFromRows(rows)
   const indexMetrics = {
@@ -1356,6 +1619,7 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
     sourceWeightMode: 'parent-selected',
     sizingMode: policy.id,
     weatherResolutionPolicy: policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY,
+    coldFollowStoragePolicy: policy.coldFollowStoragePolicy ?? DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
     indexRiskMode: policy.indexRiskMode,
     indexRiskLabel: indexRiskLabelFor(policy),
     indexTrendLookbackSessions:
@@ -1459,6 +1723,8 @@ function formatCandidateRow(candidate) {
     conflictPolicy: candidate.conflictPolicy,
     weatherResolutionPolicy: candidate.weatherResolutionPolicy.id,
     weatherResolutionKind: candidate.weatherResolutionPolicy.kind,
+    coldFollowStoragePolicy: candidate.coldFollowStoragePolicy.id,
+    coldFollowStorageMinSeasonDrawdownBcf: candidate.coldFollowStoragePolicy.minSeasonDrawdownBcf ?? '',
     indexRiskMode: candidate.indexRiskMode,
     selectionEligible: candidate.selectionEligible,
     overlayCap: candidate.overlayCap,
@@ -1547,6 +1813,18 @@ function selectedTradeRows(rows) {
     'weatherResolutionReliefF',
     'weatherResolutionAction',
     'weatherResolutionScale',
+    'coldFollowStoragePolicy',
+    'coldFollowStorageAction',
+    'coldFollowStorageMinSeasonDrawdownBcf',
+    'storageDate',
+    'storageBcf',
+    'storageSeasonPeakBcf',
+    'storageSeasonDrawdownBcf',
+    'storageSeasonalAverageBcf',
+    'storageVsSeasonalAverageBcf',
+    'storageSeasonalPercentile',
+    'storageWeeklyChangeBcf',
+    'storageWeeklyChangeVsSeasonalAverageBcf',
     'overlayRiskMultiplier',
     'effectiveOverlayCap',
   ]
@@ -1713,7 +1991,7 @@ Generated at ${summary.generatedAt}.
 
 ## Purpose
 
-This active QORE research strategy combines parent experts without fitting new weather thresholds: Dual Weather supplies the cold/warm forecast-follow context, Weather Hybrid supplies post-window reversion context, Volatility Mean Reversion can confirm same-direction overreaction fades, and optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade. The selected blend is ranked on train/validation only, with holdout reported after selection.
+This active QORE research strategy combines parent experts without fitting new weather thresholds: Dual Weather supplies the cold/warm forecast-follow context, Weather Hybrid supplies post-window reversion context, Volatility Mean Reversion can confirm same-direction overreaction fades, optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade, and optional EIA storage-drawdown gates test whether cold-follow longs are allowed only after the withdrawal season has consumed enough inventory. The selected blend is ranked on train/validation only, with holdout reported after selection.
 
 ## Selected Candidate
 
@@ -1725,6 +2003,7 @@ This active QORE research strategy combines parent experts without fitting new w
 - Vol-confirmed reversion-long size: ${selected.reversionLongScale}x of the parent reversion leg.
 - Standalone reversion fade size: ${selected.standaloneReversionScale}x of the parent reversion leg when no same-direction follow signal confirms it.
 - Weather-resolution overlay: ${selected.weatherResolutionPolicy.label}. ${selected.weatherResolutionPolicy.description}
+- Cold-follow storage gate: ${selected.coldFollowStoragePolicy.label}. ${selected.coldFollowStoragePolicy.description}
 - Idle capital risk mode: ${selected.indexRiskLabel}.
 - Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on UNG position changes.
 - Selection: ${summary.contract.selectionPolicy}
@@ -1768,6 +2047,7 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 - Eligibility requires a selectable gas-alpha policy, positive train and validation edge, lower train and validation drawdown than the index basket, and train/validation volatility under a 20% annualized risk budget.
 - Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
+- Cold-follow storage gates use EIA Lower 48 working gas storage rows only after a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day availability lag. The seasonal drawdown is measured from the current withdrawal-season storage peak.
 - Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, parent signals, or weather thresholds.
 - Holdout was not used for selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
 - Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
@@ -1780,12 +2060,12 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 
 ## Top Train/Validation-Ranked Candidates
 
-| candidate | eligible | risk mult | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| candidate | eligible | storage gate | risk mult | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 ${topCandidates
   .map(
     (candidate) =>
-      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.overlayRiskMultiplier}x | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
+      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.coldFollowStoragePolicy} | ${candidate.overlayRiskMultiplier}x | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
   )
   .join('\n')}
 
@@ -1805,9 +2085,10 @@ function main() {
   const indexMarketRows = parseCsv(INDEX_MARKET_FILE)
   const indexTrendRiskByDate = buildIndexTrendRiskMap(indexMarketRows)
   const weatherResolutionData = loadWeatherResolutionData()
+  const storageData = loadStorageData()
   const policies = expandedBlendPolicies()
   const candidates = policies
-    .map((policy) => summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData))
+    .map((policy) => summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData))
     .sort((a, b) => b.trainValidationRank - a.trainValidationRank)
   const selected = candidates.find((candidate) => candidate.eligible) ?? candidates[0]
   const realityCheck = blockBootstrapRealityCheck(selected.curve, candidates)
@@ -1823,6 +2104,7 @@ function main() {
       volatilityReversionSummary: path.relative(REPO_ROOT, path.join(VOLATILITY_REVERSION_DIR, 'run-summary.json')),
       volatilityReversionTrades: path.relative(REPO_ROOT, path.join(VOLATILITY_REVERSION_DIR, 'selected-trades.csv')),
       weatherResolutionInputs: weatherResolutionData.inputFiles,
+      storageInputs: storageData.inputFiles,
       marketStartDate: selected.allMetrics.firstEntry,
       marketEndDate: selected.allMetrics.lastExit,
       marketDays: selected.rows.length,
@@ -1837,11 +2119,13 @@ function main() {
       signalTiming:
         'Parent strategies already enforce post-signal execution; NGAS Winter Alpha only combines parent daily ledgers and recalculates costs.',
       selectionPolicy:
-        'Only predeclared parent-blend policies and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
+        'Only predeclared parent-blend policies, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
       overfitControl:
-        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay and one bounded gas-overlay risk multiplier. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
+        'No holdout rows are used for selection. Parent candidates were selected by their own train/validation generators, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay, one predeclared cold-follow storage-drawdown gate, and one bounded gas-overlay risk multiplier. Volatility Mean Reversion is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
       weatherResolutionTiming:
         'Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate, or NASA POWER actual anomalies only when targetDate < entryTradeDate.',
+      storageTiming:
+        `Cold-follow storage gates use EIA Lower 48 working gas storage rows only after a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day availability lag; historical seasonal comparisons use only prior storage years.`,
       indexTrendLookbackSessions: INDEX_TREND_LOOKBACK_SESSIONS,
     },
     parents: {
@@ -1893,6 +2177,7 @@ function main() {
       `return=${selected.allMetrics.totalReturnPct}%`,
       `edge=${selected.splitEdges.all}%`,
       `holdoutEdge=${selected.splitEdges.holdout}%`,
+      `storageGate=${selected.coldFollowStoragePolicy.id}`,
       `pValue=${realityCheck.pValue}`,
     ].join(' '),
   )
