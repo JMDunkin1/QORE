@@ -125,7 +125,7 @@ The second active strategy is `ngas-winter-alpha`. It combines archived parent e
 npm run optimize:ngas-winter-alpha
 ```
 
-The selected winter run made `273.39%` full-sample versus `91.47%` for the index basket, with `-22.72%` max drawdown. Train return was `80.42%`, validation was `54.08%`, and holdout was `34.32%`; holdout edge versus the index basket was `23.38%`. The selected blend uses parent-selected holds, a `400 Bcf` cold-follow storage-drawdown gate, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+The selected winter run made `282.46%` full-sample versus `91.47%` for the index basket, with `-22.04%` max drawdown. Train return was `81.03%`, validation was `53.97%`, and holdout was `37.22%`; holdout edge versus the index basket was `26.28%`. The selected blend uses parent-selected holds, a `400 Bcf` cold-follow storage-drawdown gate, adverse standalone-fade vetoes, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
 
 ## Non-Live Execution Architecture
 

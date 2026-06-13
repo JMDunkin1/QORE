@@ -183,15 +183,8 @@ const WEATHER_RESOLUTION_POLICIES = [
   },
   {
     id: 'graded-shift-sizing',
-    label: 'Grade reversion size by close-in weather shift',
-    kind: 'graded-shift',
-    description:
-      'Scale reversion exposure up when the close-in or already-known actual anomaly confirms the reversion, and shrink it when the weather shift argues against the trade.',
-  },
-  {
-    id: 'graded-shift-standalone-adverse-veto',
     label: 'Grade reversion size and veto adverse standalone fades',
-    kind: 'graded-shift-standalone-adverse-veto',
+    kind: 'graded-shift',
     description:
       'Scale confirmed reversion exposure up, shrink confirmed fades when close-in weather argues against them, and drop unconfirmed standalone fades when close-in weather still supports the original move.',
   },
@@ -422,7 +415,7 @@ function policySupportsWeatherResolution(policy) {
 }
 
 function isGradedShiftResolutionPolicy(policy) {
-  return ['graded-shift', 'graded-shift-standalone-adverse-veto'].includes(policy.weatherResolutionPolicy?.kind)
+  return policy.weatherResolutionPolicy?.kind === 'graded-shift'
 }
 
 function policySupportsOverlayRiskMultiplier(policy) {
@@ -982,9 +975,7 @@ function weatherResolutionDecision(policy, reversionRow, reversionPosition, weat
 
   if (isGradedShiftResolutionPolicy(policy)) {
     const standaloneAdverseVeto =
-      resolutionPolicy.kind === 'graded-shift-standalone-adverse-veto' &&
-      blendLeg === 'weather-hybrid-reversion' &&
-      resolution.adverseDirectionShift
+      blendLeg === 'weather-hybrid-reversion' && resolution.adverseDirectionShift
     if (standaloneAdverseVeto) {
       return {
         ...resolution,
