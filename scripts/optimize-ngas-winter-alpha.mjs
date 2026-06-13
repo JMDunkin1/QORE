@@ -35,6 +35,45 @@ const STORAGE_SEASONAL_WINDOW_DAYS = 10
 const EIA_STORAGE_STANDARD_RELEASE_WEEKDAY_UTC = 4
 const EIA_STORAGE_STANDARD_RELEASE_LAG_DAYS = 6
 const EIA_STORAGE_STANDARD_RELEASE_TIME_ET = '10:30 a.m. ET'
+const HEATING_DEMAND_BASE_F = 65
+
+const FOLLOW_FRESHNESS_POLICIES = [
+  {
+    id: 'fresh-follow-3d',
+    label: 'Require 3 quiet calendar days before repeated follow signals',
+    kind: 'quiet-days',
+    lookbackDays: 3,
+    description:
+      'Drop repeated frozen forecast-follow rows when the same cold/warm story was already accepted within the prior three calendar days.',
+  },
+  {
+    id: 'fresh-follow-5d',
+    label: 'Require 5 quiet calendar days before repeated follow signals',
+    kind: 'quiet-days',
+    lookbackDays: 5,
+    description:
+      'Drop repeated frozen forecast-follow rows when the same cold/warm story was already accepted within the prior five calendar days.',
+  },
+]
+
+const HEATING_DEMAND_POLICIES = [
+  {
+    id: 'hdd-follow-tiered',
+    label: 'HDD-tiered forecast-follow sizing',
+    kind: 'follow-tiered',
+    minDemandAnomalyF: 4,
+    description:
+      'Scale direct cold-follow and warm-short forecast-follow exposure by forecast HDD anomaly, dropping the follow leg when HDD direction disagrees with the weather thesis.',
+  },
+  {
+    id: 'hdd-follow-gate-6f',
+    label: 'HDD gate requires 6F demand anomaly',
+    kind: 'follow-gate',
+    minDemandAnomalyF: 6,
+    description:
+      'Keep direct cold-follow and warm-short forecast-follow exposure only when forecast HDD anomaly confirms at least a 6F equivalent demand move in the thesis direction.',
+  },
+]
 
 const OVERLAY_RISK_MULTIPLIER_VARIANTS = [
   {
@@ -68,6 +107,32 @@ const DEFAULT_HOLD_PERIOD_POLICY = {
   description:
     'Keep the frozen daily ledgers unchanged; the embedded weather-follow and weather-reversion inputs already selected their own hold periods.',
 }
+
+const DEFAULT_FOLLOW_FRESHNESS_POLICY = {
+  id: 'none',
+  label: 'No repeated follow-signal freshness gate',
+  kind: 'none',
+  description: 'Keep frozen forecast-follow rows unchanged.',
+}
+
+const DEFAULT_HEATING_DEMAND_POLICY = {
+  id: 'none',
+  label: 'No HDD demand overlay',
+  kind: 'none',
+  description: 'Do not alter frozen forecast-follow exposure based on forecast HDD anomaly.',
+}
+
+const ACTIVE_FAMILY_CONFLICT_POLICY = 'short-fade-plus-cold-follow-vol-long'
+const ACTIVE_FAMILY_WEATHER_RESOLUTION_POLICY_ID = 'graded-shift-sizing'
+const ACTIVE_FAMILY_OVERLAY_RISK_MULTIPLIER = 1.25
+const ACTIVE_FAMILY_HOLD_POLICY_ID = DEFAULT_HOLD_PERIOD_POLICY.id
+const ACTIVE_FAMILY_STORAGE_POLICY_IDS = new Set([
+  'storage-drawdown-400bcf',
+  'storage-seasonal-tight',
+  'storage-drawdown-400bcf-or-seasonal-tight',
+])
+const ACTIVE_FAMILY_FRESHNESS_POLICY_IDS = new Set(['none', ...FOLLOW_FRESHNESS_POLICIES.map((policy) => policy.id)])
+const ACTIVE_FAMILY_HEATING_DEMAND_POLICY_IDS = new Set(['none', ...HEATING_DEMAND_POLICIES.map((policy) => policy.id)])
 
 const HOLD_PERIOD_POLICIES = [
   {
@@ -147,6 +212,23 @@ const COLD_FOLLOW_STORAGE_POLICIES = [
     minSeasonDrawdownBcf: 600,
     description:
       `Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 600 Bcf drawdown from the current withdrawal-season peak.`,
+  },
+  {
+    id: 'storage-seasonal-tight',
+    label: 'Cold-follow requires storage at or below seasonal normal',
+    kind: 'seasonal-tight',
+    maxStorageVsSeasonalAverageBcf: 0,
+    description:
+      'Allow cold-follow gas longs only when released storage is at or below its historical seasonal average for the same time of year.',
+  },
+  {
+    id: 'storage-drawdown-400bcf-or-seasonal-tight',
+    label: 'Cold-follow requires 400 Bcf drawdown or seasonal tightness',
+    kind: 'drawdown-or-seasonal-tight',
+    minSeasonDrawdownBcf: 400,
+    maxStorageVsSeasonalAverageBcf: 0,
+    description:
+      'Allow cold-follow gas longs when either withdrawal-season drawdown has reached 400 Bcf or released storage is at or below its historical seasonal average.',
   },
 ]
 
@@ -451,6 +533,36 @@ function policySupportsColdFollowStorage(policy) {
   )
 }
 
+function policySupportsFollowFreshness(policy) {
+  return (
+    policy.selectionEligible &&
+    policy.indexRiskMode === 'full-index-fallback' &&
+    [
+      'net-position',
+      'follow-first',
+      'short-fade-plus-cold-follow',
+      'vol-confirmed-fade-plus-cold-follow',
+      'short-fade-plus-cold-follow-vol-long',
+      'confirmed-warm-short-plus-cold-follow',
+    ].includes(policy.conflictPolicy)
+  )
+}
+
+function policySupportsHeatingDemand(policy) {
+  return (
+    policy.selectionEligible &&
+    policy.indexRiskMode === 'full-index-fallback' &&
+    [
+      'net-position',
+      'follow-first',
+      'short-fade-plus-cold-follow',
+      'vol-confirmed-fade-plus-cold-follow',
+      'short-fade-plus-cold-follow-vol-long',
+      'confirmed-warm-short-plus-cold-follow',
+    ].includes(policy.conflictPolicy)
+  )
+}
+
 function expandedHoldPeriodPolicies(policies) {
   return policies.flatMap((policy) => {
     const basePolicy = {
@@ -468,6 +580,46 @@ function expandedHoldPeriodPolicies(policies) {
     }))
 
     return [basePolicy, ...holdVariants]
+  })
+}
+
+function expandedFollowFreshnessPolicies(policies) {
+  return policies.flatMap((policy) => {
+    const basePolicy = {
+      ...policy,
+      followFreshnessPolicy: policy.followFreshnessPolicy ?? DEFAULT_FOLLOW_FRESHNESS_POLICY,
+    }
+    if (!policySupportsFollowFreshness(basePolicy)) return [basePolicy]
+
+    const freshnessPolicies = FOLLOW_FRESHNESS_POLICIES.map((freshnessPolicy) => ({
+      ...basePolicy,
+      id: `${basePolicy.id}-${freshnessPolicy.id}`,
+      label: `${basePolicy.label} + ${freshnessPolicy.label}`,
+      positionPolicy: `${basePolicy.positionPolicy} Follow freshness gate: ${freshnessPolicy.description}`,
+      followFreshnessPolicy: freshnessPolicy,
+    }))
+
+    return [basePolicy, ...freshnessPolicies]
+  })
+}
+
+function expandedHeatingDemandPolicies(policies) {
+  return policies.flatMap((policy) => {
+    const basePolicy = {
+      ...policy,
+      heatingDemandPolicy: policy.heatingDemandPolicy ?? DEFAULT_HEATING_DEMAND_POLICY,
+    }
+    if (!policySupportsHeatingDemand(basePolicy)) return [basePolicy]
+
+    const heatingDemandPolicies = HEATING_DEMAND_POLICIES.map((heatingDemandPolicy) => ({
+      ...basePolicy,
+      id: `${basePolicy.id}-${heatingDemandPolicy.id}`,
+      label: `${basePolicy.label} + ${heatingDemandPolicy.label}`,
+      positionPolicy: `${basePolicy.positionPolicy} HDD demand overlay: ${heatingDemandPolicy.description}`,
+      heatingDemandPolicy,
+    }))
+
+    return [basePolicy, ...heatingDemandPolicies]
   })
 }
 
@@ -515,6 +667,8 @@ function expandedBlendPolicies() {
     ...policy,
     weatherResolutionPolicy: DEFAULT_WEATHER_RESOLUTION_POLICY,
     coldFollowStoragePolicy: DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
+    followFreshnessPolicy: DEFAULT_FOLLOW_FRESHNESS_POLICY,
+    heatingDemandPolicy: DEFAULT_HEATING_DEMAND_POLICY,
     overlayRiskMultiplier: 1,
   }))
   const weatherResolved = BLEND_POLICIES.filter(policySupportsWeatherResolution).flatMap((policy) =>
@@ -525,10 +679,28 @@ function expandedBlendPolicies() {
       positionPolicy: `${policy.positionPolicy} Weather-resolution overlay: ${resolutionPolicy.description}`,
       weatherResolutionPolicy: resolutionPolicy,
       coldFollowStoragePolicy: DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
+      followFreshnessPolicy: DEFAULT_FOLLOW_FRESHNESS_POLICY,
+      heatingDemandPolicy: DEFAULT_HEATING_DEMAND_POLICY,
       overlayRiskMultiplier: 1,
     })),
   )
-  return expandedOverlayRiskPolicies(expandedHoldPeriodPolicies(expandedColdFollowStoragePolicies([...baselines, ...weatherResolved])))
+  return expandedOverlayRiskPolicies(
+    expandedHoldPeriodPolicies(
+      expandedHeatingDemandPolicies(expandedFollowFreshnessPolicies(expandedColdFollowStoragePolicies([...baselines, ...weatherResolved]))),
+    ),
+  )
+}
+
+function activeWinterFamilyPolicy(policy) {
+  return (
+    policy.conflictPolicy === ACTIVE_FAMILY_CONFLICT_POLICY &&
+    policy.weatherResolutionPolicy?.id === ACTIVE_FAMILY_WEATHER_RESOLUTION_POLICY_ID &&
+    policy.holdPeriodPolicy?.id === ACTIVE_FAMILY_HOLD_POLICY_ID &&
+    policy.overlayRiskMultiplier === ACTIVE_FAMILY_OVERLAY_RISK_MULTIPLIER &&
+    ACTIVE_FAMILY_STORAGE_POLICY_IDS.has(policy.coldFollowStoragePolicy?.id) &&
+    ACTIVE_FAMILY_FRESHNESS_POLICY_IDS.has(policy.followFreshnessPolicy?.id) &&
+    ACTIVE_FAMILY_HEATING_DEMAND_POLICY_IDS.has(policy.heatingDemandPolicy?.id)
+  )
 }
 
 function readText(filePath) {
@@ -620,6 +792,73 @@ function loadWeatherResolutionData() {
   )
 
   return { forecastsByTargetDate, actualByDate, inputFiles }
+}
+
+function heatingDemandAnomalyF(row) {
+  const forecastMeanF = numberFrom(row.forecastMeanF, Number.NaN)
+  const normalMeanF = numberFrom(row.normalMeanF, Number.NaN)
+  if (!Number.isFinite(forecastMeanF) || !Number.isFinite(normalMeanF)) return Number.NaN
+  return Math.max(0, HEATING_DEMAND_BASE_F - forecastMeanF) - Math.max(0, HEATING_DEMAND_BASE_F - normalMeanF)
+}
+
+function heatingDemandKey(row) {
+  return [row.issueDate, row.targetDate, row.leadDays, row.windowId].join('|')
+}
+
+function heatingDemandBroadKey(row) {
+  return [row.issueDate, row.targetDate, row.leadDays, '*'].join('|')
+}
+
+function loadHeatingDemandData() {
+  const manifest = JSON.parse(readText(MANIFEST_PATH))
+  const demandByKey = new Map()
+  const inputFiles = [path.relative(REPO_ROOT, MANIFEST_PATH)]
+  const addDemand = (key, hddAnomalyF, weight) => {
+    const current =
+      demandByKey.get(key) ?? {
+        weightedSum: 0,
+        weightSum: 0,
+        coldDemandWeight: 0,
+        warmDemandWeight: 0,
+      }
+    current.weightedSum += hddAnomalyF * weight
+    current.weightSum += weight
+    if (hddAnomalyF >= 4) current.coldDemandWeight += weight
+    if (hddAnomalyF <= -4) current.warmDemandWeight += weight
+    demandByKey.set(key, current)
+  }
+
+  for (const calendar of manifest.forecastCalendars) {
+    const locationsPath = path.join(DATA_ROOT, calendar.files.locationAnomalies)
+    if (!fs.existsSync(locationsPath)) continue
+    inputFiles.push(path.relative(REPO_ROOT, locationsPath))
+
+    for (const row of parseCsv(locationsPath)) {
+      const hddAnomalyF = heatingDemandAnomalyF(row)
+      if (!Number.isFinite(hddAnomalyF)) continue
+      const weight = numberFrom(row.weight)
+      addDemand(heatingDemandKey(row), hddAnomalyF, weight)
+      addDemand(heatingDemandBroadKey(row), hddAnomalyF, weight)
+    }
+  }
+
+  const heatingDemandBySignal = new Map(
+    [...demandByKey.entries()].map(([key, value]) => [
+      key,
+      {
+        heatingDemandAnomalyF: value.weightSum ? round(value.weightedSum / value.weightSum, 3) : 0,
+        coldDemandCoveragePct: value.weightSum ? round(value.coldDemandWeight / value.weightSum, 4) : 0,
+        warmDemandCoveragePct: value.weightSum ? round(value.warmDemandWeight / value.weightSum, 4) : 0,
+      },
+    ]),
+  )
+
+  return {
+    inputFiles,
+    contextForRow(row) {
+      return heatingDemandBySignal.get(heatingDemandKey(row)) ?? heatingDemandBySignal.get(heatingDemandBroadKey(row)) ?? null
+    },
+  }
 }
 
 function dayOfYear(isoDate) {
@@ -772,6 +1011,10 @@ function daysBetween(startDate, endDate) {
   return Math.max(1, (Date.parse(endDate) - Date.parse(startDate)) / 86400000)
 }
 
+function calendarDaysBetween(startDate, endDate) {
+  return (Date.parse(endDate) - Date.parse(startDate)) / 86400000
+}
+
 function daySplit(isoDate) {
   if (isoDate <= TRAIN_END) return 'train'
   if (isoDate <= VALIDATION_END) return 'validation'
@@ -828,6 +1071,26 @@ function parentHoldFallbackRow(row, holdPeriodPolicy, holdDay, holdLimit) {
   }
 }
 
+function followFreshnessFallbackRow(row, freshnessPolicy, ageDays) {
+  return {
+    ...row,
+    direction: 'long',
+    sourceId: 'US-INDEX-BASKET',
+    windowId: 'index-fallback',
+    thesisKind: 'index-fallback',
+    confidence: 0,
+    indexFraction: 1,
+    ungPosition: 0,
+    grossReturnPct: numberFrom(row.indexReturnPct),
+    tradingCostPct: 0,
+    netReturnPct: numberFrom(row.indexReturnPct),
+    rank: 0,
+    followFreshnessPolicy: freshnessPolicy.id,
+    followFreshnessAction: 'stale-follow-dropped',
+    followFreshnessAgeDays: ageDays,
+  }
+}
+
 function applyParentHoldPeriodPolicy(rows, holdPeriodPolicy) {
   if (!holdPeriodPolicy || holdPeriodPolicy.kind === 'parent-selected') {
     return rows.map((row) => ({
@@ -863,6 +1126,61 @@ function applyParentHoldPeriodPolicy(rows, holdPeriodPolicy) {
       parentHoldDay: holdDay,
       parentHoldLimit: holdLimit,
       parentHoldAction: 'kept-by-winter-alpha-hold-policy',
+    }
+  })
+}
+
+function applyFollowFreshnessPolicy(rows, freshnessPolicy) {
+  if (!freshnessPolicy || freshnessPolicy.kind === 'none') {
+    return rows.map((row) => ({
+      ...row,
+      followFreshnessPolicy: DEFAULT_FOLLOW_FRESHNESS_POLICY.id,
+      followFreshnessAction: isFollowRow(row) ? 'freshness-not-applied' : 'not-follow',
+      followFreshnessAgeDays: '',
+    }))
+  }
+
+  const lastAcceptedIssueDateByThesis = new Map()
+  const decisionByParent = new Map()
+
+  return rows.map((row) => {
+    if (!isFollowRow(row) || numberFrom(row.ungPosition) === 0) {
+      return {
+        ...row,
+        followFreshnessPolicy: freshnessPolicy.id,
+        followFreshnessAction: 'not-follow',
+        followFreshnessAgeDays: '',
+      }
+    }
+
+    const parentKey = parentHoldKey(row)
+    const priorDecision = decisionByParent.get(parentKey)
+    if (priorDecision) {
+      if (priorDecision.action === 'stale-follow-dropped') return followFreshnessFallbackRow(row, freshnessPolicy, priorDecision.ageDays)
+      return {
+        ...row,
+        followFreshnessPolicy: freshnessPolicy.id,
+        followFreshnessAction: 'same-parent-kept',
+        followFreshnessAgeDays: priorDecision.ageDays,
+      }
+    }
+
+    const lastAcceptedIssueDate = lastAcceptedIssueDateByThesis.get(row.thesisKind)
+    const ageDays = lastAcceptedIssueDate ? calendarDaysBetween(lastAcceptedIssueDate, row.issueDate) : Number.POSITIVE_INFINITY
+    const isStale = Number.isFinite(ageDays) && ageDays > 0 && ageDays <= freshnessPolicy.lookbackDays
+    const decision = {
+      action: isStale ? 'stale-follow-dropped' : 'fresh-follow-kept',
+      ageDays: Number.isFinite(ageDays) ? round(ageDays, 2) : '',
+    }
+    decisionByParent.set(parentKey, decision)
+
+    if (isStale) return followFreshnessFallbackRow(row, freshnessPolicy, decision.ageDays)
+    lastAcceptedIssueDateByThesis.set(row.thesisKind, row.issueDate)
+    return {
+      ...row,
+      followFreshnessPolicy: freshnessPolicy.id,
+      followFreshnessAction: decision.action,
+      followFreshnessAgeDays: decision.ageDays,
     }
   })
 }
@@ -1061,6 +1379,37 @@ function coldFollowStorageDecision(policy, blend, storageContext) {
     }
   }
 
+  if (storagePolicy.kind === 'seasonal-tight') {
+    const storageVsSeasonalAverageBcf = numberFrom(storageContext.storageVsSeasonalAverageBcf, Number.NaN)
+    const allowed =
+      Number.isFinite(storageVsSeasonalAverageBcf) && storageVsSeasonalAverageBcf <= storagePolicy.maxStorageVsSeasonalAverageBcf
+    return {
+      policyId: storagePolicy.id,
+      action: allowed ? 'storage-seasonal-tight-confirmed' : 'blocked-storage-above-seasonal-normal',
+      allowed,
+      maxStorageVsSeasonalAverageBcf: storagePolicy.maxStorageVsSeasonalAverageBcf,
+      storageVsSeasonalAverageBcf: Number.isFinite(storageVsSeasonalAverageBcf) ? round(storageVsSeasonalAverageBcf, 2) : '',
+    }
+  }
+
+  if (storagePolicy.kind === 'drawdown-or-seasonal-tight') {
+    const seasonDrawdownBcf = numberFrom(storageContext.storageSeasonDrawdownBcf, Number.NaN)
+    const storageVsSeasonalAverageBcf = numberFrom(storageContext.storageVsSeasonalAverageBcf, Number.NaN)
+    const drawdownConfirmed = Number.isFinite(seasonDrawdownBcf) && seasonDrawdownBcf >= storagePolicy.minSeasonDrawdownBcf
+    const seasonalTight =
+      Number.isFinite(storageVsSeasonalAverageBcf) && storageVsSeasonalAverageBcf <= storagePolicy.maxStorageVsSeasonalAverageBcf
+    const allowed = drawdownConfirmed || seasonalTight
+    return {
+      policyId: storagePolicy.id,
+      action: allowed ? 'storage-drawdown-or-seasonal-tight-confirmed' : 'blocked-no-storage-tightness',
+      allowed,
+      minSeasonDrawdownBcf: storagePolicy.minSeasonDrawdownBcf,
+      maxStorageVsSeasonalAverageBcf: storagePolicy.maxStorageVsSeasonalAverageBcf,
+      storageSeasonDrawdownBcf: Number.isFinite(seasonDrawdownBcf) ? round(seasonDrawdownBcf, 2) : '',
+      storageVsSeasonalAverageBcf: Number.isFinite(storageVsSeasonalAverageBcf) ? round(storageVsSeasonalAverageBcf, 2) : '',
+    }
+  }
+
   return {
     policyId: storagePolicy.id,
     action: 'kept',
@@ -1129,6 +1478,107 @@ function applyWeatherResolution(policy, blend, weatherResolutionData) {
     position: clamp(followPosition + reversionPosition, -policy.overlayCap, policy.overlayCap),
     weatherResolution: decision,
   }
+  return {
+    ...nextBlend,
+    blendLeg: blendLegAfterWeatherResolution(nextBlend, nextBlend.position),
+  }
+}
+
+function heatingDemandDecision(policy, row, position, heatingDemandData) {
+  const heatingDemandPolicy = policy.heatingDemandPolicy ?? DEFAULT_HEATING_DEMAND_POLICY
+  if (heatingDemandPolicy.kind === 'none' || !row || position === 0) {
+    return {
+      policyId: heatingDemandPolicy.id,
+      action: heatingDemandPolicy.kind === 'none' ? 'none' : 'not-follow',
+      scale: 1,
+    }
+  }
+
+  if (!isFollowRow(row) || !['cold-long', 'warm-short'].includes(row.thesisKind)) {
+    return {
+      policyId: heatingDemandPolicy.id,
+      action: 'not-follow',
+      scale: 1,
+    }
+  }
+
+  const context = heatingDemandData.contextForRow(row)
+  if (!context) {
+    return {
+      policyId: heatingDemandPolicy.id,
+      action: 'missing-kept',
+      scale: 1,
+    }
+  }
+
+  const demandAnomalyF = numberFrom(context.heatingDemandAnomalyF, Number.NaN)
+  const thesisDemandDirection = row.thesisKind === 'cold-long' ? 1 : -1
+  const confirmsDirection = Number.isFinite(demandAnomalyF) && Math.sign(demandAnomalyF) === thesisDemandDirection
+  const demandStrength = Math.abs(demandAnomalyF)
+
+  if (!confirmsDirection) {
+    return {
+      ...context,
+      policyId: heatingDemandPolicy.id,
+      action: 'hdd-direction-mismatch-dropped',
+      scale: 0,
+    }
+  }
+
+  if (heatingDemandPolicy.kind === 'follow-gate') {
+    const kept = demandStrength >= heatingDemandPolicy.minDemandAnomalyF
+    return {
+      ...context,
+      policyId: heatingDemandPolicy.id,
+      action: kept ? 'hdd-gate-kept' : 'hdd-gate-dropped',
+      scale: kept ? 1 : 0,
+    }
+  }
+
+  if (heatingDemandPolicy.kind === 'follow-tiered') {
+    const scale =
+      demandStrength >= 12
+        ? 1.25
+        : demandStrength >= 8
+          ? 1.1
+          : demandStrength >= heatingDemandPolicy.minDemandAnomalyF
+            ? 1
+            : 0.65
+    return {
+      ...context,
+      policyId: heatingDemandPolicy.id,
+      action: scale > 1 ? 'hdd-scaled-up' : scale < 1 ? 'hdd-scaled-down' : 'hdd-kept',
+      scale,
+    }
+  }
+
+  return {
+    ...context,
+    policyId: heatingDemandPolicy.id,
+    action: 'kept',
+    scale: 1,
+  }
+}
+
+function applyHeatingDemandPolicy(policy, blend, heatingDemandData) {
+  const decision = heatingDemandDecision(policy, blend.followRow, blend.followPosition, heatingDemandData)
+  if (decision.scale === 1) {
+    return {
+      ...blend,
+      heatingDemand: decision,
+    }
+  }
+
+  const followPosition = blend.followPosition * decision.scale
+  const followRow = decision.scale === 0 ? null : blend.followRow
+  const nextBlend = {
+    ...blend,
+    followRow,
+    followPosition,
+    position: clamp(followPosition + blend.reversionPosition, -policy.overlayCap, policy.overlayCap),
+    heatingDemand: decision,
+  }
+
   return {
     ...nextBlend,
     blendLeg: blendLegAfterWeatherResolution(nextBlend, nextBlend.position),
@@ -1451,9 +1901,19 @@ function usesVolatilityConfirmation(policy) {
   return ['vol-confirmed-fade-plus-cold-follow', 'short-fade-plus-cold-follow-vol-long'].includes(policy.conflictPolicy)
 }
 
-function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData) {
+function buildRowsForPolicy(
+  policy,
+  dualRows,
+  weatherRows,
+  volatilityRows,
+  indexTrendRiskByDate,
+  weatherResolutionData,
+  storageData,
+  heatingDemandData,
+) {
   const holdPeriodPolicy = policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY
-  const dualRowsForPolicy = applyParentHoldPeriodPolicy(dualRows, holdPeriodPolicy)
+  const followFreshnessPolicy = policy.followFreshnessPolicy ?? DEFAULT_FOLLOW_FRESHNESS_POLICY
+  const dualRowsForPolicy = applyFollowFreshnessPolicy(applyParentHoldPeriodPolicy(dualRows, holdPeriodPolicy), followFreshnessPolicy)
   const weatherRowsForPolicy = applyParentHoldPeriodPolicy(weatherRows, holdPeriodPolicy)
   const dualByDate = new Map(dualRowsForPolicy.map((row) => [row.entryTradeDate, row]))
   const weatherByDate = new Map(weatherRowsForPolicy.map((row) => [row.entryTradeDate, row]))
@@ -1474,7 +1934,8 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
     const rawBlend = blendPositionFor(policy, dualRow, weatherRow, volatilityRow)
     const storageGatedBlend = applyColdFollowStorageGate(policy, rawBlend, storageContext)
     const resolvedBlend = applyWeatherResolution(policy, storageGatedBlend, weatherResolutionData)
-    const blend = applyOverlayRiskMultiplier(policy, resolvedBlend)
+    const heatingDemandBlend = applyHeatingDemandPolicy(policy, resolvedBlend, heatingDemandData)
+    const blend = applyOverlayRiskMultiplier(policy, heatingDemandBlend)
     const weatherActive = blend.position !== 0
     const activeFollowRow = weatherActive ? blend.followRow : null
     const activeReversionRow = weatherActive ? blend.reversionRow : null
@@ -1574,6 +2035,9 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
         .join('|'),
       holdPeriodParentDay: Math.max(numberFrom(activeFollowRow?.parentHoldDay), numberFrom(activeReversionRow?.parentHoldDay), numberFrom(isFallback ? dominant.parentHoldDay : 0)) || '',
       holdPeriodLimit: Math.max(numberFrom(activeFollowRow?.parentHoldLimit), numberFrom(activeReversionRow?.parentHoldLimit), numberFrom(isFallback ? dominant.parentHoldLimit : 0)) || '',
+      followFreshnessPolicy: followFreshnessPolicy.id,
+      followFreshnessAction: activeFollowRow?.followFreshnessAction ?? (isFallback ? dominant.followFreshnessAction : '') ?? '',
+      followFreshnessAgeDays: activeFollowRow?.followFreshnessAgeDays ?? (isFallback ? dominant.followFreshnessAgeDays : '') ?? '',
       weatherResolutionPolicy: policy.weatherResolutionPolicy?.id ?? DEFAULT_WEATHER_RESOLUTION_POLICY.id,
       weatherResolutionSource: blend.weatherResolution.source ?? '',
       weatherResolutionIssueDate: blend.weatherResolution.issueDate ?? '',
@@ -1592,6 +2056,21 @@ function buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, index
       coldFollowStorageAction: blend.coldFollowStorage?.action ?? '',
       coldFollowStorageMinSeasonDrawdownBcf: Number.isFinite(blend.coldFollowStorage?.minSeasonDrawdownBcf)
         ? round(blend.coldFollowStorage.minSeasonDrawdownBcf, 2)
+        : '',
+      coldFollowStorageMaxStorageVsSeasonalAverageBcf: Number.isFinite(blend.coldFollowStorage?.maxStorageVsSeasonalAverageBcf)
+        ? round(blend.coldFollowStorage.maxStorageVsSeasonalAverageBcf, 2)
+        : '',
+      heatingDemandPolicy: policy.heatingDemandPolicy?.id ?? DEFAULT_HEATING_DEMAND_POLICY.id,
+      heatingDemandAction: blend.heatingDemand?.action ?? '',
+      heatingDemandAnomalyF: Number.isFinite(blend.heatingDemand?.heatingDemandAnomalyF)
+        ? round(blend.heatingDemand.heatingDemandAnomalyF, 3)
+        : '',
+      heatingDemandScale: Number.isFinite(blend.heatingDemand?.scale) ? round(blend.heatingDemand.scale, 4) : '',
+      coldDemandCoveragePct: Number.isFinite(blend.heatingDemand?.coldDemandCoveragePct)
+        ? round(blend.heatingDemand.coldDemandCoveragePct, 4)
+        : '',
+      warmDemandCoveragePct: Number.isFinite(blend.heatingDemand?.warmDemandCoveragePct)
+        ? round(blend.heatingDemand.warmDemandCoveragePct, 4)
         : '',
       storageDate: storageContext.storageDate ?? '',
       storageReleaseDate: storageContext.storageReleaseDate ?? '',
@@ -1731,60 +2210,152 @@ function rowHasThesisKind(row, thesisKind) {
 }
 
 function sideReturnSnapshot(rows, splitFilter = () => true) {
-  const metricFor = (thesisKinds) => {
-    const selectedRows = rows.filter((row) => splitFilter(row) && thesisKinds.some((thesisKind) => rowHasThesisKind(row, thesisKind)))
-    return metricsFromCurve(
-      selectedRows.map((row) => ({
-        date: row.entryTradeDate,
-        equity: INITIAL_CAPITAL * (1 + numberFrom(row.netReturnPct) / 100),
-        dailyPnlPct: numberFrom(row.netReturnPct),
-        drawdownPct: numberFrom(row.netReturnPct) < 0 ? numberFrom(row.netReturnPct) : 0,
-        position: numberFrom(row.ungPosition),
-      })),
-      selectedRows.length,
-    )
+  const buckets = {
+    coldLong: [],
+    warmShort: [],
+    weatherFollow: [],
+    reversionLong: [],
+    reversionShort: [],
+    weatherReversion: [],
+    longSide: [],
+    shortSide: [],
+    fallback: [],
   }
 
+  for (const row of rows) {
+    if (!splitFilter(row)) continue
+    const point = {
+      date: row.entryTradeDate,
+      equity: INITIAL_CAPITAL * (1 + numberFrom(row.netReturnPct) / 100),
+      dailyPnlPct: numberFrom(row.netReturnPct),
+      drawdownPct: numberFrom(row.netReturnPct) < 0 ? numberFrom(row.netReturnPct) : 0,
+      position: numberFrom(row.ungPosition),
+    }
+    const hasColdLong = rowHasThesisKind(row, 'cold-long')
+    const hasWarmShort = rowHasThesisKind(row, 'warm-short')
+    const hasReversionLong = rowHasThesisKind(row, 'reversion-long')
+    const hasReversionShort = rowHasThesisKind(row, 'reversion-short')
+
+    if (hasColdLong) {
+      buckets.coldLong.push(point)
+      buckets.weatherFollow.push(point)
+      buckets.longSide.push(point)
+    }
+    if (hasWarmShort) {
+      buckets.warmShort.push(point)
+      buckets.weatherFollow.push(point)
+      buckets.shortSide.push(point)
+    }
+    if (hasReversionLong) {
+      buckets.reversionLong.push(point)
+      buckets.weatherReversion.push(point)
+      buckets.longSide.push(point)
+    }
+    if (hasReversionShort) {
+      buckets.reversionShort.push(point)
+      buckets.weatherReversion.push(point)
+      buckets.shortSide.push(point)
+    }
+    if (rowHasThesisKind(row, 'index-fallback')) buckets.fallback.push(point)
+  }
+
+  const metricFor = (key) => metricsFromCurve(buckets[key], buckets[key].length)
+
   return {
-    coldLong: metricFor(['cold-long']),
-    warmShort: metricFor(['warm-short']),
-    weatherFollow: metricFor(['cold-long', 'warm-short']),
-    reversionLong: metricFor(['reversion-long']),
-    reversionShort: metricFor(['reversion-short']),
-    weatherReversion: metricFor(['reversion-long', 'reversion-short']),
-    longSide: metricFor(['cold-long', 'reversion-long']),
-    shortSide: metricFor(['warm-short', 'reversion-short']),
-    fallback: metricFor(['index-fallback']),
+    coldLong: metricFor('coldLong'),
+    warmShort: metricFor('warmShort'),
+    weatherFollow: metricFor('weatherFollow'),
+    reversionLong: metricFor('reversionLong'),
+    reversionShort: metricFor('reversionShort'),
+    weatherReversion: metricFor('weatherReversion'),
+    longSide: metricFor('longSide'),
+    shortSide: metricFor('shortSide'),
+    fallback: metricFor('fallback'),
   }
 }
 
 function legCounts(rows, splitFilter = () => true) {
-  const scoped = rows.filter((row) => splitFilter(row))
-  return {
-    dualFollow: scoped.filter((row) => row.blendLeg === 'dual-follow').length,
-    dualColdFollow: scoped.filter((row) => row.blendLeg === 'dual-cold-follow').length,
-    weatherHybridReversion: scoped.filter((row) => row.blendLeg === 'weather-hybrid-reversion').length,
-    volConfirmedReversion: scoped.filter((row) => row.blendLeg === 'vol-confirmed-weather-hybrid-reversion').length,
-    blended: scoped.filter((row) => row.blendLeg === 'dual-follow+weather-hybrid-reversion').length,
-    confirmedBlended: scoped.filter((row) =>
+  const counts = {
+    dualFollow: 0,
+    dualColdFollow: 0,
+    weatherHybridReversion: 0,
+    volConfirmedReversion: 0,
+    blended: 0,
+    confirmedBlended: 0,
+    coldLong: 0,
+    warmShort: 0,
+    reversionLong: 0,
+    reversionShort: 0,
+    coldFollowStorageConfirmed: 0,
+    coldFollowStorageSeasonalTightConfirmed: 0,
+    coldFollowStorageBlocked: 0,
+    staleFollowDropped: 0,
+    hddScaled: 0,
+    hddDropped: 0,
+    indexRiskOff: 0,
+  }
+
+  for (const row of rows) {
+    if (!splitFilter(row)) continue
+    if (row.blendLeg === 'dual-follow') counts.dualFollow += 1
+    if (row.blendLeg === 'dual-cold-follow') counts.dualColdFollow += 1
+    if (row.blendLeg === 'weather-hybrid-reversion') counts.weatherHybridReversion += 1
+    if (row.blendLeg === 'vol-confirmed-weather-hybrid-reversion') counts.volConfirmedReversion += 1
+    if (row.blendLeg === 'dual-follow+weather-hybrid-reversion') counts.blended += 1
+    if (
       [
         'confirmed-follow+weather-hybrid-reversion',
         'confirmed-warm-short+weather-hybrid-reversion',
         'vol-confirmed-follow+weather-hybrid-reversion',
-      ].includes(row.blendLeg),
-    ).length,
-    coldLong: scoped.filter((row) => rowHasThesisKind(row, 'cold-long')).length,
-    warmShort: scoped.filter((row) => rowHasThesisKind(row, 'warm-short')).length,
-    reversionLong: scoped.filter((row) => rowHasThesisKind(row, 'reversion-long')).length,
-    reversionShort: scoped.filter((row) => rowHasThesisKind(row, 'reversion-short')).length,
-    coldFollowStorageConfirmed: scoped.filter((row) => row.coldFollowStorageAction === 'storage-drawdown-confirmed').length,
-    coldFollowStorageBlocked: scoped.filter((row) => row.coldFollowStorageAction === 'blocked-insufficient-storage-drawdown').length,
-    indexRiskOff: scoped.filter((row) => row.indexRiskOn === false).length,
+      ].includes(row.blendLeg)
+    ) {
+      counts.confirmedBlended += 1
+    }
+    if (rowHasThesisKind(row, 'cold-long')) counts.coldLong += 1
+    if (rowHasThesisKind(row, 'warm-short')) counts.warmShort += 1
+    if (rowHasThesisKind(row, 'reversion-long')) counts.reversionLong += 1
+    if (rowHasThesisKind(row, 'reversion-short')) counts.reversionShort += 1
+    if (row.coldFollowStorageAction === 'storage-drawdown-confirmed') counts.coldFollowStorageConfirmed += 1
+    if (['storage-seasonal-tight-confirmed', 'storage-drawdown-or-seasonal-tight-confirmed'].includes(row.coldFollowStorageAction)) {
+      counts.coldFollowStorageSeasonalTightConfirmed += 1
+    }
+    if (
+      ['blocked-insufficient-storage-drawdown', 'blocked-storage-above-seasonal-normal', 'blocked-no-storage-tightness'].includes(
+        row.coldFollowStorageAction,
+      )
+    ) {
+      counts.coldFollowStorageBlocked += 1
+    }
+    if (row.followFreshnessAction === 'stale-follow-dropped') counts.staleFollowDropped += 1
+    if (['hdd-scaled-up', 'hdd-scaled-down'].includes(row.heatingDemandAction)) counts.hddScaled += 1
+    if (['hdd-direction-mismatch-dropped', 'hdd-gate-dropped'].includes(row.heatingDemandAction)) counts.hddDropped += 1
+    if (row.indexRiskOn === false) counts.indexRiskOff += 1
   }
+
+  return counts
 }
 
-function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData) {
-  const { rows, curve } = buildRowsForPolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData)
+function summarizePolicy(
+  policy,
+  dualRows,
+  weatherRows,
+  volatilityRows,
+  indexTrendRiskByDate,
+  weatherResolutionData,
+  storageData,
+  heatingDemandData,
+  options = {},
+) {
+  const { rows, curve } = buildRowsForPolicy(
+    policy,
+    dualRows,
+    weatherRows,
+    volatilityRows,
+    indexTrendRiskByDate,
+    weatherResolutionData,
+    storageData,
+    heatingDemandData,
+  )
   const eventRows = rows.filter((row) => row.windowId !== 'index-fallback')
   const indexCurve = indexCurveFromRows(rows)
   const indexMetrics = {
@@ -1809,6 +2380,7 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
     holdout: sideReturnSnapshot(rows, (row) => daySplit(row.entryTradeDate) === 'holdout'),
   }
   const result = {
+    policy,
     candidateId: `ngas-alpha-${policy.id}`,
     architectureId: 'frozen-input-blend',
     architectureLabel: policy.label,
@@ -1829,6 +2401,8 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
     holdPeriodPolicy: policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY,
     weatherResolutionPolicy: policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY,
     coldFollowStoragePolicy: policy.coldFollowStoragePolicy ?? DEFAULT_COLD_FOLLOW_STORAGE_POLICY,
+    followFreshnessPolicy: policy.followFreshnessPolicy ?? DEFAULT_FOLLOW_FRESHNESS_POLICY,
+    heatingDemandPolicy: policy.heatingDemandPolicy ?? DEFAULT_HEATING_DEMAND_POLICY,
     indexRiskMode: policy.indexRiskMode,
     indexRiskLabel: indexRiskLabelFor(policy),
     indexTrendLookbackSessions:
@@ -1862,7 +2436,7 @@ function summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTre
       trainValidation: legCounts(rows, (row) => row.entryTradeDate <= VALIDATION_END),
       holdout: legCounts(rows, (row) => daySplit(row.entryTradeDate) === 'holdout'),
     },
-    rows,
+    rows: options.keepRows ? rows : undefined,
     curve,
   }
 
@@ -1934,6 +2508,11 @@ function formatCandidateRow(candidate) {
     weatherResolutionKind: candidate.weatherResolutionPolicy.kind,
     coldFollowStoragePolicy: candidate.coldFollowStoragePolicy.id,
     coldFollowStorageMinSeasonDrawdownBcf: candidate.coldFollowStoragePolicy.minSeasonDrawdownBcf ?? '',
+    coldFollowStorageMaxStorageVsSeasonalAverageBcf: candidate.coldFollowStoragePolicy.maxStorageVsSeasonalAverageBcf ?? '',
+    followFreshnessPolicy: candidate.followFreshnessPolicy.id,
+    followFreshnessLookbackDays: candidate.followFreshnessPolicy.lookbackDays ?? '',
+    heatingDemandPolicy: candidate.heatingDemandPolicy.id,
+    heatingDemandMinDemandAnomalyF: candidate.heatingDemandPolicy.minDemandAnomalyF ?? '',
     holdPeriodPolicy: candidate.holdPeriodPolicy.id,
     holdFollowDays: candidate.holdPeriodPolicy.followHoldDays ?? '',
     holdReversionDays: candidate.holdPeriodPolicy.reversionHoldDays ?? '',
@@ -1960,6 +2539,9 @@ function formatCandidateRow(candidate) {
     trainValidationWarmShortReturnPct: candidate.sideReturns.trainValidation.warmShort.totalReturnPct,
     trainValidationReversionLongReturnPct: candidate.sideReturns.trainValidation.reversionLong.totalReturnPct,
     trainValidationReversionShortReturnPct: candidate.sideReturns.trainValidation.reversionShort.totalReturnPct,
+    trainValidationStaleFollowDroppedRows: candidate.legCounts.trainValidation.staleFollowDropped,
+    trainValidationHddScaledRows: candidate.legCounts.trainValidation.hddScaled,
+    trainValidationHddDroppedRows: candidate.legCounts.trainValidation.hddDropped,
     holdoutReturnPct: candidate.holdoutMetrics.totalReturnPct,
     holdoutIndexReturnPct: candidate.indexMetrics.holdout.totalReturnPct,
     holdoutEdgePct: candidate.splitEdges.holdout,
@@ -2019,6 +2601,9 @@ function selectedTradeRows(rows) {
     'holdPeriodAction',
     'holdPeriodParentDay',
     'holdPeriodLimit',
+    'followFreshnessPolicy',
+    'followFreshnessAction',
+    'followFreshnessAgeDays',
     'weatherResolutionPolicy',
     'weatherResolutionSource',
     'weatherResolutionIssueDate',
@@ -2032,6 +2617,13 @@ function selectedTradeRows(rows) {
     'coldFollowStoragePolicy',
     'coldFollowStorageAction',
     'coldFollowStorageMinSeasonDrawdownBcf',
+    'coldFollowStorageMaxStorageVsSeasonalAverageBcf',
+    'heatingDemandPolicy',
+    'heatingDemandAction',
+    'heatingDemandAnomalyF',
+    'heatingDemandScale',
+    'coldDemandCoveragePct',
+    'warmDemandCoveragePct',
     'storageDate',
     'storageReleaseDate',
     'storageBcf',
@@ -2208,7 +2800,7 @@ Generated at ${summary.generatedAt}.
 
 ## Purpose
 
-This active QORE research strategy is self-contained around frozen Winter Alpha input ledgers: the embedded weather-follow input supplies cold/warm forecast-follow context, the embedded weather-reversion input supplies post-window reversion context, and the embedded volatility-confirmation input can confirm same-direction overreaction fades. Optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade, and optional EIA storage-drawdown gates test whether cold-follow longs are allowed only after the withdrawal season has consumed enough inventory. The selected blend is ranked on train/validation only, with holdout reported after selection.
+This active QORE research strategy is self-contained around frozen Winter Alpha input ledgers: the embedded weather-follow input supplies cold/warm forecast-follow context, the embedded weather-reversion input supplies post-window reversion context, and the embedded volatility-confirmation input can confirm same-direction overreaction fades. Optional weather-resolution overlays test whether close-in or already-known actual weather shifted enough to support the fade, optional follow-freshness gates prevent repeated same-story follow rows from crowding the sample, optional HDD overlays test whether gas demand confirms the weather thesis, and optional EIA storage gates test whether cold-follow longs are supported by withdrawal-season drawdown or seasonal tightness. The selected blend is ranked on train/validation only, with holdout reported after selection.
 
 ## Selected Candidate
 
@@ -2222,6 +2814,8 @@ This active QORE research strategy is self-contained around frozen Winter Alpha 
 - Vol-confirmed reversion-long size: ${selected.reversionLongScale}x of the frozen reversion leg.
 - Standalone reversion fade size: ${selected.standaloneReversionScale}x of the frozen reversion leg when no same-direction follow signal confirms it.
 - Weather-resolution overlay: ${selected.weatherResolutionPolicy.label}. ${selected.weatherResolutionPolicy.description}
+- Follow freshness gate: ${selected.followFreshnessPolicy.label}. ${selected.followFreshnessPolicy.description}
+- HDD demand overlay: ${selected.heatingDemandPolicy.label}. ${selected.heatingDemandPolicy.description}
 - Cold-follow storage gate: ${selected.coldFollowStoragePolicy.label}. ${selected.coldFollowStoragePolicy.description}
 - Idle capital risk mode: ${selected.indexRiskLabel}.
 - Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on UNG position changes.
@@ -2263,12 +2857,17 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 
 - Candidate count: ${summary.search.candidateCount}.
 - Eligible candidates: ${summary.search.eligibleCandidateCount}.
-- Eligibility requires a selectable gas-alpha policy, positive train and validation edge, lower train and validation drawdown than the index basket, and train/validation volatility under a 20% annualized risk budget.
-- Index risk-off variants are diagnostic-only because they can create cash-flat equity shelves and are a portfolio overlay rather than a gas-alpha rule.
+- Active-family filter: ${summary.search.activeFamilyFilter}.
+- Eligibility requires the active gas-alpha family, positive train and validation edge, lower train and validation drawdown than the index basket, and train/validation volatility under a 20% annualized risk budget.
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
-- Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally six calendar days after the Friday week-ending storage date. The seasonal drawdown is measured from the current withdrawal-season storage peak.
+- Follow-freshness gates only drop repeated same-thesis follow rows after an earlier accepted follow row; they do not create or extend signals.
+- HDD demand overlays use forecast location anomalies from the same issue/target/window as the frozen follow row, converted to ${HEATING_DEMAND_BASE_F}F-base HDD anomaly before the entry row is sized.
+- Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally six calendar days after the Friday week-ending storage date. Drawdown is measured from the current withdrawal-season storage peak, and seasonal tightness is measured against prior years only.
 - Hold-period overlays only shorten frozen daily ledger holds for the selected graded vol-confirmed family; they do not create new weather signals, extend an input hold, alter forecast thresholds, or use holdout rows for selection.
 - Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, frozen input signals, or weather thresholds.
+- Stale follow rows dropped: ${selected.legCounts.all.staleFollowDropped} full-sample rows, ${selected.legCounts.trainValidation.staleFollowDropped} train/validation rows.
+- HDD demand rows adjusted: ${selected.legCounts.all.hddScaled} scaled and ${selected.legCounts.all.hddDropped} dropped full-sample rows.
+- Seasonal-tight storage confirmations: ${selected.legCounts.all.coldFollowStorageSeasonalTightConfirmed} full-sample rows.
 - Holdout was not used for selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
 - Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
 - Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
@@ -2280,12 +2879,12 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 
 ## Top Train/Validation-Ranked Candidates
 
-| candidate | eligible | hold | storage gate | risk mult | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| candidate | eligible | hold | freshness | HDD | storage gate | risk mult | rank | train edge | validation edge | holdout edge | full edge | Sharpe | maxDD |
+| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 ${topCandidates
   .map(
     (candidate) =>
-      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.holdPeriodPolicy} | ${candidate.coldFollowStoragePolicy} | ${candidate.overlayRiskMultiplier}x | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
+      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.holdPeriodPolicy} | ${candidate.followFreshnessPolicy} | ${candidate.heatingDemandPolicy} | ${candidate.coldFollowStoragePolicy} | ${candidate.overlayRiskMultiplier}x | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.allSharpe} | ${candidate.allMaxDrawdownPct}% |`,
   )
   .join('\n')}
 
@@ -2304,11 +2903,28 @@ function main() {
   const indexTrendRiskByDate = buildIndexTrendRiskMap(indexMarketRows)
   const weatherResolutionData = loadWeatherResolutionData()
   const storageData = loadStorageData()
-  const policies = expandedBlendPolicies()
+  const heatingDemandData = loadHeatingDemandData()
+  const policies = expandedBlendPolicies().filter(activeWinterFamilyPolicy)
+  if (!policies.length) {
+    throw new Error('No active Winter Alpha family policies matched the targeted freshness/storage/HDD comparison.')
+  }
   const candidates = policies
-    .map((policy) => summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData))
+    .map((policy) =>
+      summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData, heatingDemandData),
+    )
     .sort((a, b) => b.trainValidationRank - a.trainValidationRank)
-  const selected = candidates.find((candidate) => candidate.eligible) ?? candidates[0]
+  const selectedCandidate = candidates.find((candidate) => candidate.eligible) ?? candidates[0]
+  const selected = summarizePolicy(
+    selectedCandidate.policy,
+    dualRows,
+    weatherRows,
+    volatilityRows,
+    indexTrendRiskByDate,
+    weatherResolutionData,
+    storageData,
+    heatingDemandData,
+    { keepRows: true },
+  )
   const realityCheck = blockBootstrapRealityCheck(selected.curve, candidates)
   const { headers, rows } = selectedTradeRows(selected.rows)
   const summary = {
@@ -2321,6 +2937,7 @@ function main() {
       volatilityConfirmationTrades: path.relative(REPO_ROOT, frozenInputTradePath(inputManifest, 'volatilityConfirmation')),
       weatherResolutionInputs: weatherResolutionData.inputFiles,
       storageInputs: storageData.inputFiles,
+      heatingDemandInputs: heatingDemandData.inputFiles,
       marketStartDate: selected.allMetrics.firstEntry,
       marketEndDate: selected.allMetrics.lastExit,
       marketDays: selected.rows.length,
@@ -2335,11 +2952,15 @@ function main() {
       signalTiming:
         'Frozen Winter Alpha inputs already enforce post-signal execution; NGAS Winter Alpha combines those daily ledgers and recalculates costs.',
       selectionPolicy:
-        'Only predeclared frozen-input blend policies, daily-ledger hold overlays, cold-follow EIA storage-drawdown gates, and bounded gas-overlay risk multipliers are selected on train and validation. Generic idle-index risk-off variants are reported as diagnostics only, and holdout rows after 2025-11-01 are reported after selection.',
+        'Only the current active Winter Alpha blend family is compared here: the predeclared graded weather-resolution, default frozen-ledger hold, 1.25x gas-overlay risk multiplier, follow-freshness gates, HDD demand overlays, and cold-follow EIA storage gates are selected on train and validation. Holdout rows after 2025-11-01 are reported after selection.',
       overfitControl:
-        'No holdout rows are used for selection. Frozen input candidates are embedded inside the Winter Alpha lane, and this layer only chooses a fixed blend policy plus one predeclared weather-resolution overlay, one predeclared daily-ledger hold overlay, one predeclared cold-follow storage-drawdown gate, and one bounded gas-overlay risk multiplier. Volatility confirmation is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
+        'No holdout rows are used for selection. Frozen input candidates are embedded inside the Winter Alpha lane, and this layer keeps the active blend family fixed while choosing one predeclared follow-freshness gate, one predeclared HDD demand overlay, and one predeclared cold-follow storage gate. Volatility confirmation is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
       weatherResolutionTiming:
         'Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate, or NASA POWER actual anomalies only when targetDate < entryTradeDate.',
+      followFreshnessTiming:
+        'Follow-freshness gates compare only prior accepted frozen follow rows by issueDate and thesisKind; same-parent held rows inherit the original decision.',
+      heatingDemandTiming:
+        `HDD demand overlays use same issueDate, targetDate, leadDays, and windowId location forecasts as the frozen follow row, converted to ${HEATING_DEMAND_BASE_F}F-base HDD anomaly before the entry row is sized.`,
       storageTiming:
         `Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally ${EIA_STORAGE_STANDARD_RELEASE_LAG_DAYS} calendar days after the Friday week-ending storage date; historical seasonal comparisons use only prior storage years.`,
       indexTrendLookbackSessions: INDEX_TREND_LOOKBACK_SESSIONS,
@@ -2347,6 +2968,7 @@ function main() {
     inputs: inputManifest.inputs,
     selected: {
       ...selected,
+      policy: undefined,
       rows: undefined,
       curve: undefined,
     },
@@ -2354,6 +2976,8 @@ function main() {
     search: {
       candidateCount: candidates.length,
       eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
+      activeFamilyFilter:
+        `${ACTIVE_FAMILY_CONFLICT_POLICY}, ${ACTIVE_FAMILY_WEATHER_RESOLUTION_POLICY_ID}, ${ACTIVE_FAMILY_HOLD_POLICY_ID}, ${ACTIVE_FAMILY_OVERLAY_RISK_MULTIPLIER}x overlay risk`,
       selectionUsedHoldout: false,
     },
     validation: {
@@ -2378,6 +3002,8 @@ function main() {
       `edge=${selected.splitEdges.all}%`,
       `holdoutEdge=${selected.splitEdges.holdout}%`,
       `holdPolicy=${selected.holdPeriodPolicy.id}`,
+      `freshness=${selected.followFreshnessPolicy.id}`,
+      `hdd=${selected.heatingDemandPolicy.id}`,
       `storageGate=${selected.coldFollowStoragePolicy.id}`,
       `pValue=${realityCheck.pValue}`,
     ].join(' '),

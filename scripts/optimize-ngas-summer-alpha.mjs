@@ -62,6 +62,12 @@ const COOLING_DEMAND_EXTREME_REVERSION_ADD = 0.15
 const COOLING_DEMAND_REVERSION_MIN_FRACTION = 0.2
 const COOLING_DEMAND_REVERSION_SOLID_MAX_FRACTION = 0.45
 const COOLING_DEMAND_REVERSION_EXTREME_MAX_FRACTION = 0.5
+const WEATHER_RESOLUTION_SOURCE_IDS = new Set(['gfs', 'gefs-mean'])
+const WEATHER_RESOLUTION_BASE_MODES = ['none']
+const WEATHER_RESOLUTION_VARIANT_MODE = 'graded-shift'
+const WEATHER_RESOLUTION_VARIANT_POOL_SIZE = 1
+const REALITY_CHECK_RANK_WINDOW = 20
+const ACTIVE_FAMILY_SOURCE_SET_ID = 'gfs-gefs-core'
 
 const SOURCE_SETS = [
   {
@@ -390,6 +396,58 @@ function computeSourceReliability(scores, actualByDate) {
   }
 }
 
+function loadWeatherResolutionData() {
+  const manifest = JSON.parse(readText(MANIFEST_PATH))
+  const forecastByIssueTarget = new Map()
+  const inputFiles = []
+
+  for (const calendar of manifest.forecastCalendars) {
+    if (!WEATHER_RESOLUTION_SOURCE_IDS.has(calendar.id)) continue
+    const scoresPath = path.join(DATA_ROOT, calendar.files.signalScores)
+    if (!fs.existsSync(scoresPath)) continue
+    inputFiles.push(path.relative(REPO_ROOT, scoresPath))
+
+    for (const row of parseCsv(scoresPath)) {
+      const leadDays = numberFrom(row.leadDays, Number.NaN)
+      if (!Number.isFinite(leadDays) || leadDays < 1 || leadDays > 3) continue
+      const key = `${row.issueDate}|${row.targetDate}`
+      const sampledWeight = Math.max(0.0001, numberFrom(row.sampledWeight, 1))
+      const current =
+        forecastByIssueTarget.get(key) ?? {
+          issueDate: row.issueDate,
+          targetDate: row.targetDate,
+          weightedSum: 0,
+          weightSum: 0,
+          sourceIds: new Set(),
+        }
+      current.weightedSum += numberFrom(row.weightedAnomalyF) * sampledWeight
+      current.weightSum += sampledWeight
+      current.sourceIds.add(calendar.id)
+      forecastByIssueTarget.set(key, current)
+    }
+  }
+
+  const forecastsByTargetDate = new Map()
+  for (const value of forecastByIssueTarget.values()) {
+    const row = {
+      issueDate: value.issueDate,
+      targetDate: value.targetDate,
+      weightedAnomalyF: round(value.weightedSum / value.weightSum, 3),
+      sourceIds: [...value.sourceIds].sort(),
+    }
+    forecastsByTargetDate.set(row.targetDate, [...(forecastsByTargetDate.get(row.targetDate) ?? []), row])
+  }
+
+  for (const rows of forecastsByTargetDate.values()) {
+    rows.sort((a, b) => a.issueDate.localeCompare(b.issueDate))
+  }
+
+  return {
+    forecastsByTargetDate,
+    inputFiles,
+  }
+}
+
 function loadMarketRows(filePath) {
   return parseCsv(filePath)
     .map((row) => ({
@@ -673,11 +731,90 @@ function demandAdjustedReversionFraction(baseFraction, signal, candidate) {
   )
 }
 
-function scheduleOverlay(days, signals, candidate) {
+function latestCloseForecastFor(signal, entryDate, weatherResolutionData) {
+  const forecasts = weatherResolutionData.forecastsByTargetDate.get(signal.targetDate) ?? []
+  let latest = null
+  for (const forecast of forecasts) {
+    if (forecast.issueDate <= entryDate) latest = forecast
+    if (forecast.issueDate > entryDate) break
+  }
+  return latest
+}
+
+function weatherResolutionDecision(signal, reversionPosition, entryDate, candidate, weatherResolutionData) {
+  if (candidate.weatherResolutionMode !== 'graded-shift') {
+    return {
+      mode: candidate.weatherResolutionMode,
+      action: 'none',
+      scale: 1,
+    }
+  }
+
+  const closeForecast = latestCloseForecastFor(signal, entryDate, weatherResolutionData)
+  if (!closeForecast) {
+    return {
+      mode: candidate.weatherResolutionMode,
+      action: 'missing-kept',
+      scale: 1,
+    }
+  }
+
+  const originalAnomalyF = numberFrom(signal.weightedAnomalyF, Number.NaN)
+  const resolutionAnomalyF = numberFrom(closeForecast.weightedAnomalyF, Number.NaN)
+  if (!Number.isFinite(originalAnomalyF) || !Number.isFinite(resolutionAnomalyF)) {
+    return {
+      mode: candidate.weatherResolutionMode,
+      action: 'missing-kept',
+      scale: 1,
+    }
+  }
+
+  const shiftF = resolutionAnomalyF - originalAnomalyF
+  const weatherGasDirection = shiftF > 0 ? 1 : shiftF < 0 ? -1 : 0
+  const positionDirection = Math.sign(reversionPosition)
+  const sameDirectionShift = weatherGasDirection !== 0 && weatherGasDirection === positionDirection
+  const adverseDirectionShift = weatherGasDirection !== 0 && weatherGasDirection === -positionDirection
+
+  if (adverseDirectionShift && Math.abs(shiftF) >= 2) {
+    return {
+      mode: candidate.weatherResolutionMode,
+      source: 'close-forecast',
+      issueDate: closeForecast.issueDate,
+      sourceIds: closeForecast.sourceIds,
+      originalAnomalyF: round(originalAnomalyF, 3),
+      resolutionAnomalyF: round(resolutionAnomalyF, 3),
+      shiftF: round(shiftF, 3),
+      action: 'adverse-dropped',
+      scale: 0,
+    }
+  }
+
+  const scale = sameDirectionShift
+    ? clamp(0.75 + Math.abs(shiftF) / 8, 0.75, 1.25)
+    : adverseDirectionShift
+      ? clamp(0.9 - Math.abs(shiftF) / 10, 0.45, 0.9)
+      : 0.85
+
+  return {
+    mode: candidate.weatherResolutionMode,
+    source: 'close-forecast',
+    issueDate: closeForecast.issueDate,
+    sourceIds: closeForecast.sourceIds,
+    originalAnomalyF: round(originalAnomalyF, 3),
+    resolutionAnomalyF: round(resolutionAnomalyF, 3),
+    shiftF: round(shiftF, 3),
+    action: sameDirectionShift ? 'confirm-scaled' : adverseDirectionShift ? 'adverse-shrunk' : 'neutral-shrunk',
+    scale: round(scale, 4),
+  }
+}
+
+function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
   const byIndex = new Map()
   const eventRows = []
   const priorHeatIssueDates = []
   let skippedHeatFollowSignals = 0
+  let weatherResolutionAdjustedRows = 0
+  let weatherResolutionDroppedRows = 0
   const setPosition = (index, payload) => {
     if (index < 0 || index >= days.length) return
     const current = byIndex.get(index)
@@ -766,8 +903,15 @@ function scheduleOverlay(days, signals, candidate) {
         days[index],
         candidate.volTargetPct,
       )
-      const reversionFraction = demandAdjustedReversionFraction(baseReversionFraction, signal, candidate)
-      const reversionPosition = -signal.direction * reversionFraction
+      const demandReversionFraction = demandAdjustedReversionFraction(baseReversionFraction, signal, candidate)
+      const rawReversionPosition = -signal.direction * demandReversionFraction
+      const weatherResolution = weatherResolutionDecision(signal, rawReversionPosition, days[index].date, candidate, weatherResolutionData)
+      const reversionPosition = rawReversionPosition * weatherResolution.scale
+      if (weatherResolution.action && !['none', 'missing-kept'].includes(weatherResolution.action)) weatherResolutionAdjustedRows += 1
+      if (weatherResolution.scale === 0) {
+        weatherResolutionDroppedRows += 1
+        continue
+      }
       setPosition(index, {
         ...eventBase,
         position: reversionPosition,
@@ -781,6 +925,15 @@ function scheduleOverlay(days, signals, candidate) {
         storageDeficitHeatTilt: days[index].storageDeficitHeatTilt,
         heatSizeMultiplier: 1,
         reversionDemandMode: candidate.reversionDemandMode,
+        weatherResolutionMode: candidate.weatherResolutionMode,
+        weatherResolutionSource: weatherResolution.source ?? '',
+        weatherResolutionIssueDate: weatherResolution.issueDate ?? '',
+        weatherResolutionSourceIds: weatherResolution.sourceIds ?? [],
+        weatherResolutionOriginalAnomalyF: weatherResolution.originalAnomalyF ?? '',
+        weatherResolutionAnomalyF: weatherResolution.resolutionAnomalyF ?? '',
+        weatherResolutionShiftF: weatherResolution.shiftF ?? '',
+        weatherResolutionAction: weatherResolution.action,
+        weatherResolutionScale: weatherResolution.scale,
         rank: signal.rank + 5,
         realizedMovePct: round(realizedMovePct, 4),
       })
@@ -803,7 +956,7 @@ function scheduleOverlay(days, signals, candidate) {
     }
   }
 
-  return { byIndex, eventRows, skippedHeatFollowSignals }
+  return { byIndex, eventRows, skippedHeatFollowSignals, weatherResolutionAdjustedRows, weatherResolutionDroppedRows }
 }
 
 function buildCurve(days, overlayByIndex) {
@@ -867,6 +1020,15 @@ function buildCurve(days, overlayByIndex) {
       rank: overlay?.rank ?? 0,
       realizedMovePct: overlay?.realizedMovePct ?? '',
       reversionDemandMode: overlay?.reversionDemandMode ?? 'fixed',
+      weatherResolutionMode: overlay?.weatherResolutionMode ?? 'none',
+      weatherResolutionSource: overlay?.weatherResolutionSource ?? '',
+      weatherResolutionIssueDate: overlay?.weatherResolutionIssueDate ?? '',
+      weatherResolutionSourceIds: overlay?.weatherResolutionSourceIds ?? [],
+      weatherResolutionOriginalAnomalyF: overlay?.weatherResolutionOriginalAnomalyF ?? '',
+      weatherResolutionAnomalyF: overlay?.weatherResolutionAnomalyF ?? '',
+      weatherResolutionShiftF: overlay?.weatherResolutionShiftF ?? '',
+      weatherResolutionAction: overlay?.weatherResolutionAction ?? '',
+      weatherResolutionScale: overlay?.weatherResolutionScale ?? 1,
     }
     rows.push(row)
     curve.push({
@@ -915,6 +1077,15 @@ function executedEventRowsFromRows(rows) {
       heatSizeMultiplier: row.heatSizeMultiplier,
       realizedMovePct: row.realizedMovePct,
       reversionDemandMode: row.reversionDemandMode,
+      weatherResolutionMode: row.weatherResolutionMode,
+      weatherResolutionSource: row.weatherResolutionSource,
+      weatherResolutionIssueDate: row.weatherResolutionIssueDate,
+      weatherResolutionSourceIds: row.weatherResolutionSourceIds,
+      weatherResolutionOriginalAnomalyF: row.weatherResolutionOriginalAnomalyF,
+      weatherResolutionAnomalyF: row.weatherResolutionAnomalyF,
+      weatherResolutionShiftF: row.weatherResolutionShiftF,
+      weatherResolutionAction: row.weatherResolutionAction,
+      weatherResolutionScale: row.weatherResolutionScale,
     }))
 }
 
@@ -1033,35 +1204,62 @@ function legCounts(eventRows, splitFilter = () => true) {
 }
 
 function sideReturnSnapshot(rows, splitFilter = () => true) {
-  const metricFor = (thesisKinds) =>
-    metricsFromCurve(
-      rows
-        .filter((row) => splitFilter(row) && thesisKinds.includes(row.thesisKind))
-        .map((row) => ({
-          date: row.entryTradeDate,
-          equity: INITIAL_CAPITAL * (1 + row.netReturnPct / 100),
-          dailyPnlPct: row.netReturnPct,
-          drawdownPct: row.netReturnPct < 0 ? row.netReturnPct : 0,
-          position: row.ungPosition,
-        })),
-      rows.filter((row) => splitFilter(row) && thesisKinds.includes(row.thesisKind)).length,
-    )
+  const buckets = {
+    summerColdShort: [],
+    summerHeatLong: [],
+    weatherFollow: [],
+    reversionLong: [],
+    reversionShort: [],
+    weatherReversion: [],
+  }
+
+  for (const row of rows) {
+    if (!splitFilter(row)) continue
+    const point = {
+      date: row.entryTradeDate,
+      equity: INITIAL_CAPITAL * (1 + row.netReturnPct / 100),
+      dailyPnlPct: row.netReturnPct,
+      drawdownPct: row.netReturnPct < 0 ? row.netReturnPct : 0,
+      position: row.ungPosition,
+    }
+    if (row.thesisKind === 'summer-cold-short') {
+      buckets.summerColdShort.push(point)
+      buckets.weatherFollow.push(point)
+    } else if (row.thesisKind === 'summer-heat-long') {
+      buckets.summerHeatLong.push(point)
+      buckets.weatherFollow.push(point)
+    } else if (row.thesisKind === 'reversion-long') {
+      buckets.reversionLong.push(point)
+      buckets.weatherReversion.push(point)
+    } else if (row.thesisKind === 'reversion-short') {
+      buckets.reversionShort.push(point)
+      buckets.weatherReversion.push(point)
+    }
+  }
+
+  const metricFor = (key) => metricsFromCurve(buckets[key], buckets[key].length)
 
   return {
-    summerColdShort: metricFor(['summer-cold-short']),
-    summerHeatLong: metricFor(['summer-heat-long']),
-    weatherFollow: metricFor(['summer-cold-short', 'summer-heat-long']),
-    reversionLong: metricFor(['reversion-long']),
-    reversionShort: metricFor(['reversion-short']),
-    weatherReversion: metricFor(['reversion-long', 'reversion-short']),
+    summerColdShort: metricFor('summerColdShort'),
+    summerHeatLong: metricFor('summerHeatLong'),
+    weatherFollow: metricFor('weatherFollow'),
+    reversionLong: metricFor('reversionLong'),
+    reversionShort: metricFor('reversionShort'),
+    weatherReversion: metricFor('weatherReversion'),
   }
 }
 
-function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, reliabilityWeights, signalCache, options = {}) {
+function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, reliabilityWeights, signalCache, weatherResolutionData, options = {}) {
   const cacheKey = signalCacheKey(candidate)
   const signals = signalCache.get(cacheKey) ?? signalsForCandidate(rowsByIssueDate, candidate, reliabilityWeights)
   signalCache.set(cacheKey, signals)
-  const { byIndex, eventRows: scheduledEventRows, skippedHeatFollowSignals } = scheduleOverlay(days, signals, candidate)
+  const {
+    byIndex,
+    eventRows: scheduledEventRows,
+    skippedHeatFollowSignals,
+    weatherResolutionAdjustedRows,
+    weatherResolutionDroppedRows,
+  } = scheduleOverlay(days, signals, candidate, weatherResolutionData)
   const { curve, rows } = buildCurve(days, byIndex)
   const overlayRows = rows.filter((row) => row.windowId !== 'index-fallback')
   const eventRows = executedEventRowsFromRows(rows)
@@ -1094,6 +1292,7 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
       `rh${candidate.reversionHoldDays}`,
       `mv${candidate.minRealizedMovePct}`,
       `fresh${candidate.freshHeatLookbackDays}`,
+      `wr${candidate.weatherResolutionMode}`,
       `sdef${STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER}`,
       `vol${candidate.volTargetPct}`,
       candidate.sizingMode,
@@ -1123,6 +1322,8 @@ function summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, candidate, r
     coolingDemandReversionRows: overlayRows.filter(
       (row) => row.windowId === 'weather-reversion' && row.reversionDemandMode === 'cooling-demand-tiered',
     ).length,
+    weatherResolutionAdjustedRows,
+    weatherResolutionDroppedRows,
     completedEventCount: completedEvents,
     overlayDayCount: overlayRows.length,
     fallbackDayCount: rows.length - overlayRows.length,
@@ -1222,6 +1423,7 @@ function formatCandidateRow(candidate) {
     reversionHoldDays: candidate.reversionHoldDays,
     minRealizedMovePct: candidate.minRealizedMovePct,
     freshHeatLookbackDays: candidate.freshHeatLookbackDays,
+    weatherResolutionMode: candidate.weatherResolutionMode,
     storageDeficitHeatMultiplier: STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER,
     storageDeficitHeatMaxFraction: STORAGE_DEFICIT_HEAT_MAX_FRACTION,
     storageSeasonalLookbackYears: STORAGE_SEASONAL_LOOKBACK_YEARS,
@@ -1232,6 +1434,8 @@ function formatCandidateRow(candidate) {
     executedRows: candidate.completedEventCount,
     storageDeficitHeatTiltRows: candidate.storageDeficitHeatTiltRows,
     coolingDemandReversionRows: candidate.coolingDemandReversionRows,
+    weatherResolutionAdjustedRows: candidate.weatherResolutionAdjustedRows,
+    weatherResolutionDroppedRows: candidate.weatherResolutionDroppedRows,
     weatherFollowRows: candidate.legCounts.all.weatherFollow,
     reversionRows: candidate.legCounts.all.weatherReversion,
     summerColdShortRows: candidate.legCounts.all.summerColdShort,
@@ -1311,35 +1515,128 @@ function createSeededRandom(seed = 1729) {
   }
 }
 
-function blockBootstrapRealityCheck(curve) {
+function blockBootstrapMeans(values, { seed = 1729 } = {}) {
+  const random = createSeededRandom(seed)
+  const means = []
+
+  for (let iteration = 0; iteration < BOOTSTRAP_ITERATIONS; iteration += 1) {
+    const sample = []
+    while (sample.length < values.length) {
+      const start = Math.floor(random() * values.length)
+      for (let offset = 0; offset < BLOCK_LENGTH && sample.length < values.length; offset += 1) {
+        sample.push(values[(start + offset) % values.length])
+      }
+    }
+    means.push(mean(sample))
+  }
+
+  return means
+}
+
+function pValueFromNullMeans(nullMeans, observed) {
+  const exceedances = nullMeans.filter((value) => value >= observed).length
+  return round((exceedances + 1) / (BOOTSTRAP_ITERATIONS + 1), 4)
+}
+
+function pctSummary(values) {
+  return {
+    p05: round(percentile(values, 0.05) * 100, 5),
+    p50: round(percentile(values, 0.5) * 100, 5),
+    p95: round(percentile(values, 0.95) * 100, 5),
+  }
+}
+
+function candidateFamilyRealityCheck(selectedCurve, familyCandidates, observed) {
+  const selectedDates = selectedCurve.map((point) => point.date)
+  const family = familyCandidates
+    .filter((candidate) => candidate.eligible && candidate.curve?.length)
+    .map((candidate) => {
+      const byDate = new Map(candidate.curve.map((point) => [point.date, point.activeReturnPct / 100]))
+      const returns = selectedDates.map((date) => byDate.get(date) ?? 0)
+      const candidateObserved = mean(returns)
+      return {
+        candidateId: candidate.candidateId,
+        observed: candidateObserved,
+        centeredReturns: returns.map((value) => value - candidateObserved),
+      }
+    })
+
+  if (!family.length) return null
+
+  const random = createSeededRandom(7919)
+  const maxNullMeans = []
+  for (let iteration = 0; iteration < BOOTSTRAP_ITERATIONS; iteration += 1) {
+    const sums = Array.from({ length: family.length }, () => 0)
+    let sampledCount = 0
+
+    while (sampledCount < selectedDates.length) {
+      const start = Math.floor(random() * selectedDates.length)
+      for (let offset = 0; offset < BLOCK_LENGTH && sampledCount < selectedDates.length; offset += 1) {
+        const sampleIndex = (start + offset) % selectedDates.length
+        family.forEach((candidate, candidateIndex) => {
+          sums[candidateIndex] += candidate.centeredReturns[sampleIndex]
+        })
+        sampledCount += 1
+      }
+    }
+
+    maxNullMeans.push(Math.max(...sums.map((sum) => sum / selectedDates.length)))
+  }
+
+  const bestObserved = family.reduce((best, candidate) => (candidate.observed > best.observed ? candidate : best), family[0])
+
+  return {
+    candidateFamilySize: family.length,
+    pValue: pValueFromNullMeans(maxNullMeans, observed),
+    nullMaxMeanDailyEdgePct: pctSummary(maxNullMeans),
+    bestObservedCandidateId: bestObserved.candidateId,
+    bestObservedAverageDailyEdgePct: round(bestObserved.observed * 100, 5),
+  }
+}
+
+function blockBootstrapRealityCheck(curve, familyCandidates = []) {
   const activeReturns = curve.map((point) => point.activeReturnPct / 100)
   const observed = mean(activeReturns)
   if (!activeReturns.length || observed <= 0) {
     return {
       observedAverageDailyEdgePct: round(observed * 100, 4),
       pValue: 1,
+      singleCandidatePValue: 1,
+      selectionAdjustedPValue: null,
       iterations: BOOTSTRAP_ITERATIONS,
       blockLength: BLOCK_LENGTH,
     }
   }
 
   const centered = activeReturns.map((value) => value - observed)
-  const random = createSeededRandom()
-  let exceedances = 0
-  for (let iteration = 0; iteration < BOOTSTRAP_ITERATIONS; iteration += 1) {
-    const sample = []
-    while (sample.length < centered.length) {
-      const start = Math.floor(random() * centered.length)
-      for (let offset = 0; offset < BLOCK_LENGTH && sample.length < centered.length; offset += 1) {
-        sample.push(centered[(start + offset) % centered.length])
-      }
-    }
-    if (mean(sample) >= observed) exceedances += 1
-  }
+  const meanBootstrapMeans = blockBootstrapMeans(activeReturns)
+  const nullBootstrapMeans = blockBootstrapMeans(centered)
+  const familyCheck = candidateFamilyRealityCheck(curve, familyCandidates, observed)
+  const singleCandidatePValue = pValueFromNullMeans(nullBootstrapMeans, observed)
+  const primaryPValue = familyCheck?.pValue ?? singleCandidatePValue
 
   return {
-    observedAverageDailyEdgePct: round(observed * 100, 4),
-    pValue: round((exceedances + 1) / (BOOTSTRAP_ITERATIONS + 1), 4),
+    method: familyCheck
+      ? 'rank-window selection-adjusted centered circular block bootstrap'
+      : 'centered circular block bootstrap',
+    comparison: 'strategy net daily return minus US index basket daily return',
+    alternative: 'greater-than-zero daily active edge',
+    observedAverageDailyEdgePct: round(observed * 100, 5),
+    observedAnnualizedEdgePct: round(observed * TRADING_DAYS * 100, 2),
+    pValue: primaryPValue,
+    singleCandidatePValue,
+    selectionAdjustedPValue: familyCheck?.pValue ?? null,
+    candidateFamilySize: familyCheck?.candidateFamilySize ?? 1,
+    rankWindow: familyCheck ? REALITY_CHECK_RANK_WINDOW : null,
+    bestObservedCandidateId: familyCheck?.bestObservedCandidateId ?? null,
+    bestObservedAverageDailyEdgePct: familyCheck?.bestObservedAverageDailyEdgePct ?? null,
+    dailyActiveVolPct: round(std(activeReturns) * 100, 4),
+    meanConfidenceIntervalDailyEdgePct: pctSummary(meanBootstrapMeans),
+    nullConfidenceIntervalDailyEdgePct: pctSummary(nullBootstrapMeans),
+    nullMaxMeanDailyEdgePct: familyCheck?.nullMaxMeanDailyEdgePct ?? null,
+    sampleCount: activeReturns.length,
+    activeOverlayDays: curve.filter((point) => Math.abs(point.position) > 1e-9).length,
+    minimumResolvablePValue: round(1 / (BOOTSTRAP_ITERATIONS + 1), 4),
     iterations: BOOTSTRAP_ITERATIONS,
     blockLength: BLOCK_LENGTH,
   }
@@ -1383,6 +1680,7 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Storage tilt: fresh heat-follow rows are scaled by ${STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER}x, capped at ${STORAGE_DEFICIT_HEAT_MAX_FRACTION}x notional, only when EIA storage available with a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day lag is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal average.
 - Reversion leg: ${selected.reversionFraction}x max NG futures overlay for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized same-direction gas move, opposite the weather-driven move. Heat-rally fades are skipped when lagged storage is below its trailing seasonal norm.
 - Reversion demand sizing: ${reversionDemandModeDescription(selected.reversionDemandMode)}.
+- Close-in weather-resolution fade check: ${selected.weatherResolutionMode === 'graded-shift' ? 'graded GFS/GEFS lead-1 to lead-3 forecast shift sizing' : 'none'}.
 - Sizing: ${selected.sizingMode}${selected.sizingMode === 'vol-target' ? `, ${selected.volTargetPct}% annualized UNG volatility target` : ''}.
 - Signal gates: absolute forecast anomaly >= ${selected.anomalyThreshold}F; side coverage >= ${selected.coverageThreshold}; confidence >= ${selected.minConfidence}; source groups >= ${selected.minGroups}; model families >= ${selected.minFamilies}; heat-follow freshness lookback ${selected.freshHeatLookbackDays} calendar day(s).
 - Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on gas position changes.
@@ -1424,17 +1722,22 @@ Train/validation side gates used for selection:
 - Skipped clustered heat-follow signals: ${selected.skippedHeatFollowSignals}.
 - Storage-deficit boosted heat-follow rows: ${selected.storageDeficitHeatTiltRows}.
 - Cooling-demand-sized reversion rows: ${selected.coolingDemandReversionRows}.
-- Block-bootstrap p-value versus index daily active return: ${summary.validation.realityCheck.pValue}.
+- Close-in weather-resolution adjusted rows: ${selected.weatherResolutionAdjustedRows}.
+- Close-in weather-resolution dropped rows: ${selected.weatherResolutionDroppedRows}.
+- Close-in weather-resolution comparison: ${summary.search.weatherResolutionComparison}.
+- Primary block-bootstrap p-value versus index daily active return: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
+- Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
+- Selection-adjusted p-value: ${summary.validation.realityCheck.selectionAdjustedPValue ?? 'n/a'} across ${summary.validation.realityCheck.candidateFamilySize} near-top eligible candidates.
 - Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks.
 
 ## Top Train/Validation-Ranked Candidates
 
-| candidate | eligible | rank | train edge | validation edge | holdout edge | full edge | executed rows |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| candidate | eligible | rank | weather resolution | train edge | validation edge | holdout edge | full edge | executed rows |
+| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
 ${topCandidates
   .map(
     (candidate) =>
-      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.trainValidationRank} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.executedRows} |`,
+      `| ${candidate.candidateId} | ${candidate.eligible ? 'yes' : 'no'} | ${candidate.trainValidationRank} | ${candidate.weatherResolutionMode} | ${candidate.trainEdgePct}% | ${candidate.validationEdgePct}% | ${candidate.holdoutEdgePct}% | ${candidate.allEdgePct}% | ${candidate.executedRows} |`,
   )
   .join('\n')}
 
@@ -1454,6 +1757,7 @@ function main() {
     holdout: metricsFromCurve(curveForSplit(indexCurve, 'holdout'), 0),
   }
   const { scores, inputFiles } = loadForecastScores()
+  const weatherResolutionData = loadWeatherResolutionData()
   const actualByDate = loadActualWeightedAnomaly()
   const reliability = computeSourceReliability(scores, actualByDate)
   const rowsByIssueDate = groupScoresByIssueDate(scores)
@@ -1463,65 +1767,46 @@ function main() {
     ...sourceSet,
     sourceIds: sourceSet.sourceIds.filter((sourceId) => presentSources.has(sourceId)),
   })).filter((sourceSet) => sourceSet.sourceIds.length)
-  const candidates = []
-
-  for (const sourceSet of sourceSets) {
-    for (const sourceWeightMode of SOURCE_WEIGHT_MODES) {
-      for (const sizingMode of SIZING_MODES) {
-        for (const anomalyThreshold of ANOMALY_THRESHOLDS) {
-          for (const coverageThreshold of COVERAGE_THRESHOLDS) {
-            for (const minConfidence of MIN_CONFIDENCES) {
-              for (const weatherFraction of WEATHER_FRACTIONS) {
-                for (const reversionFraction of REVERSION_FRACTIONS) {
-                  const reversionDemandModes = sizingMode === 'fixed' ? REVERSION_DEMAND_MODES : ['fixed']
-                  for (const reversionDemandMode of reversionDemandModes) {
-                    for (const followHoldDays of FOLLOW_HOLD_DAYS) {
-                      for (const reversionHoldDays of REVERSION_HOLD_DAYS) {
-                        for (const minRealizedMovePct of MIN_REALIZED_MOVES) {
-                          const volTargets = sizingMode === 'vol-target' ? VOL_TARGETS : [0]
-                          for (const volTargetPct of volTargets) {
-                            candidates.push(
-                              summarizeCandidate(
-                                days,
-                                rowsByIssueDate,
-                                indexBenchmarks,
-                                {
-                                  sourceSetId: sourceSet.id,
-                                  sourceSetLabel: sourceSet.label,
-                                  sourceIds: sourceSet.sourceIds,
-                                  minGroups: sourceSet.minGroups,
-                                  minFamilies: sourceSet.minFamilies,
-                                  sourceWeightMode,
-                                  sizingMode,
-                                  anomalyThreshold,
-                                  coverageThreshold,
-                                  minConfidence,
-                                  weatherFraction,
-                                  reversionFraction,
-                                  reversionDemandMode,
-                                  followHoldDays,
-                                  reversionHoldDays,
-                                  minRealizedMovePct,
-                                  freshHeatLookbackDays: HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS,
-                                  volTargetPct,
-                                },
-                                reliability.weights,
-                                signalCache,
-                              ),
-                            )
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+  const activeSourceSet = sourceSets.find((sourceSet) => sourceSet.id === ACTIVE_FAMILY_SOURCE_SET_ID)
+  if (!activeSourceSet) {
+    throw new Error(`Active Summer Alpha source set ${ACTIVE_FAMILY_SOURCE_SET_ID} is unavailable in the current forecast data.`)
   }
+
+  const activeFamilyBase = {
+    sourceSetId: activeSourceSet.id,
+    sourceSetLabel: activeSourceSet.label,
+    sourceIds: activeSourceSet.sourceIds,
+    minGroups: activeSourceSet.minGroups,
+    minFamilies: activeSourceSet.minFamilies,
+    sourceWeightMode: 'equal',
+    sizingMode: 'fixed',
+    anomalyThreshold: 5,
+    coverageThreshold: 0.25,
+    minConfidence: 0.5,
+    weatherFraction: 0.35,
+    reversionFraction: 0.35,
+    reversionDemandMode: 'cooling-demand-tiered',
+    followHoldDays: 3,
+    reversionHoldDays: 1,
+    minRealizedMovePct: 2,
+    freshHeatLookbackDays: HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS,
+    volTargetPct: 0,
+  }
+  const weatherResolutionModes = [...WEATHER_RESOLUTION_BASE_MODES, WEATHER_RESOLUTION_VARIANT_MODE]
+  const candidates = weatherResolutionModes.map((weatherResolutionMode) =>
+    summarizeCandidate(
+      days,
+      rowsByIssueDate,
+      indexBenchmarks,
+      {
+        ...activeFamilyBase,
+        weatherResolutionMode,
+      },
+      reliability.weights,
+      signalCache,
+      weatherResolutionData,
+    ),
+  )
 
   candidates.sort((a, b) => {
     if (a.eligible !== b.eligible) return a.eligible ? -1 : 1
@@ -1532,7 +1817,31 @@ function main() {
   if (!selectedCandidate) {
     throw new Error('No eligible summer-weather candidate satisfied heat-follow, same-direction fade, and multi-model confirmation gates.')
   }
-  const selected = summarizeCandidate(days, rowsByIssueDate, indexBenchmarks, selectedCandidate, reliability.weights, signalCache, { keepRows: true })
+  const selected = summarizeCandidate(
+    days,
+    rowsByIssueDate,
+    indexBenchmarks,
+    selectedCandidate,
+    reliability.weights,
+    signalCache,
+    weatherResolutionData,
+    { keepRows: true },
+  )
+  const familyRankFloor = selected.trainValidationRank - REALITY_CHECK_RANK_WINDOW
+  const realityCheckFamily = candidates
+    .filter((candidate) => candidate.eligible && candidate.trainValidationRank >= familyRankFloor)
+    .map((candidate) =>
+      summarizeCandidate(
+        days,
+        rowsByIssueDate,
+        indexBenchmarks,
+        candidate,
+        reliability.weights,
+        signalCache,
+        weatherResolutionData,
+        { keepRows: true },
+      ),
+    )
   const summaryCandidates = candidates.map(formatCandidateRow)
   const summary = {
     generatedAt: new Date().toISOString(),
@@ -1543,6 +1852,7 @@ function main() {
       indexMarketFile: path.relative(REPO_ROOT, INDEX_MARKET_FILE),
       actualAnomalyFile: path.relative(REPO_ROOT, ACTUAL_ANOMALY_FILE),
       eiaStorageFile: path.relative(REPO_ROOT, EIA_STORAGE_FILE),
+      weatherResolutionInputs: weatherResolutionData.inputFiles,
       firstSignalDate: FIRST_SIGNAL_DATE,
       marketStartDate: days[0]?.date,
       marketEndDate: days.at(-1)?.date,
@@ -1582,6 +1892,8 @@ function main() {
       signalTiming: 'Forecast issue-date signals are used only on trading sessions strictly after the issue date.',
       reversionTiming:
         'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, start no earlier than the next trading session, and skip heat-rally fades when lagged storage is below its trailing seasonal norm.',
+      weatherResolutionTiming:
+        `Close-in weather-resolution fade sizing is tested on the top ${WEATHER_RESOLUTION_VARIANT_POOL_SIZE} eligible base-grid candidates and uses GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= the reversion entry date.`,
       reversionDemandSizing:
         `When selected, cooling-demand-tiered fade sizing uses forecast CDD anomaly versus a ${COOLING_DEMAND_BASE_F}F base: below ${COOLING_DEMAND_SOLID_ANOMALY_F}F trims reversion size, ${COOLING_DEMAND_SOLID_ANOMALY_F}-${COOLING_DEMAND_EXTREME_ANOMALY_F}F modestly adds size, and at least ${COOLING_DEMAND_EXTREME_ANOMALY_F}F can lift the reversion sleeve up to ${COOLING_DEMAND_REVERSION_EXTREME_MAX_FRACTION}x.`,
       heatSignalFreshness:
@@ -1605,12 +1917,14 @@ function main() {
     search: {
       candidateCount: candidates.length,
       eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
+      weatherResolutionVariantPoolSize: WEATHER_RESOLUTION_VARIANT_POOL_SIZE,
+      weatherResolutionComparison: 'current active Summer Alpha family with no close-in fade check versus graded close-in fade check',
       selectionUsedHoldout: false,
     },
     validation: {
       sideMetrics: sideMetrics(selected.rows),
       yearMetrics: yearMetrics(selected.curve),
-      realityCheck: blockBootstrapRealityCheck(selected.curve),
+      realityCheck: blockBootstrapRealityCheck(selected.curve, realityCheckFamily),
     },
     outputFiles: {
       selectedTrades: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'selected-trades.csv')),
@@ -1663,6 +1977,15 @@ function main() {
     'rank',
     'realizedMovePct',
     'reversionDemandMode',
+    'weatherResolutionMode',
+    'weatherResolutionSource',
+    'weatherResolutionIssueDate',
+    'weatherResolutionSourceIds',
+    'weatherResolutionOriginalAnomalyF',
+    'weatherResolutionAnomalyF',
+    'weatherResolutionShiftF',
+    'weatherResolutionAction',
+    'weatherResolutionScale',
   ]))
 
   writeText(path.join(OUTPUT_DIR, 'selected-events.csv'), rowsToCsv(selected.eventRows, [
@@ -1690,6 +2013,15 @@ function main() {
     'heatSizeMultiplier',
     'realizedMovePct',
     'reversionDemandMode',
+    'weatherResolutionMode',
+    'weatherResolutionSource',
+    'weatherResolutionIssueDate',
+    'weatherResolutionSourceIds',
+    'weatherResolutionOriginalAnomalyF',
+    'weatherResolutionAnomalyF',
+    'weatherResolutionShiftF',
+    'weatherResolutionAction',
+    'weatherResolutionScale',
   ]))
 
   writeText(path.join(OUTPUT_DIR, 'candidate-summary.csv'), rowsToCsv(summaryCandidates, [
@@ -1710,6 +2042,7 @@ function main() {
     'reversionHoldDays',
     'minRealizedMovePct',
     'freshHeatLookbackDays',
+    'weatherResolutionMode',
     'storageDeficitHeatMultiplier',
     'storageDeficitHeatMaxFraction',
     'storageSeasonalLookbackYears',
@@ -1720,6 +2053,8 @@ function main() {
     'executedRows',
     'storageDeficitHeatTiltRows',
     'coolingDemandReversionRows',
+    'weatherResolutionAdjustedRows',
+    'weatherResolutionDroppedRows',
     'weatherFollowRows',
     'reversionRows',
     'summerColdShortRows',

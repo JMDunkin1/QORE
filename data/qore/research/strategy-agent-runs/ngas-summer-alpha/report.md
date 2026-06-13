@@ -1,6 +1,6 @@
 # NGAS Summer Alpha Lane
 
-Generated at 2026-06-13T05:05:50.099Z.
+Generated at 2026-06-13T19:09:17.528Z.
 
 ## Purpose
 
@@ -27,6 +27,7 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Storage tilt: fresh heat-follow rows are scaled by 1.25x, capped at 0.4375x notional, only when EIA storage available with a 7-calendar-day lag is below its trailing 5-year seasonal average.
 - Reversion leg: 0.35x max NG futures overlay for 1 trading day(s) after a 2% realized same-direction gas move, opposite the weather-driven move. Heat-rally fades are skipped when lagged storage is below its trailing seasonal norm.
 - Reversion demand sizing: cooling-demand tiered sizing: CDD anomaly < 5F trims the fade, 5-8F modestly adds size, and >= 8F can lift the fade up to 0.5x.
+- Close-in weather-resolution fade check: none.
 - Sizing: fixed.
 - Signal gates: absolute forecast anomaly >= 5F; side coverage >= 0.25; confidence >= 0.5; source groups >= 1; model families >= 2; heat-follow freshness lookback 3 calendar day(s).
 - Cost: 0.064% round trip, charged as 0.032% one-way on gas position changes.
@@ -63,30 +64,25 @@ Train/validation side gates used for selection:
 
 ## Anti-Overfit Check
 
-- Candidate search count: 103680.
-- Eligible dual-leg candidates: 8648.
+- Candidate search count: 2.
+- Eligible dual-leg candidates: 2.
 - Skipped clustered heat-follow signals: 227.
 - Storage-deficit boosted heat-follow rows: 68.
 - Cooling-demand-sized reversion rows: 42.
-- Block-bootstrap p-value versus index daily active return: 0.0008.
+- Close-in weather-resolution adjusted rows: 0.
+- Close-in weather-resolution dropped rows: 0.
+- Close-in weather-resolution comparison: current active Summer Alpha family with no close-in fade check versus graded close-in fade check.
+- Primary block-bootstrap p-value versus index daily active return: 0.0008 (rank-window selection-adjusted centered circular block bootstrap).
+- Single-candidate p-value: 0.0008.
+- Selection-adjusted p-value: 0.0008 across 2 near-top eligible candidates.
 - Bootstrap setup: 1200 iterations, 10-session circular blocks.
 
 ## Top Train/Validation-Ranked Candidates
 
-| candidate | eligible | rank | train edge | validation edge | holdout edge | full edge | executed rows |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 169.1241 | 59.25% | 24.92% | 28.62% | 226.01% | 197 |
-| summer-ncep-complex-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 169.1241 | 59.25% | 24.92% | 28.62% | 226.01% | 197 |
-| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.3-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 164.7456 | 57.65% | 23.62% | 27.38% | 215.35% | 197 |
-| summer-ncep-complex-equal-a5-c0.25-q0.5-wf0.35-rf0.3-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 164.7456 | 57.65% | 23.62% | 27.38% | 215.35% | 197 |
-| summer-gfs-gefs-core-bg-shrink-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 164.3131 | 55.26% | 24.92% | 28.62% | 216.94% | 197 |
-| summer-ncep-complex-bg-shrink-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 164.3131 | 55.26% | 24.92% | 28.62% | 216.94% | 197 |
-| summer-gfs-gefs-core-bg-shrink-a5-c0.25-q0.5-wf0.35-rf0.3-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 159.9636 | 53.69% | 23.62% | 27.38% | 206.51% | 197 |
-| summer-ncep-complex-bg-shrink-a5-c0.25-q0.5-wf0.35-rf0.3-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 159.9636 | 53.69% | 23.62% | 27.38% | 206.51% | 197 |
-| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdfixed-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 158.5581 | 56.28% | 21.66% | 25.37% | 201.67% | 197 |
-| summer-ncep-complex-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdfixed-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 158.5581 | 56.28% | 21.66% | 25.37% | 201.67% | 197 |
-| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.2-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 155.3371 | 54.44% | 21.01% | 24.9% | 194.67% | 197 |
-| summer-ncep-complex-equal-a5-c0.25-q0.5-wf0.35-rf0.2-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-sdef1.25-vol0-fixed | yes | 155.3371 | 54.44% | 21.01% | 24.9% | 194.67% | 197 |
+| candidate | eligible | rank | weather resolution | train edge | validation edge | holdout edge | full edge | executed rows |
+| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed | yes | 169.1241 | none | 59.25% | 24.92% | 28.62% | 226.01% | 197 |
+| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrgraded-shift-sdef1.25-vol0-fixed | yes | 169.1241 | graded-shift | 59.25% | 24.92% | 28.62% | 226.01% | 197 |
 
 ## Verdict
 

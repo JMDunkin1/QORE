@@ -205,6 +205,8 @@ type WinterAlphaSummary = {
     selectionPolicy: string
     overfitControl: string
     weatherResolutionTiming: string
+    followFreshnessTiming?: string
+    heatingDemandTiming?: string
     storageTiming?: string
     indexTrendLookbackSessions: number
   }
@@ -247,6 +249,21 @@ type WinterAlphaSummary = {
       kind: string
       description: string
       minSeasonDrawdownBcf?: number
+      maxStorageVsSeasonalAverageBcf?: number
+    }
+    followFreshnessPolicy?: {
+      id: string
+      label: string
+      kind: string
+      description: string
+      lookbackDays?: number
+    }
+    heatingDemandPolicy?: {
+      id: string
+      label: string
+      kind: string
+      description: string
+      minDemandAnomalyF?: number
     }
     indexRiskMode: string
     indexRiskLabel: string
@@ -342,6 +359,16 @@ export type ArcticBlastTrade = {
   coldFollowStoragePolicy?: string
   coldFollowStorageAction?: string
   coldFollowStorageMinSeasonDrawdownBcf?: number
+  coldFollowStorageMaxStorageVsSeasonalAverageBcf?: number
+  followFreshnessPolicy?: string
+  followFreshnessAction?: string
+  followFreshnessAgeDays?: number
+  heatingDemandPolicy?: string
+  heatingDemandAction?: string
+  heatingDemandAnomalyF?: number
+  heatingDemandScale?: number
+  coldDemandCoveragePct?: number
+  warmDemandCoveragePct?: number
   storageDate?: string
   storageBcf?: number
   storageSeasonPeakBcf?: number
@@ -484,6 +511,18 @@ function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVar
     coldFollowStorageMinSeasonDrawdownBcf: row.coldFollowStorageMinSeasonDrawdownBcf
       ? numberFrom(row.coldFollowStorageMinSeasonDrawdownBcf)
       : undefined,
+    coldFollowStorageMaxStorageVsSeasonalAverageBcf: row.coldFollowStorageMaxStorageVsSeasonalAverageBcf
+      ? numberFrom(row.coldFollowStorageMaxStorageVsSeasonalAverageBcf)
+      : undefined,
+    followFreshnessPolicy: row.followFreshnessPolicy || undefined,
+    followFreshnessAction: row.followFreshnessAction || undefined,
+    followFreshnessAgeDays: row.followFreshnessAgeDays ? numberFrom(row.followFreshnessAgeDays) : undefined,
+    heatingDemandPolicy: row.heatingDemandPolicy || undefined,
+    heatingDemandAction: row.heatingDemandAction || undefined,
+    heatingDemandAnomalyF: row.heatingDemandAnomalyF ? numberFrom(row.heatingDemandAnomalyF) : undefined,
+    heatingDemandScale: row.heatingDemandScale ? numberFrom(row.heatingDemandScale) : undefined,
+    coldDemandCoveragePct: row.coldDemandCoveragePct ? numberFrom(row.coldDemandCoveragePct) : undefined,
+    warmDemandCoveragePct: row.warmDemandCoveragePct ? numberFrom(row.warmDemandCoveragePct) : undefined,
     storageDate: row.storageDate || undefined,
     storageBcf: row.storageBcf ? numberFrom(row.storageBcf) : undefined,
     storageSeasonPeakBcf: row.storageSeasonPeakBcf ? numberFrom(row.storageSeasonPeakBcf) : undefined,
@@ -635,7 +674,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
     instrument: 'UNG',
     desk: 'Winter natural gas alpha blend',
     thesis:
-      'Blend frozen Winter Alpha inputs conservatively: embedded weather-follow rows supply cold-follow and warm-short context, embedded weather-reversion rows supply post-window fades, volatility confirmation checks long fades, close-in weather resolution sizes reversion exposure, EIA storage-drawdown gates can block premature cold-follow longs, and idle capital remains in the index fallback.',
+      'Blend frozen Winter Alpha inputs conservatively: embedded weather-follow rows supply cold-follow and warm-short context, embedded weather-reversion rows supply post-window fades, volatility confirmation checks long fades, close-in weather resolution sizes reversion exposure, freshness and HDD demand overlays can filter repeated or weak follow rows, EIA storage gates can block premature cold-follow longs, and idle capital remains in the index fallback.',
     directionPolicy:
       `${selected.positionPolicy} Idle capital uses ${selected.indexRiskLabel.toLowerCase()}.`,
     promotionStatus,
@@ -647,7 +686,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
     returnColumn: 'netReturnPct',
     universe: `UNG and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
     theoryAlignment:
-      'Frozen-input blend of winter forecast-follow demand risk, same-direction weather fades, volatility-confirmed long-fade sizing, and non-lookahead close-in or already-known actual weather-resolution sizing.',
+      'Frozen-input blend of winter forecast-follow demand risk, same-direction weather fades, volatility-confirmed long-fade sizing, non-lookahead close-in or already-known actual weather-resolution sizing, follow-freshness gating, HDD demand confirmation, and EIA storage context.',
     samplePolicy:
       `${selected.architectureLabel}; train through ${contract.trainEnd}, validation through ${contract.validationEnd}, holdout from ${contract.holdoutStart}. ${contract.overfitControl}`,
     tradeFile: summary.outputFiles.selectedTrades,
@@ -662,6 +701,8 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
       sizingMode: selected.sizingMode,
       weatherResolutionPolicy: selected.weatherResolutionPolicy,
       coldFollowStoragePolicy: selected.coldFollowStoragePolicy,
+      followFreshnessPolicy: selected.followFreshnessPolicy,
+      heatingDemandPolicy: selected.heatingDemandPolicy,
       indexRiskMode: selected.indexRiskMode,
       indexRiskLabel: selected.indexRiskLabel,
       indexTrendLookbackSessions: selected.indexTrendLookbackSessions,
@@ -691,6 +732,8 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
       selectionPolicy: contract.selectionPolicy,
       signalTiming: contract.signalTiming,
       weatherResolutionTiming: contract.weatherResolutionTiming,
+      followFreshnessTiming: contract.followFreshnessTiming,
+      heatingDemandTiming: contract.heatingDemandTiming,
       storageTiming: contract.storageTiming,
       sourceUniverse: sourceUniverseFor(trades),
     },
