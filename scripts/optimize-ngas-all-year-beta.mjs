@@ -1,0 +1,601 @@
+#!/usr/bin/env node
+import fs from 'node:fs'
+import path from 'node:path'
+import process from 'node:process'
+import Papa from 'papaparse'
+
+const REPO_ROOT = process.cwd()
+const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
+const OUTPUT_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/ngas-all-year-beta')
+const SUMMER_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/ngas-summer-alpha')
+const WINTER_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/ngas-winter-alpha')
+const SUMMER_SUMMARY_FILE = path.join(SUMMER_DIR, 'run-summary.json')
+const WINTER_SUMMARY_FILE = path.join(WINTER_DIR, 'run-summary.json')
+const SUMMER_TRADES_FILE = path.join(SUMMER_DIR, 'selected-trades.csv')
+const WINTER_TRADES_FILE = path.join(WINTER_DIR, 'selected-trades.csv')
+
+const STRATEGY_ID = 'ngas-all-year-beta'
+const STRATEGY_NAME = 'NGAS All-Year Beta'
+const INITIAL_CAPITAL = 100000
+const TRADING_DAYS = 252
+const BOOTSTRAP_ITERATIONS = 20000
+const BLOCK_LENGTH = 10
+const MAX_DRAWDOWN_PROMOTION_FLOOR_PCT = -20
+
+function readText(filePath) {
+  return fs.readFileSync(filePath, 'utf8')
+}
+
+function writeText(filePath, text) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.writeFileSync(filePath, text)
+}
+
+function parseCsvWithHeaders(filePath) {
+  const parsed = Papa.parse(readText(filePath), {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim(),
+  })
+  return {
+    rows: parsed.data,
+    headers: parsed.meta.fields ?? [],
+  }
+}
+
+function numberFrom(value, fallback = 0) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function round(value, digits = 4) {
+  const factor = 10 ** digits
+  return Math.round(value * factor) / factor
+}
+
+function mean(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
+}
+
+function std(values) {
+  if (values.length < 2) return 0
+  const avg = mean(values)
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (values.length - 1))
+}
+
+function percentile(values, pct) {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * pct)))
+  return sorted[index]
+}
+
+function daysBetween(startDate, endDate) {
+  return Math.max(1, (Date.parse(endDate) - Date.parse(startDate)) / 86400000)
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return ''
+  const text = Array.isArray(value) ? value.join('|') : String(value)
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
+}
+
+function rowsToCsv(rows, headers) {
+  return [
+    headers.join(','),
+    ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(',')),
+  ].join('\n') + '\n'
+}
+
+function unique(values) {
+  return [...new Set(values)]
+}
+
+function tradePosition(row) {
+  const position = numberFrom(row.ungPosition, Number.NaN)
+  if (Number.isFinite(position)) return position
+  if (row.thesisKind === 'index-fallback') return 0
+  return row.direction === 'short' ? -1 : 1
+}
+
+function isMaterialStrategyRow(row) {
+  return (
+    row.thesisKind !== 'index-fallback' ||
+    Math.abs(numberFrom(row.tradingCostPct)) > 0.000001 ||
+    Math.abs(tradePosition(row)) > 0.000001
+  )
+}
+
+function byEntryDate(rows, label) {
+  const byDate = new Map()
+  for (const row of rows) {
+    if (byDate.has(row.entryTradeDate)) {
+      throw new Error(`${label} has multiple rows for ${row.entryTradeDate}; ${STRATEGY_NAME} expects one daily row per source lane.`)
+    }
+    byDate.set(row.entryTradeDate, row)
+  }
+  return byDate
+}
+
+function componentVariantFor(strategyId) {
+  if (strategyId === 'ngas-summer-alpha') return 'summer-alpha'
+  if (strategyId === 'ngas-winter-alpha') return 'winter-alpha'
+  return ''
+}
+
+function splitNameForTrade(row, contractsByStrategyId) {
+  const contract = contractsByStrategyId.get(row.componentStrategyId)
+  if (!contract) return 'all'
+  if (row.entryTradeDate >= contract.holdoutStart) return 'holdout'
+  if (row.entryTradeDate > contract.trainEnd && row.entryTradeDate <= contract.validationEnd) return 'validation'
+  return 'train'
+}
+
+function createCompositeRows(summerRows, winterRows, contractsByStrategyId) {
+  const summerByDate = byEntryDate(summerRows, 'NGAS Summer Alpha')
+  const winterByDate = byEntryDate(winterRows, 'NGAS Winter Alpha')
+  const entryDates = unique([...summerByDate.keys(), ...winterByDate.keys()]).sort()
+  const rows = []
+
+  for (const entryDate of entryDates) {
+    const summerRow = summerByDate.get(entryDate)
+    const winterRow = winterByDate.get(entryDate)
+    const summerIsMaterial = summerRow ? isMaterialStrategyRow(summerRow) : false
+    const winterIsMaterial = winterRow ? isMaterialStrategyRow(winterRow) : false
+
+    if (summerRow && winterRow && summerIsMaterial && winterIsMaterial) {
+      throw new Error(`${STRATEGY_NAME} conflict on ${entryDate}: both summer and winter lanes have material rows.`)
+    }
+    if (
+      summerRow &&
+      winterRow &&
+      !summerIsMaterial &&
+      !winterIsMaterial &&
+      Math.abs(numberFrom(summerRow.netReturnPct) - numberFrom(winterRow.netReturnPct)) > 0.0001
+    ) {
+      throw new Error(`${STRATEGY_NAME} fallback mismatch on ${entryDate}; refusing to pick between different idle rows.`)
+    }
+
+    const sourceRow = summerIsMaterial ? summerRow : winterIsMaterial ? winterRow : summerRow ?? winterRow
+    if (!sourceRow) throw new Error(`${STRATEGY_NAME} missing source row for ${entryDate}.`)
+
+    const componentStrategyId = sourceRow.strategyId
+    const materialRow = isMaterialStrategyRow(sourceRow)
+    const row = {
+      ...sourceRow,
+      strategyId: STRATEGY_ID,
+      variant: 'all-year-beta',
+      componentStrategyId,
+      componentVariant: componentVariantFor(componentStrategyId),
+      materialRow,
+      activeReturnPct: round(numberFrom(sourceRow.netReturnPct) - numberFrom(sourceRow.indexReturnPct), 4),
+    }
+    row.split = splitNameForTrade(row, contractsByStrategyId)
+    rows.push(row)
+  }
+
+  let equity = INITIAL_CAPITAL
+  let peak = INITIAL_CAPITAL
+  for (const row of rows) {
+    equity = Math.max(1, equity * (1 + numberFrom(row.netReturnPct) / 100))
+    peak = Math.max(peak, equity)
+    row.equity = round(equity, 2)
+    row.equityPct = round((equity / INITIAL_CAPITAL - 1) * 100, 4)
+    row.drawdownPct = round(((equity - peak) / peak) * 100, 4)
+  }
+
+  return rows
+}
+
+function profitFactor(returns) {
+  const grossWins = returns.filter((value) => value > 0).reduce((sum, value) => sum + value, 0)
+  const grossLosses = Math.abs(returns.filter((value) => value < 0).reduce((sum, value) => sum + value, 0))
+  if (!grossLosses) return grossWins ? Number.POSITIVE_INFINITY : 0
+  return grossWins / grossLosses
+}
+
+function metricsFromReturns(rows, returnKey = 'netReturnPct') {
+  const orderedRows = [...rows].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
+  const returns = orderedRows.map((row) => numberFrom(row[returnKey]) / 100)
+  const negativeReturns = returns.filter((value) => value < 0)
+  const firstEntry = orderedRows[0]?.entryTradeDate ?? ''
+  const lastExit = orderedRows.at(-1)?.targetTradeDate ?? orderedRows.at(-1)?.exitTradeDate ?? orderedRows.at(-1)?.entryTradeDate ?? firstEntry
+  const years = firstEntry && lastExit ? daysBetween(firstEntry, lastExit) / 365.25 : 1
+  let equity = 1
+  let peak = 1
+  let maxDrawdownPct = 0
+
+  for (const dailyReturn of returns) {
+    equity = Math.max(0.000001, equity * (1 + dailyReturn))
+    peak = Math.max(peak, equity)
+    maxDrawdownPct = Math.min(maxDrawdownPct, ((equity - peak) / peak) * 100)
+  }
+
+  const totalReturnPct = round((equity - 1) * 100, 2)
+  const cagrPct = round((equity ** (1 / Math.max(years, 1 / 365.25)) - 1) * 100, 2)
+  const annualVol = std(returns) * Math.sqrt(TRADING_DAYS)
+  const downsideVol = std(negativeReturns) * Math.sqrt(TRADING_DAYS)
+  const averageDailyReturn = mean(returns)
+  const var95 = percentile(returns, 0.05)
+  const cvarSlice = returns.filter((value) => value <= var95)
+  const activeTradeCount = returnKey === 'netReturnPct' ? orderedRows.filter((row) => row.thesisKind !== 'index-fallback').length : 0
+
+  return {
+    totalReturnPct,
+    cagrPct,
+    annualVolPct: round(annualVol * 100, 2),
+    sharpe: round(annualVol ? (averageDailyReturn * TRADING_DAYS) / annualVol : 0, 2),
+    sortino: round(downsideVol ? (averageDailyReturn * TRADING_DAYS) / downsideVol : 0, 2),
+    maxDrawdownPct: round(maxDrawdownPct, 2),
+    calmar: round(Math.abs(maxDrawdownPct) ? cagrPct / Math.abs(maxDrawdownPct) : 0, 2),
+    winRatePct: round(returns.length ? (returns.filter((value) => value > 0).length / returns.length) * 100 : 0, 1),
+    profitFactor: round(profitFactor(returns), 2),
+    tradeCount: activeTradeCount,
+    exposurePct: returnKey === 'netReturnPct' ? round(mean(orderedRows.map((row) => Math.abs(tradePosition(row)))) * 100, 1) : 0,
+    turnover:
+      returnKey === 'netReturnPct'
+        ? round(
+            orderedRows.reduce((sum, row, index) => sum + Math.abs(tradePosition(row) - tradePosition(orderedRows[index - 1] ?? { thesisKind: 'index-fallback' })), 0),
+            2,
+          )
+        : 0,
+    var95Pct: round(var95 * 100, 2),
+    cvar95Pct: round(mean(cvarSlice) * 100, 2),
+    averageDailyPnlPct: round(averageDailyReturn * 100, 3),
+    firstEntry,
+    lastExit,
+    averageHoldDays: 1,
+    tStat: round(std(returns) ? (averageDailyReturn / std(returns)) * Math.sqrt(returns.length) : 0, 2),
+  }
+}
+
+function compoundReturnPct(rows, returnKey) {
+  const total = rows.reduce((equity, row) => equity * (1 + numberFrom(row[returnKey]) / 100), 1)
+  return round((total - 1) * 100, 2)
+}
+
+function annualizedCompoundReturnPct(rows, returnKey) {
+  const orderedRows = [...rows].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
+  const total = orderedRows.reduce((equity, row) => equity * (1 + numberFrom(row[returnKey]) / 100), 1)
+  const firstEntry = orderedRows[0]?.entryTradeDate ?? ''
+  const lastExit = orderedRows.at(-1)?.targetTradeDate ?? orderedRows.at(-1)?.exitTradeDate ?? orderedRows.at(-1)?.entryTradeDate ?? firstEntry
+  const years = firstEntry && lastExit ? daysBetween(firstEntry, lastExit) / 365.25 : 1
+  return round((total ** (1 / Math.max(years, 1 / 365.25)) - 1) * 100, 2)
+}
+
+function splitRows(rows) {
+  return {
+    train: rows.filter((row) => row.split === 'train'),
+    validation: rows.filter((row) => row.split === 'validation'),
+    holdout: rows.filter((row) => row.split === 'holdout'),
+    all: rows,
+  }
+}
+
+function splitEdges(splits) {
+  return Object.fromEntries(
+    Object.entries(splits).map(([split, rows]) => [
+      split,
+      round(compoundReturnPct(rows, 'netReturnPct') - compoundReturnPct(rows, 'indexReturnPct'), 2),
+    ]),
+  )
+}
+
+function splitAnnualEdges(splits) {
+  return Object.fromEntries(
+    Object.entries(splits).map(([split, rows]) => [
+      split,
+      round(annualizedCompoundReturnPct(rows, 'netReturnPct') - annualizedCompoundReturnPct(rows, 'indexReturnPct'), 2),
+    ]),
+  )
+}
+
+function createSeededRandom(seed = 1729) {
+  let state = seed >>> 0
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state / 2 ** 32
+  }
+}
+
+function blockBootstrapMeans(values, { seed = 1729 } = {}) {
+  const random = createSeededRandom(seed)
+  const means = []
+
+  for (let iteration = 0; iteration < BOOTSTRAP_ITERATIONS; iteration += 1) {
+    const sample = []
+    while (sample.length < values.length) {
+      const start = Math.floor(random() * values.length)
+      for (let offset = 0; offset < BLOCK_LENGTH && sample.length < values.length; offset += 1) {
+        sample.push(values[(start + offset) % values.length])
+      }
+    }
+    means.push(mean(sample))
+  }
+
+  return means
+}
+
+function pValueFromNullMeans(nullMeans, observed) {
+  const exceedances = nullMeans.filter((value) => value >= observed).length
+  return round((exceedances + 1) / (BOOTSTRAP_ITERATIONS + 1), 5)
+}
+
+function pctSummary(values) {
+  return {
+    p05: round(percentile(values, 0.05) * 100, 5),
+    p50: round(percentile(values, 0.5) * 100, 5),
+    p95: round(percentile(values, 0.95) * 100, 5),
+  }
+}
+
+function blockBootstrapRealityCheck(rows, { seed = 1987 } = {}) {
+  const activeReturns = rows.map((row) => (numberFrom(row.netReturnPct) - numberFrom(row.indexReturnPct)) / 100)
+  const observed = mean(activeReturns)
+  const centered = activeReturns.map((value) => value - observed)
+  const meanBootstrapMeans = blockBootstrapMeans(activeReturns, { seed })
+  const nullBootstrapMeans = blockBootstrapMeans(centered, { seed })
+  const singleCandidatePValue = observed > 0 ? pValueFromNullMeans(nullBootstrapMeans, observed) : 1
+
+  return {
+    method: 'standalone all-year centered circular block bootstrap',
+    comparison: 'all-year beta net daily return minus US index basket daily return',
+    alternative: 'greater-than-zero daily active edge',
+    observedAverageDailyEdgePct: round(observed * 100, 5),
+    observedAnnualizedEdgePct: round(observed * TRADING_DAYS * 100, 2),
+    pValue: singleCandidatePValue,
+    singleCandidatePValue,
+    selectionAdjustedPValue: null,
+    candidateFamilySize: 1,
+    bestObservedCandidateId: STRATEGY_ID,
+    bestObservedAverageDailyEdgePct: round(observed * 100, 5),
+    dailyActiveVolPct: round(std(activeReturns) * 100, 4),
+    standardErrorDailyEdgePct: round(std(activeReturns) / Math.sqrt(Math.max(activeReturns.length, 1)) * 100, 5),
+    meanConfidenceIntervalDailyEdgePct: pctSummary(meanBootstrapMeans),
+    nullConfidenceIntervalDailyEdgePct: pctSummary(nullBootstrapMeans),
+    nullMaxMeanDailyEdgePct: null,
+    sampleCount: activeReturns.length,
+    activeOverlayDays: rows.filter((row) => row.thesisKind !== 'index-fallback').length,
+    materialRows: rows.filter(isMaterialStrategyRow).length,
+    minimumResolvablePValue: round(1 / (BOOTSTRAP_ITERATIONS + 1), 5),
+    iterations: BOOTSTRAP_ITERATIONS,
+    blockLength: BLOCK_LENGTH,
+  }
+}
+
+function sourceUniverseFor(rows) {
+  return unique(rows.map((row) => row.sourceId)).sort()
+}
+
+function formatCandidateRow(selected, summaryMetrics) {
+  return {
+    candidateId: STRATEGY_ID,
+    eligible: true,
+    trainValidationRank: round(selected.splitEdges.train + selected.splitEdges.validation, 4),
+    architectureId: 'summer-winter-composite-artifact',
+    sourceSetId: 'ngas-summer-alpha+ngas-winter-alpha',
+    sourceWeightMode: 'component-selected',
+    sizingMode: 'component-selected',
+    rowSelectionPolicy: 'material-summer-else-material-winter-else-shared-fallback',
+    selectionUsedHoldout: false,
+    componentStrategyIds: selected.componentStrategyIds.join('|'),
+    gasOverlayRows: summaryMetrics.gasOverlayRows,
+    materialRows: summaryMetrics.materialRows,
+    indexFallbackRows: summaryMetrics.indexFallbackRows,
+    summerGasRows: selected.componentTradeCounts.summer,
+    winterGasRows: selected.componentTradeCounts.winter,
+    trainReturnPct: selected.trainMetrics.totalReturnPct,
+    trainIndexReturnPct: selected.indexMetrics.train.totalReturnPct,
+    trainEdgePct: selected.splitEdges.train,
+    trainSharpe: selected.trainMetrics.sharpe,
+    trainMaxDrawdownPct: selected.trainMetrics.maxDrawdownPct,
+    validationReturnPct: selected.validationMetrics.totalReturnPct,
+    validationIndexReturnPct: selected.indexMetrics.validation.totalReturnPct,
+    validationEdgePct: selected.splitEdges.validation,
+    validationSharpe: selected.validationMetrics.sharpe,
+    validationMaxDrawdownPct: selected.validationMetrics.maxDrawdownPct,
+    holdoutReturnPct: selected.holdoutMetrics.totalReturnPct,
+    holdoutIndexReturnPct: selected.indexMetrics.holdout.totalReturnPct,
+    holdoutEdgePct: selected.splitEdges.holdout,
+    holdoutSharpe: selected.holdoutMetrics.sharpe,
+    holdoutMaxDrawdownPct: selected.holdoutMetrics.maxDrawdownPct,
+    allReturnPct: selected.allMetrics.totalReturnPct,
+    allIndexReturnPct: selected.indexMetrics.all.totalReturnPct,
+    allEdgePct: selected.splitEdges.all,
+    allSharpe: selected.allMetrics.sharpe,
+    allMaxDrawdownPct: selected.allMetrics.maxDrawdownPct,
+  }
+}
+
+function buildReport(summary) {
+  const selected = summary.selected
+  return `# ${STRATEGY_NAME}
+
+Generated at ${summary.generatedAt}.
+
+## Purpose
+
+${STRATEGY_NAME} is the checked-in all-year artifact for the existing NGAS Summer Alpha and NGAS Winter Alpha row selector. It does not add a new threshold, entry rule, or optimization layer: each date uses the exact material Summer row, else the exact material Winter row, else the shared US index basket fallback row.
+
+## Selected Candidate
+
+- Architecture: Summer/Winter composite artifact.
+- Source ledgers: ${selected.componentStrategyIds.join(' + ')}.
+- Row policy: ${selected.rowSelectionPolicy}
+- Material row definition: ${selected.materialRowDefinition}
+- Selection: no independent all-year parameter search; the component ledgers remain selected by their own train/validation contracts.
+- P-value: direct standalone all-year centered circular block bootstrap, not Fisher-combined component p-values.
+
+## Metrics
+
+| split | executed rows | strategy | index | edge | CAGR | Sharpe | Sortino | maxDD | exposure |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Train | ${selected.trainMetrics.tradeCount} | ${selected.trainMetrics.totalReturnPct}% | ${selected.indexMetrics.train.totalReturnPct}% | ${selected.splitEdges.train}% | ${selected.trainMetrics.cagrPct}% | ${selected.trainMetrics.sharpe} | ${selected.trainMetrics.sortino} | ${selected.trainMetrics.maxDrawdownPct}% | ${selected.trainMetrics.exposurePct}% |
+| Validation | ${selected.validationMetrics.tradeCount} | ${selected.validationMetrics.totalReturnPct}% | ${selected.indexMetrics.validation.totalReturnPct}% | ${selected.splitEdges.validation}% | ${selected.validationMetrics.cagrPct}% | ${selected.validationMetrics.sharpe} | ${selected.validationMetrics.sortino} | ${selected.validationMetrics.maxDrawdownPct}% | ${selected.validationMetrics.exposurePct}% |
+| Holdout | ${selected.holdoutMetrics.tradeCount} | ${selected.holdoutMetrics.totalReturnPct}% | ${selected.indexMetrics.holdout.totalReturnPct}% | ${selected.splitEdges.holdout}% | ${selected.holdoutMetrics.cagrPct}% | ${selected.holdoutMetrics.sharpe} | ${selected.holdoutMetrics.sortino} | ${selected.holdoutMetrics.maxDrawdownPct}% | ${selected.holdoutMetrics.exposurePct}% |
+| Full | ${selected.allMetrics.tradeCount} | ${selected.allMetrics.totalReturnPct}% | ${selected.indexMetrics.all.totalReturnPct}% | ${selected.splitEdges.all}% | ${selected.allMetrics.cagrPct}% | ${selected.allMetrics.sharpe} | ${selected.allMetrics.sortino} | ${selected.allMetrics.maxDrawdownPct}% | ${selected.allMetrics.exposurePct}% |
+
+## Component Rows
+
+| component | gas-overlay rows |
+| --- | ---: |
+| NGAS Summer Alpha | ${selected.componentTradeCounts.summer} |
+| NGAS Winter Alpha | ${selected.componentTradeCounts.winter} |
+| Index fallback | ${selected.indexFallbackRows} |
+| Material or cost-bearing rows | ${selected.materialRows} |
+
+## Anti-Overfit Check
+
+- Candidate count: ${summary.search.candidateCount}.
+- Eligible candidates: ${summary.search.eligibleCandidateCount}.
+- Holdout was not used for any all-year selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
+- Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
+- Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
+- Selection-adjusted p-value: ${summary.validation.realityCheck.selectionAdjustedPValue ?? 'n/a'}.
+- Observed active edge: ${summary.validation.realityCheck.observedAverageDailyEdgePct}% per day / ${summary.validation.realityCheck.observedAnnualizedEdgePct}% annualized.
+- Mean daily-edge 90% bootstrap interval: ${summary.validation.realityCheck.meanConfidenceIntervalDailyEdgePct.p05}% to ${summary.validation.realityCheck.meanConfidenceIntervalDailyEdgePct.p95}%.
+- Zero-edge null 90% interval: ${summary.validation.realityCheck.nullConfidenceIntervalDailyEdgePct.p05}% to ${summary.validation.realityCheck.nullConfidenceIntervalDailyEdgePct.p95}%.
+- Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks, minimum resolvable p-value ${summary.validation.realityCheck.minimumResolvablePValue}.
+
+## Verdict
+
+Load this as an active research-baseline artifact, not broker-ready. It preserves the current Summer/Winter row behavior exactly while making the all-year path reproducible as a checked-in ledger with its own direct bootstrap p-value.
+`
+}
+
+function main() {
+  const summerSummary = JSON.parse(readText(SUMMER_SUMMARY_FILE))
+  const winterSummary = JSON.parse(readText(WINTER_SUMMARY_FILE))
+  const summer = parseCsvWithHeaders(SUMMER_TRADES_FILE)
+  const winter = parseCsvWithHeaders(WINTER_TRADES_FILE)
+  const contractsByStrategyId = new Map([
+    [summerSummary.strategyId, summerSummary.contract],
+    [winterSummary.strategyId, winterSummary.contract],
+  ])
+  const rows = createCompositeRows(summer.rows, winter.rows, contractsByStrategyId)
+  const splits = splitRows(rows)
+  const edges = splitEdges(splits)
+  const annualEdges = splitAnnualEdges(splits)
+  const metricsBySplit = Object.fromEntries(Object.entries(splits).map(([split, splitRowsForMetrics]) => [split, metricsFromReturns(splitRowsForMetrics)]))
+  const indexMetricsBySplit = Object.fromEntries(Object.entries(splits).map(([split, splitRowsForMetrics]) => [split, metricsFromReturns(splitRowsForMetrics, 'indexReturnPct')]))
+  const realityCheck = blockBootstrapRealityCheck(rows)
+  const summaryMetrics = {
+    gasOverlayRows: rows.filter((row) => row.thesisKind !== 'index-fallback').length,
+    materialRows: rows.filter(isMaterialStrategyRow).length,
+    indexFallbackRows: rows.filter((row) => row.thesisKind === 'index-fallback').length,
+  }
+  const generatedAt = new Date().toISOString()
+  const selected = {
+    candidateId: STRATEGY_ID,
+    architectureLabel: 'Summer/Winter composite artifact',
+    sourceSetLabel: 'NGAS Summer Alpha + NGAS Winter Alpha',
+    sourceIds: [summerSummary.strategyId, winterSummary.strategyId],
+    componentStrategyIds: [summerSummary.strategyId, winterSummary.strategyId],
+    sourceWeightMode: 'component-selected',
+    sizingMode: 'component-selected',
+    allMetrics: metricsBySplit.all,
+    trainMetrics: metricsBySplit.train,
+    validationMetrics: metricsBySplit.validation,
+    holdoutMetrics: metricsBySplit.holdout,
+    indexMetrics: {
+      all: indexMetricsBySplit.all,
+      train: indexMetricsBySplit.train,
+      validation: indexMetricsBySplit.validation,
+      holdout: indexMetricsBySplit.holdout,
+    },
+    splitEdges: edges,
+    splitAnnualEdges: annualEdges,
+    rowSelectionPolicy: 'For each entry date, pick the material Summer Alpha row, else the material Winter Alpha row, else the identical no-cost index fallback row.',
+    materialRowDefinition: 'A source row is material when it has a non-index thesis, non-zero gas position, or non-zero trading cost.',
+    componentTradeCounts: {
+      summer: rows.filter((row) => row.componentStrategyId === summerSummary.strategyId && row.thesisKind !== 'index-fallback').length,
+      winter: rows.filter((row) => row.componentStrategyId === winterSummary.strategyId && row.thesisKind !== 'index-fallback').length,
+    },
+    indexFallbackRows: summaryMetrics.indexFallbackRows,
+    materialRows: summaryMetrics.materialRows,
+    sourceUniverse: sourceUniverseFor(rows),
+  }
+  const candidateRow = formatCandidateRow(selected, summaryMetrics)
+  const summary = {
+    generatedAt,
+    strategyId: STRATEGY_ID,
+    displayName: STRATEGY_NAME,
+    data: {
+      summerSummaryFile: path.relative(REPO_ROOT, SUMMER_SUMMARY_FILE),
+      summerSelectedTrades: path.relative(REPO_ROOT, SUMMER_TRADES_FILE),
+      winterSummaryFile: path.relative(REPO_ROOT, WINTER_SUMMARY_FILE),
+      winterSelectedTrades: path.relative(REPO_ROOT, WINTER_TRADES_FILE),
+      marketStartDate: selected.allMetrics.firstEntry,
+      marketEndDate: selected.allMetrics.lastExit,
+      marketDays: rows.length,
+    },
+    contract: {
+      trainEnd: 'component-specific',
+      validationEnd: 'component-specific',
+      holdoutStart: 'component-specific',
+      summerTrainEnd: summerSummary.contract.trainEnd,
+      summerValidationEnd: summerSummary.contract.validationEnd,
+      summerHoldoutStart: summerSummary.contract.holdoutStart,
+      winterTrainEnd: winterSummary.contract.trainEnd,
+      winterValidationEnd: winterSummary.contract.validationEnd,
+      winterHoldoutStart: winterSummary.contract.holdoutStart,
+      fallback: 'Unallocated capital remains in the configured target-weight US-INDEX-BASKET ETF fallback close-to-close.',
+      selectionPolicy: 'No independent all-year optimization. The artifact freezes the exact Summer/Winter material-row selector into its own ledger.',
+      signalTiming: 'Component source rows keep their source-lane timing contracts; this artifact only selects one already-validated daily source row per entry date.',
+      overfitControl: 'No all-year holdout rows are used for selection. The p-value is a direct centered circular block bootstrap on the generated all-year active-edge return stream.',
+      maxDrawdownPromotionFloorPct: MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
+    },
+    selected,
+    search: {
+      candidateCount: 1,
+      eligibleCandidateCount: 1,
+      selectionUsedHoldout: false,
+    },
+    validation: {
+      realityCheck,
+      componentRealityChecks: {
+        [summerSummary.strategyId]: summerSummary.validation.realityCheck,
+        [winterSummary.strategyId]: winterSummary.validation.realityCheck,
+      },
+    },
+    outputFiles: {
+      selectedTrades: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'selected-trades.csv')),
+      candidateSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'candidate-summary.csv')),
+      runSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'run-summary.json')),
+      report: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'report.md')),
+    },
+    candidates: [candidateRow],
+  }
+
+  const headers = unique([
+    'strategyId',
+    'variant',
+    'componentStrategyId',
+    'componentVariant',
+    ...summer.headers,
+    ...winter.headers,
+    'materialRow',
+    'activeReturnPct',
+    'split',
+  ])
+
+  writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), rowsToCsv(rows, headers))
+  writeText(path.join(OUTPUT_DIR, 'candidate-summary.csv'), rowsToCsv([candidateRow], Object.keys(candidateRow)))
+  writeText(path.join(OUTPUT_DIR, 'run-summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
+  writeText(path.join(OUTPUT_DIR, 'report.md'), buildReport(summary))
+
+  console.log(
+    [
+      `Selected ${STRATEGY_ID}`,
+      `return=${selected.allMetrics.totalReturnPct}%`,
+      `cagr=${selected.allMetrics.cagrPct}%`,
+      `sharpe=${selected.allMetrics.sharpe}`,
+      `maxDD=${selected.allMetrics.maxDrawdownPct}%`,
+      `holdoutEdge=${selected.splitEdges.holdout}%`,
+      `pValue=${realityCheck.pValue}`,
+      `rows=${rows.length}`,
+    ].join(' '),
+  )
+}
+
+main()

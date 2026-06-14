@@ -52,3 +52,6 @@ The new `volatility-mean-reversion/` lane is intentionally separate from the fiv
 - `meta-label-trade-filter/`
 - `weather-hybrid-rotation/`
 - `volatility-mean-reversion/`
+- `ngas-summer-alpha/`
+- `ngas-winter-alpha/`
+- `ngas-all-year-beta/`

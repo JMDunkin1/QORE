@@ -18,6 +18,7 @@
     "optimize:arctic-strategies": "node scripts/optimize-arctic-strategies.mjs",
     "optimize:ngas-winter-alpha": "node scripts/optimize-ngas-winter-alpha.mjs",
     "optimize:ngas-summer-alpha": "node scripts/optimize-ngas-summer-alpha.mjs",
+    "optimize:ngas-all-year-beta": "node scripts/optimize-ngas-all-year-beta.mjs",
     "install:command": "node scripts/install-command.mjs",
     "install:launch-agent": "node scripts/install-macos-launch-agent.mjs",
     "test:github-service": "node scripts/test-qore-git-service.mjs",

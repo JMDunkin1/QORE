@@ -6,9 +6,11 @@ import ngasWinterAlphaSummaryJson from '../../data/qore/research/strategy-agent-
 import ngasWinterAlphaTradesCsv from '../../data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv?raw'
 import ngasSummerAlphaSummaryJson from '../../data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json?raw'
 import ngasSummerAlphaTradesCsv from '../../data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv?raw'
+import ngasAllYearBetaSummaryJson from '../../data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json?raw'
+import ngasAllYearBetaTradesCsv from '../../data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv?raw'
 
 export type ArcticBlastStrategyFamily = 'weather-alpha' | 'weather-summer' | 'weather-all-year'
-export type ArcticBlastStrategyVariant = 'winter-alpha' | 'summer-alpha' | 'all-year-alpha'
+export type ArcticBlastStrategyVariant = 'winter-alpha' | 'summer-alpha' | 'all-year-beta'
 
 export type StrategyPromotionStatus = 'research-diagnostic' | 'research-baseline' | 'paper-candidate' | 'needs-more-validation'
 
@@ -320,6 +322,75 @@ type WinterAlphaSummary = {
   }
 }
 
+type AllYearBetaSummary = {
+  strategyId: string
+  displayName: string
+  candidates?: Array<Record<string, unknown>>
+  data: {
+    marketStartDate: string
+    marketEndDate: string
+  }
+  contract: {
+    fallback: string
+    selectionPolicy: string
+    signalTiming: string
+    overfitControl: string
+    maxDrawdownPromotionFloorPct: number
+  }
+  selected: {
+    candidateId: string
+    architectureLabel: string
+    sourceSetLabel: string
+    sourceIds: string[]
+    componentStrategyIds: string[]
+    sourceWeightMode: string
+    sizingMode: string
+    allMetrics: HybridSummaryMetrics
+    trainMetrics: HybridSummaryMetrics
+    validationMetrics: HybridSummaryMetrics
+    holdoutMetrics: HybridSummaryMetrics
+    indexMetrics: {
+      all: HybridSummaryMetrics
+      train: HybridSummaryMetrics
+      validation: HybridSummaryMetrics
+      holdout: HybridSummaryMetrics
+    }
+    splitEdges: {
+      train: number
+      validation: number
+      holdout: number
+      all: number
+    }
+    splitAnnualEdges: {
+      train: number
+      validation: number
+      holdout: number
+      all: number
+    }
+    rowSelectionPolicy: string
+    materialRowDefinition: string
+    componentTradeCounts: {
+      summer: number
+      winter: number
+    }
+    indexFallbackRows: number
+    materialRows: number
+    sourceUniverse: string[]
+  }
+  search: {
+    candidateCount: number
+    eligibleCandidateCount: number
+    selectionUsedHoldout: boolean
+  }
+  validation: {
+    realityCheck: RealityCheckSummary
+    componentRealityChecks: Record<string, RealityCheckSummary>
+  }
+  outputFiles: {
+    selectedTrades: string
+  }
+}
+
 type SeasonalAlphaSplitContract = {
   trainEnd: string
   validationEnd: string
@@ -419,13 +490,13 @@ export type ArcticBlastResearchBacktestResult = {
 
 const initialCapital = 100000
 const tradingDaysPerYear = 252
-const allYearAlphaStrategyId = 'ngas-all-year-alpha'
+const allYearBetaStrategyId = 'ngas-all-year-beta'
 const bootstrapPValuePromotionThreshold = 0.05
 const allYearMaxDrawdownPromotionFloorPct = -20
 
 const ngasWinterAlphaStrategyColor = '#d97706'
 const summerWeatherStrategyColor = '#db2777'
-const allYearAlphaStrategyColor = '#0f766e'
+const allYearBetaStrategyColor = '#0f766e'
 
 export const arcticBlastPromotionGates = [
   'Keep all gas overlay entries strictly after the signal-date close.',
@@ -433,7 +504,7 @@ export const arcticBlastPromotionGates = [
   'Keep NGAS Winter Alpha weather and volatility inputs frozen inside its own lane, not active strategies.',
   'Keep NGAS Winter Alpha marked needs-more-validation unless the frozen-input blend clears holdout edge and a bootstrap p-value below 0.05.',
   'Keep NGAS Summer Alpha marked needs-more-validation unless both cooling-season sides clear holdout edge and a bootstrap p-value below 0.05.',
-  'Let NGAS All-Year Alpha use its own composite holdout edge, combined bootstrap p-value, and drawdown guard instead of inheriting component sleeve gates.',
+  'Let NGAS All-Year Beta use its own checked-in composite artifact, direct bootstrap p-value, and drawdown guard instead of inheriting component sleeve gates.',
   'Prove a non-overlapping paper ledger before any broker adapter exists.',
   'Separate ETF proxy results from futures-grade Henry Hub contract results.',
   'Require human approval for promotion from research-baseline to paper-candidate.',
@@ -551,70 +622,6 @@ function candidateDiagnosticsFromStrategies(strategies: ArcticBlastResearchStrat
   }
 }
 
-function realityCheckFromStrategy(strategy: ArcticBlastResearchStrategy) {
-  const realityCheck = strategy.params.realityCheck
-  if (!realityCheck || typeof realityCheck !== 'object') return null
-  const value = realityCheck as Partial<RealityCheckSummary>
-  return typeof value.pValue === 'number' && Number.isFinite(value.pValue) ? (value as RealityCheckSummary) : null
-}
-
-function fisherCombinedPValue(pValues: number[]) {
-  const safePValues = pValues
-    .map((value) => Math.max(Number.MIN_VALUE, Math.min(1, value)))
-    .filter((value) => Number.isFinite(value) && value > 0 && value <= 1)
-  if (!safePValues.length) return 1
-  if (safePValues.length === 1) return safePValues[0]
-
-  const halfStatistic = -safePValues.reduce((sum, value) => sum + Math.log(value), 0)
-  let term = 1
-  let survivalSum = 1
-  for (let index = 1; index < safePValues.length; index += 1) {
-    term *= halfStatistic / index
-    survivalSum += term
-  }
-  return Math.max(0, Math.min(1, Math.exp(-halfStatistic) * survivalSum))
-}
-
-function allYearRealityCheckFromComponents(
-  trades: ArcticBlastTrade[],
-  sourceStrategies: ArcticBlastResearchStrategy[],
-): RealityCheckSummary | null {
-  const componentChecks = sourceStrategies
-    .map((strategy) => ({ strategy, realityCheck: realityCheckFromStrategy(strategy) }))
-    .filter((entry): entry is { strategy: ArcticBlastResearchStrategy; realityCheck: RealityCheckSummary } => Boolean(entry.realityCheck))
-  if (!componentChecks.length) return null
-
-  const dailyEdgePct = trades.map((trade) => (trade.netReturnPct ?? 0) - (trade.indexReturnPct ?? 0))
-  const observedAverageDailyEdgePct = round(mean(dailyEdgePct), 5)
-  const componentPValues = Object.fromEntries(componentChecks.map(({ strategy, realityCheck }) => [strategy.name, realityCheck.pValue]))
-  const componentSingleCandidatePValues = componentChecks.map(({ realityCheck }) => realityCheck.singleCandidatePValue ?? realityCheck.pValue)
-  const componentMinimumPValues = componentChecks
-    .map(({ realityCheck }) => realityCheck.minimumResolvablePValue)
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
-
-  return {
-    method: 'Fisher combined component reality-check p-values',
-    comparison: 'all-year composite net daily return minus US index basket daily return',
-    alternative: 'greater-than-zero daily active edge',
-    observedAverageDailyEdgePct,
-    observedAnnualizedEdgePct: round(observedAverageDailyEdgePct * tradingDaysPerYear, 2),
-    pValue: round(fisherCombinedPValue(componentChecks.map(({ realityCheck }) => realityCheck.pValue)), 6),
-    singleCandidatePValue: round(fisherCombinedPValue(componentSingleCandidatePValues), 6),
-    selectionAdjustedPValue: round(fisherCombinedPValue(componentChecks.map(({ realityCheck }) => realityCheck.pValue)), 6),
-    candidateFamilySize: componentChecks.reduce((sum, { realityCheck }) => sum + (realityCheck.candidateFamilySize ?? 1), 0),
-    bestObservedCandidateId: allYearAlphaStrategyId,
-    bestObservedAverageDailyEdgePct: observedAverageDailyEdgePct,
-    dailyActiveVolPct: round(std(dailyEdgePct) * Math.sqrt(tradingDaysPerYear), 4),
-    standardErrorDailyEdgePct: round(std(dailyEdgePct) / Math.sqrt(Math.max(dailyEdgePct.length, 1)), 5),
-    sampleCount: trades.length,
-    activeOverlayDays: trades.filter((trade) => trade.thesisKind !== 'index-fallback').length,
-    minimumResolvablePValue: componentMinimumPValues.length ? round(fisherCombinedPValue(componentMinimumPValues), 6) : undefined,
-    iterations: Math.min(...componentChecks.map(({ realityCheck }) => realityCheck.iterations)),
-    blockLength: Math.max(...componentChecks.map(({ realityCheck }) => realityCheck.blockLength)),
-    componentPValues,
-  }
-}
-
 function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVariant): ArcticBlastTrade[] {
   return parseCsv<Record<string, string>>(csv).map((row) => ({
     strategyId: row.strategyId,
@@ -650,6 +657,8 @@ function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVar
     ungReturnPct: numberFrom(row.ungReturnPct),
     tradingCostPct: numberFrom(row.tradingCostPct),
     componentThesisKinds: row.componentThesisKinds ? row.componentThesisKinds.split('|').filter(Boolean) : [],
+    componentStrategyId: row.componentStrategyId || undefined,
+    componentVariant: row.componentVariant as ArcticBlastStrategyVariant | undefined,
     weatherResolutionPolicy: row.weatherResolutionPolicy || undefined,
     weatherResolutionSource: row.weatherResolutionSource || undefined,
     weatherResolutionIssueDate: row.weatherResolutionIssueDate || undefined,
@@ -921,7 +930,7 @@ function dailyTradesByEntryDate(trades: ArcticBlastTrade[], label: string) {
   const byDate = new Map<string, ArcticBlastTrade>()
   trades.forEach((trade) => {
     if (byDate.has(trade.entryTradeDate)) {
-      throw new Error(`${label} has multiple rows for ${trade.entryTradeDate}; NGAS All-Year Alpha expects one daily row per source lane.`)
+      throw new Error(`${label} has multiple rows for ${trade.entryTradeDate}; NGAS All-Year Beta expects one daily row per source lane.`)
     }
     byDate.set(trade.entryTradeDate, trade)
   })
@@ -931,8 +940,8 @@ function dailyTradesByEntryDate(trades: ArcticBlastTrade[], label: string) {
 function createCompositeTrade(trade: ArcticBlastTrade): ArcticBlastTrade {
   const compositeTrade: ArcticBlastTrade = {
     ...trade,
-    strategyId: allYearAlphaStrategyId,
-    variant: 'all-year-alpha',
+    strategyId: allYearBetaStrategyId,
+    variant: 'all-year-beta',
     componentStrategyId: trade.strategyId,
     componentVariant: trade.variant,
   }
@@ -942,7 +951,7 @@ function createCompositeTrade(trade: ArcticBlastTrade): ArcticBlastTrade {
   return compositeTrade
 }
 
-function combineAllYearAlphaTrades(summerTrades: ArcticBlastTrade[], winterTrades: ArcticBlastTrade[]) {
+function combineAllYearBetaTrades(summerTrades: ArcticBlastTrade[], winterTrades: ArcticBlastTrade[]) {
   const summerByDate = dailyTradesByEntryDate(summerTrades, 'NGAS Summer Alpha')
   const winterByDate = dailyTradesByEntryDate(winterTrades, 'NGAS Winter Alpha')
   const entryDates = [...new Set([...summerByDate.keys(), ...winterByDate.keys()])].sort()
@@ -954,7 +963,7 @@ function combineAllYearAlphaTrades(summerTrades: ArcticBlastTrade[], winterTrade
     const winterIsMaterial = winterTrade ? isMaterialStrategyRow(winterTrade) : false
 
     if (summerTrade && winterTrade && summerIsMaterial && winterIsMaterial) {
-      throw new Error(`NGAS All-Year Alpha conflict on ${entryDate}: both summer and winter lanes have material rows.`)
+      throw new Error(`NGAS All-Year Beta conflict on ${entryDate}: both summer and winter lanes have material rows.`)
     }
     if (
       summerTrade &&
@@ -963,13 +972,104 @@ function combineAllYearAlphaTrades(summerTrades: ArcticBlastTrade[], winterTrade
       !winterIsMaterial &&
       Math.abs(summerTrade.netReturnPct - winterTrade.netReturnPct) > 0.0001
     ) {
-      throw new Error(`NGAS All-Year Alpha fallback mismatch on ${entryDate}; refusing to pick between different idle rows.`)
+      throw new Error(`NGAS All-Year Beta fallback mismatch on ${entryDate}; refusing to pick between different idle rows.`)
     }
 
     const selectedTrade = summerIsMaterial ? summerTrade : winterIsMaterial ? winterTrade : summerTrade ?? winterTrade
-    if (!selectedTrade) throw new Error(`NGAS All-Year Alpha missing source row for ${entryDate}.`)
+    if (!selectedTrade) throw new Error(`NGAS All-Year Beta missing source row for ${entryDate}.`)
     return createCompositeTrade(selectedTrade)
   })
+}
+
+function assertClose(label: string, actual: number | undefined, expected: number | undefined, tolerance = 0.0001) {
+  const actualValue = actual ?? 0
+  const expectedValue = expected ?? 0
+  if (Math.abs(actualValue - expectedValue) > tolerance) {
+    throw new Error(`${label} drifted: expected ${expectedValue}, got ${actualValue}.`)
+  }
+}
+
+function assertEqual(label: string, actual: unknown, expected: unknown) {
+  if (actual !== expected) throw new Error(`${label} drifted: expected ${String(expected)}, got ${String(actual)}.`)
+}
+
+function assertSplitMetrics(
+  label: string,
+  actual: { train: number; validation: number; holdout: number; all: number },
+  expected: { train: number; validation: number; holdout: number; all: number },
+) {
+  assertClose(`${label}.train`, actual.train, expected.train, 0.01)
+  assertClose(`${label}.validation`, actual.validation, expected.validation, 0.01)
+  assertClose(`${label}.holdout`, actual.holdout, expected.holdout, 0.01)
+  assertClose(`${label}.all`, actual.all, expected.all, 0.01)
+}
+
+function assertAllYearBetaArtifact(
+  artifactTrades: ArcticBlastTrade[],
+  expectedTrades: ArcticBlastTrade[],
+  summary: AllYearBetaSummary,
+  contractsByStrategyId: Map<string, SeasonalAlphaSplitContract>,
+) {
+  assertEqual('NGAS All-Year Beta row count', artifactTrades.length, expectedTrades.length)
+
+  const textFields = [
+    'entryTradeDate',
+    'targetTradeDate',
+    'sourceId',
+    'windowId',
+    'thesisKind',
+    'direction',
+    'strategyId',
+    'variant',
+    'componentStrategyId',
+    'componentVariant',
+  ] as const
+  const numberFields = [
+    'leadDays',
+    'weightedAnomalyF',
+    'coveragePct',
+    'grossReturnPct',
+    'netReturnPct',
+    'indexReturnPct',
+    'ungPosition',
+    'tradingCostPct',
+  ] as const
+
+  artifactTrades.forEach((artifactTrade, index) => {
+    const expectedTrade = expectedTrades[index]
+    if (!expectedTrade) throw new Error(`NGAS All-Year Beta artifact has unexpected row ${index}.`)
+
+    textFields.forEach((field) => {
+      assertEqual(`NGAS All-Year Beta ${field} row ${index}`, artifactTrade[field] ?? '', expectedTrade[field] ?? '')
+    })
+    numberFields.forEach((field) => {
+      assertClose(`NGAS All-Year Beta ${field} row ${index}`, artifactTrade[field] ?? 0, expectedTrade[field] ?? 0, 0.0001)
+    })
+  })
+
+  const metrics = dailyBacktestMetricsFromTrades(artifactTrades)
+  const expectedMetrics = summary.selected.allMetrics
+  assertClose('NGAS All-Year Beta totalReturnPct', metrics.totalReturnPct, expectedMetrics.totalReturnPct, 0.01)
+  assertClose('NGAS All-Year Beta cagrPct', metrics.cagrPct, expectedMetrics.cagrPct, 0.01)
+  assertClose('NGAS All-Year Beta annualVolPct', metrics.annualVolPct, expectedMetrics.annualVolPct, 0.01)
+  assertClose('NGAS All-Year Beta sharpe', metrics.sharpe, expectedMetrics.sharpe, 0.01)
+  assertClose('NGAS All-Year Beta sortino', metrics.sortino, expectedMetrics.sortino, 0.01)
+  assertClose('NGAS All-Year Beta maxDrawdownPct', metrics.maxDrawdownPct, expectedMetrics.maxDrawdownPct, 0.01)
+  assertClose('NGAS All-Year Beta winRatePct', metrics.winRatePct, expectedMetrics.winRatePct, 0.1)
+  assertClose('NGAS All-Year Beta profitFactor', metrics.profitFactor, expectedMetrics.profitFactor, 0.01)
+  assertClose('NGAS All-Year Beta tradeCount', metrics.tradeCount, expectedMetrics.tradeCount, 0.01)
+  assertClose('NGAS All-Year Beta exposurePct', metrics.exposurePct, expectedMetrics.exposurePct, 0.1)
+  assertClose('NGAS All-Year Beta turnover', metrics.turnover, expectedMetrics.turnover, 0.01)
+  assertClose('NGAS All-Year Beta var95Pct', metrics.var95Pct, expectedMetrics.var95Pct, 0.01)
+  assertClose('NGAS All-Year Beta cvar95Pct', metrics.cvar95Pct, expectedMetrics.cvar95Pct, 0.01)
+  assertClose('NGAS All-Year Beta averageDailyPnlPct', metrics.averageDailyPnlPct, expectedMetrics.averageDailyPnlPct, 0.001)
+
+  assertSplitMetrics('NGAS All-Year Beta splitEdges', splitEdgesFromTrades(artifactTrades, contractsByStrategyId), summary.selected.splitEdges)
+  assertSplitMetrics(
+    'NGAS All-Year Beta splitAnnualEdges',
+    splitAnnualEdgesFromTrades(artifactTrades, contractsByStrategyId),
+    summary.selected.splitAnnualEdges,
+  )
 }
 
 function compoundReturnPct(trades: ArcticBlastTrade[], returnKey: 'netReturnPct' | 'indexReturnPct') {
@@ -1038,25 +1138,6 @@ function dailyBacktestMetricsFromTrades(trades: ArcticBlastTrade[]): BacktestMet
     var95Pct: round(var95 * 100, 2),
     cvar95Pct: round(mean(cvarSlice) * 100, 2),
     averageDailyPnlPct: round(averageDailyReturn * 100, 3),
-  }
-}
-
-function researchMetricsFromDailyTrades(trades: ArcticBlastTrade[]): ArcticBlastStrategyMetrics {
-  const metrics = dailyBacktestMetricsFromTrades(trades)
-  const orderedTrades = [...trades].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
-  return {
-    totalReturnPct: metrics.totalReturnPct,
-    cagrPct: metrics.cagrPct,
-    sharpe: metrics.sharpe,
-    sortino: metrics.sortino,
-    maxDrawdownPct: metrics.maxDrawdownPct,
-    winRatePct: metrics.winRatePct,
-    profitFactor: metrics.profitFactor,
-    tradeCount: metrics.tradeCount,
-    averageTradeReturnPct: metrics.averageDailyPnlPct,
-    averageHoldDays: 1,
-    firstEntry: orderedTrades[0]?.entryTradeDate ?? '',
-    lastExit: orderedTrades.at(-1)?.targetTradeDate ?? orderedTrades.at(-1)?.entryTradeDate ?? '',
   }
 }
 
@@ -1133,83 +1214,81 @@ function splitAnnualEdgesFromSelectedMetrics(selected: {
   }
 }
 
-function createNgasAllYearAlphaStrategy(
-  summerStrategy: ArcticBlastResearchStrategy,
-  winterStrategy: ArcticBlastResearchStrategy,
+function createNgasAllYearBetaStrategy(
+  summary: AllYearBetaSummary,
   trades: ArcticBlastTrade[],
+  sourceStrategies: ArcticBlastResearchStrategy[],
 ): ArcticBlastResearchStrategy {
-  const metrics = researchMetricsFromDailyTrades(trades)
-  const sourceStrategies = [summerStrategy, winterStrategy]
-  const splitEdges = splitEdgesFromTrades(
-    trades,
-    new Map<string, SeasonalAlphaSplitContract>([
-      [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaSummary.contract] as const,
-      [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaSummary.contract] as const,
-    ]),
-  )
-  const splitAnnualEdges = splitAnnualEdgesFromTrades(
-    trades,
-    new Map<string, SeasonalAlphaSplitContract>([
-      [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaSummary.contract] as const,
-      [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaSummary.contract] as const,
-    ]),
-  )
-  const realityCheck = allYearRealityCheckFromComponents(trades, sourceStrategies)
+  const metrics = createHybridMetrics(summary)
+  const { selected, contract } = summary
+  const realityCheck = summary.validation.realityCheck
+  const drawdownPromotionFloorPct = Number.isFinite(contract.maxDrawdownPromotionFloorPct)
+    ? contract.maxDrawdownPromotionFloorPct
+    : allYearMaxDrawdownPromotionFloorPct
   const promotionStatus: StrategyPromotionStatus =
-    splitEdges.holdout > 0 &&
+    selected.splitEdges.holdout > 0 &&
     clearsBootstrapPromotionGate(realityCheck?.pValue) &&
-    metrics.maxDrawdownPct > allYearMaxDrawdownPromotionFloorPct
+    metrics.maxDrawdownPct > drawdownPromotionFloorPct
       ? 'research-baseline'
       : 'needs-more-validation'
 
   return {
-    id: allYearAlphaStrategyId,
-    name: 'NGAS All-Year Alpha',
+    id: summary.strategyId,
+    name: summary.displayName,
     family: 'weather-all-year',
-    variant: 'all-year-alpha',
+    variant: 'all-year-beta',
     instrument: 'NG',
-    desk: 'All-year natural gas composite',
+    desk: 'All-year natural gas beta artifact',
     thesis:
-      'Convenience composite of the existing NGAS Summer Alpha and NGAS Winter Alpha ledgers: use the exact source-lane row when that lane has an active or cost-bearing gas row, otherwise use the single shared US index basket fallback row.',
+      'Checked-in all-year artifact of the existing NGAS Summer Alpha and NGAS Winter Alpha ledgers: use the exact source-lane row when that lane has an active or cost-bearing gas row, otherwise use the single shared US index basket fallback row.',
     directionPolicy:
       'No independent signal rules: Summer Alpha owns summer heat and fade rows, Winter Alpha owns cold, warm, and winter fade rows, and the loader fails if both source lanes ever produce material rows on the same date.',
     promotionStatus,
     riskLevel: riskLevelFor(metrics),
-    color: allYearAlphaStrategyColor,
+    color: allYearBetaStrategyColor,
     liveRoutingEnabled: false,
-    sourceUniverse: sourceUniverseFor(trades),
+    sourceUniverse: selected.sourceUniverse ?? sourceUniverseFor(trades),
     timingConvention: 'daily-weather-rotation-v1',
     returnColumn: 'netReturnPct',
-    universe: `NGAS source ledgers and US index basket daily bars from ${metrics.firstEntry} through ${metrics.lastExit}.`,
+    universe: `NGAS source ledgers and US index basket daily bars from ${summary.data.marketStartDate} through ${summary.data.marketEndDate}.`,
     theoryAlignment:
-      'No new alpha thesis. This row selector preserves the current seasonal strategies while avoiding manual switching between their active and fallback daily paths.',
+      'No new alpha thesis or thresholds. The artifact freezes the current seasonal row selector so the all-year path is reproducible without changing source-lane behavior.',
     samplePolicy:
-      `Composite wrapper only; no re-optimization or new thresholds. Promotion uses the composite holdout edge, combined component bootstrap p-value below ${bootstrapPValuePromotionThreshold}, and max drawdown above ${allYearMaxDrawdownPromotionFloorPct}%; component sleeve validation remains in ${summerStrategy.name} and ${winterStrategy.name}.`,
-    tradeFile: `${summerStrategy.tradeFile} + ${winterStrategy.tradeFile}`,
+      `${contract.selectionPolicy} ${contract.overfitControl} Promotion uses the direct all-year bootstrap p-value below ${bootstrapPValuePromotionThreshold}, positive holdout edge, and max drawdown above ${drawdownPromotionFloorPct}%.`,
+    tradeFile: summary.outputFiles.selectedTrades,
     params: {
-      candidateId: allYearAlphaStrategyId,
+      candidateId: selected.candidateId,
       family: 'weather-all-year',
-      variant: 'all-year-alpha',
-      componentStrategyIds: sourceStrategies.map((strategy) => strategy.id),
-      componentStrategyNames: sourceStrategies.map((strategy) => strategy.name),
-      rowSelectionPolicy:
-        'For each entry date, pick the material Summer Alpha row, else the material Winter Alpha row, else the identical no-cost index fallback row.',
-      materialRowDefinition:
-        'A source row is material when it has a non-index thesis, non-zero gas position, or non-zero trading cost.',
-      splitEdges,
-      splitAnnualEdges,
+      variant: 'all-year-beta',
+      architecture: selected.architectureLabel,
+      sourceSet: selected.sourceSetLabel,
+      sourceIds: selected.sourceIds,
+      componentStrategyIds: selected.componentStrategyIds,
+      sourceWeightMode: selected.sourceWeightMode,
+      sizingMode: selected.sizingMode,
+      fallback: contract.fallback,
+      rowSelectionPolicy: selected.rowSelectionPolicy,
+      materialRowDefinition: selected.materialRowDefinition,
+      splitEdges: selected.splitEdges,
+      splitAnnualEdges: selected.splitAnnualEdges,
+      indexMetrics: selected.indexMetrics,
+      search: summary.search,
       candidateDiagnostics: candidateDiagnosticsFromStrategies(sourceStrategies),
-      ...(realityCheck ? { realityCheck } : {}),
-      componentTradeCounts: {
-        summer: trades.filter((trade) => trade.componentStrategyId === summerStrategy.id && trade.thesisKind !== 'index-fallback').length,
-        winter: trades.filter((trade) => trade.componentStrategyId === winterStrategy.id && trade.thesisKind !== 'index-fallback').length,
-      },
-      indexFallbackRows: trades.filter((trade) => trade.thesisKind === 'index-fallback').length,
-      sourceUniverse: sourceUniverseFor(trades),
+      allYearArtifactDiagnostics: candidateDiagnosticsFromSummary(summary),
+      realityCheck,
+      componentRealityChecks: summary.validation.componentRealityChecks,
+      componentTradeCounts: selected.componentTradeCounts,
+      indexFallbackRows: selected.indexFallbackRows,
+      materialRows: selected.materialRows,
+      selectionPolicy: contract.selectionPolicy,
+      signalTiming: contract.signalTiming,
+      overfitControl: contract.overfitControl,
+      maxDrawdownPromotionFloorPct: drawdownPromotionFloorPct,
+      sourceUniverse: selected.sourceUniverse ?? sourceUniverseFor(trades),
     },
     metrics,
     caveat:
-      'This is not a separately optimized strategy. It exists so the dashboard can follow the current summer and winter ledgers as one all-year path without changing their row-level behavior.',
+      `Checked-in artifact, not broker-ready. It preserves exact Summer/Winter row behavior, has direct all-year bootstrap p-value ${realityCheck.pValue}, and still needs non-overlapping paper validation before live consideration.`,
   }
 }
 
@@ -1284,25 +1363,40 @@ const ngasSummerAlphaSummary = JSON.parse(ngasSummerAlphaSummaryJson) as DualWea
 const ngasSummerAlphaTrades = parseWeatherRotationTrades(ngasSummerAlphaTradesCsv, 'summer-alpha')
 const ngasWinterAlphaSummary = JSON.parse(ngasWinterAlphaSummaryJson) as WinterAlphaSummary
 const ngasWinterAlphaTrades = parseWeatherRotationTrades(ngasWinterAlphaTradesCsv, 'winter-alpha')
-const ngasAllYearAlphaTrades = combineAllYearAlphaTrades(ngasSummerAlphaTrades, ngasWinterAlphaTrades)
+const ngasAllYearBetaSummary = JSON.parse(ngasAllYearBetaSummaryJson) as AllYearBetaSummary
+const ngasAllYearBetaTrades = parseWeatherRotationTrades(ngasAllYearBetaTradesCsv, 'all-year-beta')
+const ngasAllYearBetaExpectedTrades = combineAllYearBetaTrades(ngasSummerAlphaTrades, ngasWinterAlphaTrades)
+const allYearBetaSplitContractsByStrategyId = new Map<string, SeasonalAlphaSplitContract>([
+  [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaSummary.contract],
+  [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaSummary.contract],
+])
+assertAllYearBetaArtifact(
+  ngasAllYearBetaTrades,
+  ngasAllYearBetaExpectedTrades,
+  ngasAllYearBetaSummary,
+  allYearBetaSplitContractsByStrategyId,
+)
 const ngasSummerAlphaStrategy = createNgasSummerAlphaStrategy(ngasSummerAlphaSummary, ngasSummerAlphaTrades)
 const ngasWinterAlphaStrategy = createNgasWinterAlphaStrategy(ngasWinterAlphaSummary, ngasWinterAlphaTrades)
-const ngasAllYearAlphaStrategy = createNgasAllYearAlphaStrategy(ngasSummerAlphaStrategy, ngasWinterAlphaStrategy, ngasAllYearAlphaTrades)
+const ngasAllYearBetaStrategy = createNgasAllYearBetaStrategy(ngasAllYearBetaSummary, ngasAllYearBetaTrades, [
+  ngasSummerAlphaStrategy,
+  ngasWinterAlphaStrategy,
+])
 const tradesByStrategyId = new Map([
   [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaTrades] as const,
   [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaTrades] as const,
-  [allYearAlphaStrategyId, ngasAllYearAlphaTrades] as const,
+  [ngasAllYearBetaSummary.strategyId, ngasAllYearBetaTrades] as const,
 ])
 const dailyRotationMetricsByStrategyId = new Map([
   [ngasSummerAlphaSummary.strategyId, createHybridBacktestMetrics(ngasSummerAlphaSummary)] as const,
   [ngasWinterAlphaSummary.strategyId, createHybridBacktestMetrics(ngasWinterAlphaSummary)] as const,
-  [allYearAlphaStrategyId, dailyBacktestMetricsFromTrades(ngasAllYearAlphaTrades)] as const,
+  [ngasAllYearBetaSummary.strategyId, createHybridBacktestMetrics(ngasAllYearBetaSummary)] as const,
 ])
 
 export const arcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = [
   ngasSummerAlphaStrategy,
   ngasWinterAlphaStrategy,
-  ngasAllYearAlphaStrategy,
+  ngasAllYearBetaStrategy,
 ]
 
 export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResult[] = arcticBlastResearchStrategies.map((strategy) => {

@@ -79,7 +79,7 @@ These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS fore
 
 - Opens on the tracked `data/qore` research catalog without bundled starter rows.
 - Shows source-backed market, weather, forecast-calendar, signal-score, and signal-return inventory.
-- Loads two active research strategies: NGAS Summer Alpha and NGAS Winter Alpha.
+- Loads three active research strategies: NGAS Summer Alpha, NGAS Winter Alpha, and NGAS All-Year Beta.
 - Keeps older weather, volatility, and strict-theory lanes archived as research evidence instead of active baselines.
 - Joins explicitly imported weather and market rows by `date` for session-only lab checks.
 - Tracks imported weather forecast quality with HDD/CDD MAE, RMSE, R2, directional accuracy, cold-surprise recall, and calibration.
@@ -126,6 +126,14 @@ npm run optimize:ngas-winter-alpha
 ```
 
 The selected winter run made `347.49%` full-sample versus `117.16%` for the VOO/QQQM index basket, with `-23.5%` max drawdown. Train return was `103%`, validation was `59.95%`, and holdout was `37.81%`; holdout edge versus the index basket was `28.29%`. The selected blend uses frozen-input holds, a `400 Bcf` cold-follow storage-drawdown gate, adverse standalone-fade vetoes, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+
+The third active strategy is `ngas-all-year-beta`. It is its own checked-in artifact, but it does not add a new threshold, entry rule, or optimization layer: each date uses the exact material Summer Alpha row, else the exact material Winter Alpha row, else the shared no-cost index fallback row.
+
+```bash
+npm run optimize:ngas-all-year-beta
+```
+
+The selected beta artifact made `877.16%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-15.86%` max drawdown. Train return was `186.29%`, validation was `70.74%`, and holdout was `99.9%`; holdout edge versus the index basket was `69.74%`. Its direct all-year centered circular block bootstrap p-value is `0.00005`, replacing the old Fisher-combined component p-value. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
 
 ## Non-Live Execution Architecture
 
