@@ -1,4 +1,5 @@
 import Papa from 'papaparse'
+import { indexBasketSymbol } from '../execution'
 import type { ExecutionInstrumentCode, StrategySignalIntent, TradeDirection } from '../execution'
 import type { BacktestMetrics, EquityPoint } from '../types'
 import ngasWinterAlphaSummaryJson from '../../data/qore/research/strategy-agent-runs/ngas-winter-alpha/run-summary.json?raw'
@@ -6,8 +7,8 @@ import ngasWinterAlphaTradesCsv from '../../data/qore/research/strategy-agent-ru
 import ngasSummerAlphaSummaryJson from '../../data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json?raw'
 import ngasSummerAlphaTradesCsv from '../../data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv?raw'
 
-export type ArcticBlastStrategyFamily = 'weather-alpha' | 'weather-summer'
-export type ArcticBlastStrategyVariant = 'winter-alpha' | 'summer-alpha'
+export type ArcticBlastStrategyFamily = 'weather-alpha' | 'weather-summer' | 'weather-all-year'
+export type ArcticBlastStrategyVariant = 'winter-alpha' | 'summer-alpha' | 'all-year-alpha'
 
 export type StrategyPromotionStatus = 'research-diagnostic' | 'research-baseline' | 'paper-candidate' | 'needs-more-validation'
 
@@ -58,6 +59,9 @@ export type ArcticBlastSignalInput = {
   direction: TradeDirection
   confidence: number
   expectedReturnPct?: number
+  indexFraction?: number
+  gasPosition?: number
+  cashFraction?: number
   maxHoldingDays?: number
   notes?: string[]
 }
@@ -313,6 +317,12 @@ type WinterAlphaSummary = {
   }
 }
 
+type SeasonalAlphaSplitContract = {
+  trainEnd: string
+  validationEnd: string
+  holdoutStart: string
+}
+
 export type ArcticBlastTrade = {
   strategyId: string
   variant: ArcticBlastStrategyVariant
@@ -345,7 +355,10 @@ export type ArcticBlastTrade = {
   indexReturnPct?: number
   ungPosition?: number
   ungReturnPct?: number
+  tradingCostPct?: number
   componentThesisKinds?: string[]
+  componentStrategyId?: string
+  componentVariant?: ArcticBlastStrategyVariant
   weatherResolutionPolicy?: string
   weatherResolutionSource?: string
   weatherResolutionIssueDate?: string
@@ -402,9 +415,12 @@ export type ArcticBlastResearchBacktestResult = {
 }
 
 const initialCapital = 100000
+const tradingDaysPerYear = 252
+const allYearAlphaStrategyId = 'ngas-all-year-alpha'
 
 const ngasWinterAlphaStrategyColor = '#d97706'
 const summerWeatherStrategyColor = '#db2777'
+const allYearAlphaStrategyColor = '#0f766e'
 
 export const arcticBlastPromotionGates = [
   'Keep all gas overlay entries strictly after the signal-date close.',
@@ -495,6 +511,7 @@ function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVar
     indexReturnPct: numberFrom(row.indexReturnPct),
     ungPosition: numberFrom(row.ungPosition),
     ungReturnPct: numberFrom(row.ungReturnPct),
+    tradingCostPct: numberFrom(row.tradingCostPct),
     componentThesisKinds: row.componentThesisKinds ? row.componentThesisKinds.split('|').filter(Boolean) : [],
     weatherResolutionPolicy: row.weatherResolutionPolicy || undefined,
     weatherResolutionSource: row.weatherResolutionSource || undefined,
@@ -745,6 +762,251 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
   }
 }
 
+function tradePosition(trade: ArcticBlastTrade) {
+  if (Number.isFinite(trade.ungPosition)) return trade.ungPosition ?? 0
+  if (trade.thesisKind === 'index-fallback') return 0
+  return trade.direction === 'short' ? -1 : 1
+}
+
+function isMaterialStrategyRow(trade: ArcticBlastTrade) {
+  return (
+    trade.thesisKind !== 'index-fallback' ||
+    Math.abs(trade.tradingCostPct ?? 0) > 0.000001 ||
+    Math.abs(tradePosition(trade)) > 0.000001
+  )
+}
+
+function dailyTradesByEntryDate(trades: ArcticBlastTrade[], label: string) {
+  const byDate = new Map<string, ArcticBlastTrade>()
+  trades.forEach((trade) => {
+    if (byDate.has(trade.entryTradeDate)) {
+      throw new Error(`${label} has multiple rows for ${trade.entryTradeDate}; NGAS All-Year Alpha expects one daily row per source lane.`)
+    }
+    byDate.set(trade.entryTradeDate, trade)
+  })
+  return byDate
+}
+
+function createCompositeTrade(trade: ArcticBlastTrade): ArcticBlastTrade {
+  const compositeTrade: ArcticBlastTrade = {
+    ...trade,
+    strategyId: allYearAlphaStrategyId,
+    variant: 'all-year-alpha',
+    componentStrategyId: trade.strategyId,
+    componentVariant: trade.variant,
+  }
+  delete compositeTrade.equity
+  delete compositeTrade.equityPct
+  delete compositeTrade.drawdownPct
+  return compositeTrade
+}
+
+function combineAllYearAlphaTrades(summerTrades: ArcticBlastTrade[], winterTrades: ArcticBlastTrade[]) {
+  const summerByDate = dailyTradesByEntryDate(summerTrades, 'NGAS Summer Alpha')
+  const winterByDate = dailyTradesByEntryDate(winterTrades, 'NGAS Winter Alpha')
+  const entryDates = [...new Set([...summerByDate.keys(), ...winterByDate.keys()])].sort()
+
+  return entryDates.map((entryDate) => {
+    const summerTrade = summerByDate.get(entryDate)
+    const winterTrade = winterByDate.get(entryDate)
+    const summerIsMaterial = summerTrade ? isMaterialStrategyRow(summerTrade) : false
+    const winterIsMaterial = winterTrade ? isMaterialStrategyRow(winterTrade) : false
+
+    if (summerTrade && winterTrade && summerIsMaterial && winterIsMaterial) {
+      throw new Error(`NGAS All-Year Alpha conflict on ${entryDate}: both summer and winter lanes have material rows.`)
+    }
+    if (
+      summerTrade &&
+      winterTrade &&
+      !summerIsMaterial &&
+      !winterIsMaterial &&
+      Math.abs(summerTrade.netReturnPct - winterTrade.netReturnPct) > 0.0001
+    ) {
+      throw new Error(`NGAS All-Year Alpha fallback mismatch on ${entryDate}; refusing to pick between different idle rows.`)
+    }
+
+    const selectedTrade = summerIsMaterial ? summerTrade : winterIsMaterial ? winterTrade : summerTrade ?? winterTrade
+    if (!selectedTrade) throw new Error(`NGAS All-Year Alpha missing source row for ${entryDate}.`)
+    return createCompositeTrade(selectedTrade)
+  })
+}
+
+function compoundReturnPct(trades: ArcticBlastTrade[], returnKey: 'netReturnPct' | 'indexReturnPct') {
+  const total = trades.reduce((equity, trade) => equity * (1 + (trade[returnKey] ?? 0) / 100), 1)
+  return round((total - 1) * 100, 2)
+}
+
+function profitFactor(returns: number[]) {
+  const grossWins = returns.filter((value) => value > 0).reduce((sum, value) => sum + value, 0)
+  const grossLosses = Math.abs(returns.filter((value) => value < 0).reduce((sum, value) => sum + value, 0))
+  if (!grossLosses) return grossWins ? Number.POSITIVE_INFINITY : 0
+  return grossWins / grossLosses
+}
+
+function dailyBacktestMetricsFromTrades(trades: ArcticBlastTrade[]): BacktestMetrics {
+  const orderedTrades = [...trades].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
+  const returns = orderedTrades.map((trade) => trade.netReturnPct / 100)
+  const negativeReturns = returns.filter((value) => value < 0)
+  const firstEntry = orderedTrades[0]?.entryTradeDate ?? ''
+  const lastExit = orderedTrades.at(-1)?.targetTradeDate ?? orderedTrades.at(-1)?.entryTradeDate ?? firstEntry
+  const years = firstEntry && lastExit ? daysBetween(firstEntry, lastExit) / 365.25 : 1
+  let equity = 1
+  let peak = 1
+  let maxDrawdownPct = 0
+
+  returns.forEach((dailyReturn) => {
+    equity = Math.max(0.000001, equity * (1 + dailyReturn))
+    peak = Math.max(peak, equity)
+    maxDrawdownPct = Math.min(maxDrawdownPct, ((equity - peak) / peak) * 100)
+  })
+
+  const totalReturnPct = round((equity - 1) * 100, 2)
+  const cagrPct = round((equity ** (1 / Math.max(years, 1 / 365.25)) - 1) * 100, 2)
+  const annualVol = std(returns) * Math.sqrt(tradingDaysPerYear)
+  const downsideVol = std(negativeReturns) * Math.sqrt(tradingDaysPerYear)
+  const averageDailyReturn = mean(returns)
+  const var95 = percentile(returns, 0.05)
+  const cvarSlice = returns.filter((value) => value <= var95)
+  const activeTradeCount = orderedTrades.filter((trade) => trade.thesisKind !== 'index-fallback').length
+
+  return {
+    totalReturnPct,
+    cagrPct,
+    annualVolPct: round(annualVol * 100, 2),
+    sharpe: round(annualVol ? (averageDailyReturn * tradingDaysPerYear) / annualVol : 0, 2),
+    sortino: round(downsideVol ? (averageDailyReturn * tradingDaysPerYear) / downsideVol : 0, 2),
+    maxDrawdownPct: round(maxDrawdownPct, 2),
+    calmar: round(Math.abs(maxDrawdownPct) ? cagrPct / Math.abs(maxDrawdownPct) : 0, 2),
+    winRatePct: round(returns.length ? (returns.filter((value) => value > 0).length / returns.length) * 100 : 0, 1),
+    profitFactor: round(profitFactor(returns), 2),
+    tradeCount: activeTradeCount,
+    exposurePct: round(mean(orderedTrades.map((trade) => Math.abs(tradePosition(trade)))) * 100, 1),
+    turnover: round(
+      orderedTrades.reduce((sum, trade, index) => sum + Math.abs(tradePosition(trade) - tradePosition(orderedTrades[index - 1] ?? ({ thesisKind: 'index-fallback' } as ArcticBlastTrade))), 0),
+      2,
+    ),
+    var95Pct: round(var95 * 100, 2),
+    cvar95Pct: round(mean(cvarSlice) * 100, 2),
+    averageDailyPnlPct: round(averageDailyReturn * 100, 3),
+  }
+}
+
+function researchMetricsFromDailyTrades(trades: ArcticBlastTrade[]): ArcticBlastStrategyMetrics {
+  const metrics = dailyBacktestMetricsFromTrades(trades)
+  const orderedTrades = [...trades].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
+  return {
+    totalReturnPct: metrics.totalReturnPct,
+    cagrPct: metrics.cagrPct,
+    sharpe: metrics.sharpe,
+    sortino: metrics.sortino,
+    maxDrawdownPct: metrics.maxDrawdownPct,
+    winRatePct: metrics.winRatePct,
+    profitFactor: metrics.profitFactor,
+    tradeCount: metrics.tradeCount,
+    averageTradeReturnPct: metrics.averageDailyPnlPct,
+    averageHoldDays: 1,
+    firstEntry: orderedTrades[0]?.entryTradeDate ?? '',
+    lastExit: orderedTrades.at(-1)?.targetTradeDate ?? orderedTrades.at(-1)?.entryTradeDate ?? '',
+  }
+}
+
+function splitNameForTrade(trade: ArcticBlastTrade, contractsByStrategyId: Map<string, SeasonalAlphaSplitContract>) {
+  const sourceStrategyId = trade.componentStrategyId ?? trade.strategyId
+  const contract = contractsByStrategyId.get(sourceStrategyId)
+  if (!contract) return 'all'
+  if (trade.entryTradeDate >= contract.holdoutStart) return 'holdout'
+  if (trade.entryTradeDate > contract.trainEnd && trade.entryTradeDate <= contract.validationEnd) return 'validation'
+  return 'train'
+}
+
+function splitEdgesFromTrades(
+  trades: ArcticBlastTrade[],
+  contractsByStrategyId: Map<string, SeasonalAlphaSplitContract>,
+) {
+  const splits = {
+    train: [] as ArcticBlastTrade[],
+    validation: [] as ArcticBlastTrade[],
+    holdout: [] as ArcticBlastTrade[],
+    all: trades,
+  }
+  trades.forEach((trade) => {
+    const split = splitNameForTrade(trade, contractsByStrategyId)
+    if (split !== 'all') splits[split].push(trade)
+  })
+  return {
+    train: round(compoundReturnPct(splits.train, 'netReturnPct') - compoundReturnPct(splits.train, 'indexReturnPct'), 2),
+    validation: round(compoundReturnPct(splits.validation, 'netReturnPct') - compoundReturnPct(splits.validation, 'indexReturnPct'), 2),
+    holdout: round(compoundReturnPct(splits.holdout, 'netReturnPct') - compoundReturnPct(splits.holdout, 'indexReturnPct'), 2),
+    all: round(compoundReturnPct(splits.all, 'netReturnPct') - compoundReturnPct(splits.all, 'indexReturnPct'), 2),
+  }
+}
+
+function createNgasAllYearAlphaStrategy(
+  summerStrategy: ArcticBlastResearchStrategy,
+  winterStrategy: ArcticBlastResearchStrategy,
+  trades: ArcticBlastTrade[],
+): ArcticBlastResearchStrategy {
+  const metrics = researchMetricsFromDailyTrades(trades)
+  const sourceStrategies = [summerStrategy, winterStrategy]
+  const promotionStatus: StrategyPromotionStatus = sourceStrategies.every((strategy) => strategy.promotionStatus === 'research-baseline')
+    ? 'research-baseline'
+    : 'needs-more-validation'
+  const splitEdges = splitEdgesFromTrades(
+    trades,
+    new Map<string, SeasonalAlphaSplitContract>([
+      [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaSummary.contract] as const,
+      [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaSummary.contract] as const,
+    ]),
+  )
+
+  return {
+    id: allYearAlphaStrategyId,
+    name: 'NGAS All-Year Alpha',
+    family: 'weather-all-year',
+    variant: 'all-year-alpha',
+    instrument: 'NG',
+    desk: 'All-year natural gas composite',
+    thesis:
+      'Convenience composite of the existing NGAS Summer Alpha and NGAS Winter Alpha ledgers: use the exact source-lane row when that lane has an active or cost-bearing gas row, otherwise use the single shared US index basket fallback row.',
+    directionPolicy:
+      'No independent signal rules: Summer Alpha owns summer heat and fade rows, Winter Alpha owns cold, warm, and winter fade rows, and the loader fails if both source lanes ever produce material rows on the same date.',
+    promotionStatus,
+    riskLevel: riskLevelFor(metrics),
+    color: allYearAlphaStrategyColor,
+    liveRoutingEnabled: false,
+    sourceUniverse: sourceUniverseFor(trades),
+    timingConvention: 'daily-weather-rotation-v1',
+    returnColumn: 'netReturnPct',
+    universe: `NGAS source ledgers and US index basket daily bars from ${metrics.firstEntry} through ${metrics.lastExit}.`,
+    theoryAlignment:
+      'No new alpha thesis. This row selector preserves the current seasonal strategies while avoiding manual switching between their active and fallback daily paths.',
+    samplePolicy:
+      `Composite wrapper only; no re-optimization or new thresholds. Component validation remains in ${summerStrategy.name} and ${winterStrategy.name}.`,
+    tradeFile: `${summerStrategy.tradeFile} + ${winterStrategy.tradeFile}`,
+    params: {
+      candidateId: allYearAlphaStrategyId,
+      family: 'weather-all-year',
+      variant: 'all-year-alpha',
+      componentStrategyIds: sourceStrategies.map((strategy) => strategy.id),
+      componentStrategyNames: sourceStrategies.map((strategy) => strategy.name),
+      rowSelectionPolicy:
+        'For each entry date, pick the material Summer Alpha row, else the material Winter Alpha row, else the identical no-cost index fallback row.',
+      materialRowDefinition:
+        'A source row is material when it has a non-index thesis, non-zero gas position, or non-zero trading cost.',
+      splitEdges,
+      componentTradeCounts: {
+        summer: trades.filter((trade) => trade.componentStrategyId === summerStrategy.id && trade.thesisKind !== 'index-fallback').length,
+        winter: trades.filter((trade) => trade.componentStrategyId === winterStrategy.id && trade.thesisKind !== 'index-fallback').length,
+      },
+      indexFallbackRows: trades.filter((trade) => trade.thesisKind === 'index-fallback').length,
+      sourceUniverse: sourceUniverseFor(trades),
+    },
+    metrics,
+    caveat:
+      'This is not a separately optimized strategy. It exists so the dashboard can follow the current summer and winter ledgers as one all-year path without changing their row-level behavior.',
+  }
+}
+
 function signedSplitEdge(value: number) {
   return `${value >= 0 ? '+' : ''}${round(value, 2)}%`
 }
@@ -772,13 +1034,13 @@ function curveFromTrades(trades: ArcticBlastTrade[]): ArcticBlastEquityPoint[] {
         hddError: round(trade.weightedAnomalyF, 2),
         position: direction,
         signal: Number.isFinite(trade.confidence) ? round((trade.confidence ?? 0) * Math.sign(direction), 3) : direction,
-        gasReturnPct: round(trade.netReturnPct, 3),
+        gasReturnPct: trade.netReturnPct,
         demandScore: Number.isFinite(trade.confidence) ? round(trade.confidence ?? 0, 3) : round(trade.rank, 3),
         storageBcf: Number.isFinite(trade.storageBcf) ? round(trade.storageBcf ?? 0, 2) : 0,
         closeScaled: null,
         sourceId: trade.sourceId,
         windowId: trade.windowId,
-        netReturnPct: round(trade.netReturnPct, 3),
+        netReturnPct: trade.netReturnPct,
       }
     })
 }
@@ -816,18 +1078,25 @@ const ngasSummerAlphaSummary = JSON.parse(ngasSummerAlphaSummaryJson) as DualWea
 const ngasSummerAlphaTrades = parseWeatherRotationTrades(ngasSummerAlphaTradesCsv, 'summer-alpha')
 const ngasWinterAlphaSummary = JSON.parse(ngasWinterAlphaSummaryJson) as WinterAlphaSummary
 const ngasWinterAlphaTrades = parseWeatherRotationTrades(ngasWinterAlphaTradesCsv, 'winter-alpha')
+const ngasAllYearAlphaTrades = combineAllYearAlphaTrades(ngasSummerAlphaTrades, ngasWinterAlphaTrades)
+const ngasSummerAlphaStrategy = createNgasSummerAlphaStrategy(ngasSummerAlphaSummary, ngasSummerAlphaTrades)
+const ngasWinterAlphaStrategy = createNgasWinterAlphaStrategy(ngasWinterAlphaSummary, ngasWinterAlphaTrades)
+const ngasAllYearAlphaStrategy = createNgasAllYearAlphaStrategy(ngasSummerAlphaStrategy, ngasWinterAlphaStrategy, ngasAllYearAlphaTrades)
 const tradesByStrategyId = new Map([
   [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaTrades] as const,
   [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaTrades] as const,
+  [allYearAlphaStrategyId, ngasAllYearAlphaTrades] as const,
 ])
 const dailyRotationMetricsByStrategyId = new Map([
   [ngasSummerAlphaSummary.strategyId, createHybridBacktestMetrics(ngasSummerAlphaSummary)] as const,
   [ngasWinterAlphaSummary.strategyId, createHybridBacktestMetrics(ngasWinterAlphaSummary)] as const,
+  [allYearAlphaStrategyId, dailyBacktestMetricsFromTrades(ngasAllYearAlphaTrades)] as const,
 ])
 
 export const arcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = [
-  createNgasSummerAlphaStrategy(ngasSummerAlphaSummary, ngasSummerAlphaTrades),
-  createNgasWinterAlphaStrategy(ngasWinterAlphaSummary, ngasWinterAlphaTrades),
+  ngasSummerAlphaStrategy,
+  ngasWinterAlphaStrategy,
+  ngasAllYearAlphaStrategy,
 ]
 
 export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResult[] = arcticBlastResearchStrategies.map((strategy) => {
@@ -860,6 +1129,10 @@ export function createArcticBlastSignalIntent(input: ArcticBlastSignalInput): St
     direction: input.direction,
     confidence: input.confidence,
     expectedReturnPct: input.expectedReturnPct,
+    indexFraction: input.indexFraction,
+    gasPosition: input.gasPosition,
+    cashFraction: input.cashFraction,
+    sourceSynthetic: input.indexFraction && input.indexFraction > 0 ? indexBasketSymbol : undefined,
     maxHoldingDays: input.maxHoldingDays ?? Math.ceil(strategy.metrics.averageHoldDays),
     source: 'research-backtest',
     notes: [

@@ -1,0 +1,20 @@
+{
+  "symbol": "US-INDEX-BASKET",
+  "label": "80/20 VOO/QQQM target-weight US index ETF basket",
+  "methodology": "Daily target-weight return stream. The synthetic symbol is research provenance only; live adapters must route the ETF component legs.",
+  "rebalance": "daily-target-weight",
+  "components": [
+    {
+      "symbol": "VOO",
+      "label": "Vanguard S&P 500 ETF",
+      "targetWeight": 0.8,
+      "role": "Core S&P 500 exposure"
+    },
+    {
+      "symbol": "QQQM",
+      "label": "Invesco NASDAQ 100 ETF",
+      "targetWeight": 0.2,
+      "role": "Modest Nasdaq-100 growth tilt"
+    }
+  ]
+}

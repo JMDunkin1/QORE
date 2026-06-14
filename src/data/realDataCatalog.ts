@@ -148,7 +148,7 @@ export const realDataCatalog = {
     {
       label: 'Yahoo market history',
       path: 'market/yahoo',
-      detail: 'UNG, NG=F, broad US equity ETF proxies, and the derived US index basket benchmark.',
+      detail: 'UNG, NG=F, broad US equity ETF proxies, and the derived VOO/QQQM target-weight index basket benchmark.',
     },
     {
       label: 'EIA storage',

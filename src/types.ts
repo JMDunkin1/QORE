@@ -124,7 +124,7 @@ export type IntegrationConnector = {
 
 export type ExecutionVenue = {
   instrument: string
-  code: 'NG' | 'MNG' | 'QG'
+  code: 'NG' | 'MNG' | 'QG' | 'VOO' | 'QQQM'
   venue: string
   contractSize: string
   settlement: string

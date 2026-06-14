@@ -1888,7 +1888,7 @@ function main() {
       holdoutStart: HOLDOUT_START,
       roundTripCostPct: ROUND_TRIP_COST_PCT,
       oneWayCostPct: ONE_WAY_COST_PCT,
-      fallback: 'Unallocated capital remains in US-INDEX-BASKET close-to-close.',
+      fallback: 'Unallocated capital remains in the configured target-weight US-INDEX-BASKET ETF fallback close-to-close.',
       signalTiming: 'Forecast issue-date signals are used only on trading sessions strictly after the issue date.',
       reversionTiming:
         'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, start no earlier than the next trading session, and skip heat-rally fades when lagged storage is below its trailing seasonal norm.',

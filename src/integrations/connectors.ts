@@ -80,6 +80,22 @@ export const integrationConnectors: IntegrationConnector[] = [
 
 export const executionVenues: ExecutionVenue[] = [
   {
+    instrument: 'Vanguard S&P 500 ETF',
+    code: 'VOO',
+    venue: 'NYSE Arca',
+    contractSize: 'ETF share',
+    settlement: 'T+1 equity',
+    role: '80% target-weight idle-capital fallback leg for live ETF routing.',
+  },
+  {
+    instrument: 'Invesco NASDAQ 100 ETF',
+    code: 'QQQM',
+    venue: 'Nasdaq',
+    contractSize: 'ETF share',
+    settlement: 'T+1 equity',
+    role: '20% target-weight growth tilt in the idle-capital fallback basket.',
+  },
+  {
     instrument: 'Henry Hub Natural Gas Futures',
     code: 'NG',
     venue: 'CME / NYMEX',

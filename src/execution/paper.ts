@@ -1,5 +1,5 @@
 import { createOrderIntent, defaultDryRunRiskPolicy } from './risk'
-import type { ExecutionGateway, OrderIntent, PaperFill, RiskPolicy, StrategySignalIntent } from './types'
+import type { ExecutionGateway, OrderIntent, OrderLegIntent, PaperFill, PaperReferencePrices, RiskPolicy, StrategySignalIntent } from './types'
 
 export const dryRunGatewayProfile = {
   id: 'qore-dry-run-paper-gateway',
@@ -15,25 +15,58 @@ export function estimatePaperQuantity(notionalUsd: number, referencePrice: numbe
   return Math.floor(notionalUsd / referencePrice)
 }
 
+function executableLegs(intent: OrderIntent) {
+  return intent.legs.filter((leg) => leg.instrument !== 'CASH' && leg.side !== 'hold' && leg.notionalUsd > 0)
+}
+
+function referencePriceForLeg(
+  leg: OrderLegIntent,
+  referencePrices: number | PaperReferencePrices,
+  executableLegCount: number,
+) {
+  if (leg.instrument === 'CASH') return 1
+  if (typeof referencePrices === 'number') {
+    return executableLegCount === 1 ? referencePrices : null
+  }
+  return referencePrices[leg.instrument] ?? null
+}
+
+function quantityForLeg(leg: OrderLegIntent, referencePrices: number | PaperReferencePrices, executableLegCount: number) {
+  const referencePrice = referencePriceForLeg(leg, referencePrices, executableLegCount)
+  if (!referencePrice) return 0
+  return estimatePaperQuantity(leg.notionalUsd, referencePrice)
+}
+
 export function createPaperOrderIntent(
   signal: StrategySignalIntent,
   requestedNotionalUsd: number,
-  referencePrice: number,
+  referencePrices: number | PaperReferencePrices,
   policy: RiskPolicy = defaultDryRunRiskPolicy,
 ): OrderIntent {
   const intent = createOrderIntent(signal, requestedNotionalUsd, policy)
+  const executableLegCount = executableLegs(intent).length
+  const aggregateReferencePrice =
+    typeof referencePrices === 'number'
+      ? executableLegCount <= 1
+        ? referencePrices
+        : null
+      : referencePrices[intent.signal.instrument] ?? null
   return {
     ...intent,
-    quantity: estimatePaperQuantity(intent.notionalUsd, referencePrice),
+    quantity: aggregateReferencePrice ? estimatePaperQuantity(intent.notionalUsd, aggregateReferencePrice) : 0,
+    legs: intent.legs.map((leg) => ({
+      ...leg,
+      quantity: quantityForLeg(leg, referencePrices, executableLegCount),
+    })),
   }
 }
 
-export function paperFillFromIntent(intent: OrderIntent, referencePrice: number): PaperFill {
+export function paperFillFromIntent(intent: OrderIntent, referencePrices: number | PaperReferencePrices): PaperFill {
   if (!intent.riskDecision.approved || intent.side === 'hold') {
     return {
       orderIntentId: intent.id,
       filledAt: new Date().toISOString(),
-      fillPrice: referencePrice,
+      fillPrice: typeof referencePrices === 'number' ? referencePrices : 0,
       quantity: 0,
       notionalUsd: 0,
       status: 'paper-rejected',
@@ -41,28 +74,62 @@ export function paperFillFromIntent(intent: OrderIntent, referencePrice: number)
     }
   }
 
-  const quantity = estimatePaperQuantity(intent.notionalUsd, referencePrice)
+  const executable = executableLegs(intent)
+  if (!executable.length) {
+    return {
+      orderIntentId: intent.id,
+      filledAt: new Date().toISOString(),
+      fillPrice: typeof referencePrices === 'number' ? referencePrices : 0,
+      quantity: 0,
+      notionalUsd: 0,
+      status: 'paper-rejected',
+      notes: ['No executable leg.'],
+    }
+  }
+
+  const legFills = executable.map((leg) => {
+    const fillPrice = referencePriceForLeg(leg, referencePrices, executable.length) ?? 0
+    const quantity = estimatePaperQuantity(leg.notionalUsd, fillPrice)
+    return {
+      orderLegId: leg.id,
+      instrument: leg.instrument,
+      side: leg.side,
+      fillPrice,
+      quantity,
+      notionalUsd: quantity * fillPrice,
+      status: quantity > 0 ? ('paper-filled' as const) : ('paper-rejected' as const),
+    }
+  })
+  const missingPrices = legFills.filter((fill) => fill.fillPrice <= 0).map((fill) => fill.instrument)
+  const rejectedLegs = legFills.filter((fill) => fill.status === 'paper-rejected')
+  const status = missingPrices.length || rejectedLegs.length ? 'paper-rejected' : 'paper-filled'
 
   return {
     orderIntentId: intent.id,
     filledAt: new Date().toISOString(),
-    fillPrice: referencePrice,
-    quantity,
-    notionalUsd: quantity * referencePrice,
-    status: quantity > 0 ? 'paper-filled' : 'paper-rejected',
-    notes: quantity > 0 ? ['Dry-run fill only. No broker order was routed.'] : ['Reference price produced zero quantity.'],
+    fillPrice: typeof referencePrices === 'number' ? referencePrices : 0,
+    quantity: legFills.reduce((sum, fill) => sum + fill.quantity, 0),
+    notionalUsd: legFills.reduce((sum, fill) => sum + fill.notionalUsd, 0),
+    status,
+    notes:
+      status === 'paper-filled'
+        ? ['Dry-run fill only. No broker order was routed.']
+        : missingPrices.length
+          ? [`Missing reference price for ${missingPrices.join(', ')}.`]
+          : ['Reference price produced zero quantity.'],
+    legFills,
   }
 }
 
 export class DryRunPaperGateway implements ExecutionGateway {
   mode = 'paper' as const
-  referencePrice: number
+  referencePrices: number | PaperReferencePrices
 
-  constructor(referencePrice = 1) {
-    this.referencePrice = referencePrice
+  constructor(referencePrices: number | PaperReferencePrices = 1) {
+    this.referencePrices = referencePrices
   }
 
   submitOrderIntent(intent: OrderIntent) {
-    return paperFillFromIntent(intent, this.referencePrice)
+    return paperFillFromIntent(intent, this.referencePrices)
   }
 }

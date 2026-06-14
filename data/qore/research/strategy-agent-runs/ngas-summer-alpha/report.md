@@ -1,6 +1,6 @@
 # NGAS Summer Alpha Lane
 
-Generated at 2026-06-13T19:09:17.528Z.
+Generated at 2026-06-13T19:24:38.927Z.
 
 ## Purpose
 
@@ -37,10 +37,10 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 
 | split | executed rows | strategy | index | edge | CAGR | Sharpe | Sortino | maxDD | exposure |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Train | 107 | 83.73% | 24.48% | 59.25% | 22.63% | 1.08 | 1.65 | -20.03% | 5.8% |
-| Validation | 45 | 43.8% | 18.88% | 24.92% | 43.98% | 2.08 | 3.65 | -9.37% | 6.6% |
-| Holdout | 45 | 58% | 29.38% | 28.62% | 37.98% | 1.68 | 2.49 | -19.78% | 4.9% |
-| Full | 197 | 317.48% | 91.47% | 226.01% | 30.2% | 1.4 | 2.16 | -20.15% | 5.7% |
+| Train | 107 | 96.6% | 33.45% | 63.15% | 25.45% | 1.19 | 1.78 | -19.18% | 5.8% |
+| Validation | 45 | 50.6% | 25.17% | 25.43% | 50.82% | 2.37 | 4.13 | -9.57% | 6.6% |
+| Holdout | 45 | 60.16% | 31.21% | 28.95% | 38.69% | 1.73 | 2.48 | -19.5% | 4.8% |
+| Full | 197 | 374.22% | 119.17% | 255.05% | 33.16% | 1.53 | 2.29 | -19.5% | 5.7% |
 
 ## Executed Leg Rows
 
@@ -56,11 +56,11 @@ Train/validation side gates used for selection:
 | leg | daily rows | return | Sharpe | maxDD |
 | --- | ---: | ---: | ---: | ---: |
 | Summer cold-short diagnostic | 0 | 0% | 0 | 0% |
-| Summer heat-long | 122 | 58.53% | 3.08 | -12.37% |
-| Weather follow combined | 122 | 58.53% | 3.08 | -12.37% |
+| Summer heat-long | 122 | 59.07% | 3.12 | -12.64% |
+| Weather follow combined | 122 | 59.07% | 3.12 | -12.64% |
 | Reversion-long | 0 | 0% | 0 | 0% |
-| Reversion-short | 30 | 12.43% | 4.54 | -7.54% |
-| Weather reversion combined | 30 | 12.43% | 4.54 | -7.54% |
+| Reversion-short | 30 | 12.91% | 4.6 | -7.61% |
+| Weather reversion combined | 30 | 12.91% | 4.6 | -7.61% |
 
 ## Anti-Overfit Check
 
@@ -72,17 +72,17 @@ Train/validation side gates used for selection:
 - Close-in weather-resolution adjusted rows: 0.
 - Close-in weather-resolution dropped rows: 0.
 - Close-in weather-resolution comparison: current active Summer Alpha family with no close-in fade check versus graded close-in fade check.
-- Primary block-bootstrap p-value versus index daily active return: 0.0008 (rank-window selection-adjusted centered circular block bootstrap).
+- Primary block-bootstrap p-value versus index daily active return: 0.0017 (rank-window selection-adjusted centered circular block bootstrap).
 - Single-candidate p-value: 0.0008.
-- Selection-adjusted p-value: 0.0008 across 2 near-top eligible candidates.
+- Selection-adjusted p-value: 0.0017 across 2 near-top eligible candidates.
 - Bootstrap setup: 1200 iterations, 10-session circular blocks.
 
 ## Top Train/Validation-Ranked Candidates
 
 | candidate | eligible | rank | weather resolution | train edge | validation edge | holdout edge | full edge | executed rows |
 | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed | yes | 169.1241 | none | 59.25% | 24.92% | 28.62% | 226.01% | 197 |
-| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrgraded-shift-sdef1.25-vol0-fixed | yes | 169.1241 | graded-shift | 59.25% | 24.92% | 28.62% | 226.01% | 197 |
+| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed | yes | 179.9611 | none | 63.15% | 25.43% | 28.95% | 255.05% | 197 |
+| summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrgraded-shift-sdef1.25-vol0-fixed | yes | 179.9611 | graded-shift | 63.15% | 25.43% | 28.95% | 255.05% | 197 |
 
 ## Verdict
 

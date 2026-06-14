@@ -63,7 +63,7 @@ npm run collect:free-data
 This writes no-key market and weather research data under `data/qore/` so it can be shared with the project. Check `data/qore/runs/free-data-manifest.json` to see which sources succeeded or failed. Set `QORE_DATA_ROOT=.local/qore` when you want a private scratch cache.
 By default it refreshes the full shared backtest window from `2021-01-01` through the latest complete UTC day; set `QORE_TEST_START` / `QORE_TEST_END` only when you need a fixed historical slice.
 
-Market cache note: `UNG` is ETF history, `NG=F` is a Yahoo continuous front-month proxy, and `SPY`/`DIA`/`QQQ`/`IWM` are broad US equity ETF proxies used to derive `US-INDEX-BASKET`. Do not label results as futures-grade Henry Hub NG performance until `data/qore/market/futures/henry-hub-ng-readiness.md` is satisfied with per-contract prices, expiry dates, and roll logic.
+Market cache note: `UNG` is ETF history, `NG=F` is a Yahoo continuous front-month proxy, and `VOO`/`QQQM` are live-orderable broad US equity ETF proxies used to derive the target-weight `US-INDEX-BASKET`. The synthetic basket is research provenance only; future live adapters must route the ETF component legs. Do not label results as futures-grade Henry Hub NG performance until `data/qore/market/futures/henry-hub-ng-readiness.md` is satisfied with per-contract prices, expiry dates, and roll logic.
 
 NOAA forecast signal calendars:
 
@@ -117,7 +117,7 @@ The first active strategy is `ngas-summer-alpha`. It keeps idle capital in `US-I
 npm run optimize:ngas-summer-alpha
 ```
 
-The selected summer run made `317.48%` full-sample versus `91.47%` for the index basket, with `-20.15%` max drawdown. Train return was `83.73%`, validation was `43.8%`, and holdout was `58%`; holdout edge versus the index basket was `28.62%`. The selected overlay uses `0.35x` base NG exposure, allows the storage-deficit heat tilt to reach `0.4375x`, and lets CDD-tiered fade sizing lift qualifying heat-rally shorts up to `0.5x`. It remains needs-more-validation, not broker-ready.
+The selected summer run made `374.22%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-19.5%` max drawdown. Train return was `96.6%`, validation was `50.6%`, and holdout was `60.16%`; holdout edge versus the index basket was `28.95%`. The selected overlay uses `0.35x` base NG exposure, allows the storage-deficit heat tilt to reach `0.4375x`, and lets CDD-tiered fade sizing lift qualifying heat-rally shorts up to `0.5x`. It remains needs-more-validation, not broker-ready.
 
 The second active strategy is `ngas-winter-alpha`. It now owns frozen weather-follow, weather-reversion, and volatility-confirmation ledgers inside its own lane instead of reading archived strategy folders. The frozen inputs preserve the current winter blend exactly: cold-follow and warm-short context, post-window fade context, selected same-direction fade confirmation, and optional shorter daily-ledger holds when train/validation prefers faster exits.
 
@@ -125,7 +125,7 @@ The second active strategy is `ngas-winter-alpha`. It now owns frozen weather-fo
 npm run optimize:ngas-winter-alpha
 ```
 
-The selected winter run made `282.46%` full-sample versus `91.47%` for the index basket, with `-22.04%` max drawdown. Train return was `81.03%`, validation was `53.97%`, and holdout was `37.22%`; holdout edge versus the index basket was `26.28%`. The selected blend uses frozen-input holds, a `400 Bcf` cold-follow storage-drawdown gate, adverse standalone-fade vetoes, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+The selected winter run made `347.49%` full-sample versus `117.16%` for the VOO/QQQM index basket, with `-23.5%` max drawdown. Train return was `103%`, validation was `59.95%`, and holdout was `37.81%`; holdout edge versus the index basket was `28.29%`. The selected blend uses frozen-input holds, a `400 Bcf` cold-follow storage-drawdown gate, adverse standalone-fade vetoes, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
 
 ## Non-Live Execution Architecture
 

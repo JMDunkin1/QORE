@@ -1886,6 +1886,36 @@ function buildIndexTrendRiskMap(marketRows) {
   return riskByDate
 }
 
+function buildIndexReturnByDate(marketRows) {
+  const returnsByDate = new Map()
+  const rows = marketRows
+    .map((row) => ({
+      date: row.date,
+      close: numberFrom(row.close, Number.NaN),
+    }))
+    .filter((row) => row.date && Number.isFinite(row.close) && row.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  for (let index = 1; index < rows.length; index += 1) {
+    const previous = rows[index - 1]
+    const current = rows[index]
+    returnsByDate.set(current.date, ((current.close - previous.close) / previous.close) * 100)
+  }
+
+  return returnsByDate
+}
+
+function applyFreshIndexReturns(rows, indexReturnByDate) {
+  return rows.map((row) => {
+    const indexReturnPct = indexReturnByDate.get(row.entryTradeDate)
+    if (!Number.isFinite(indexReturnPct)) return row
+    return {
+      ...row,
+      indexReturnPct,
+    }
+  })
+}
+
 function indexRiskOnForDate(policy, date, indexTrendRiskByDate) {
   if (policy.indexRiskMode !== 'idle-index-200d-trend') return true
   return indexTrendRiskByDate.get(date) ?? true
@@ -2896,10 +2926,14 @@ ${winterAlphaVerdict(summary)}
 
 function main() {
   const inputManifest = JSON.parse(readText(FROZEN_INPUT_MANIFEST_FILE))
-  const weatherRows = parseCsv(frozenInputTradePath(inputManifest, 'weatherReversion'))
-  const dualRows = parseCsv(frozenInputTradePath(inputManifest, 'weatherFollow'))
-  const volatilityRows = parseCsv(frozenInputTradePath(inputManifest, 'volatilityConfirmation'))
   const indexMarketRows = parseCsv(INDEX_MARKET_FILE)
+  const indexReturnByDate = buildIndexReturnByDate(indexMarketRows)
+  const weatherRows = applyFreshIndexReturns(parseCsv(frozenInputTradePath(inputManifest, 'weatherReversion')), indexReturnByDate)
+  const dualRows = applyFreshIndexReturns(parseCsv(frozenInputTradePath(inputManifest, 'weatherFollow')), indexReturnByDate)
+  const volatilityRows = applyFreshIndexReturns(
+    parseCsv(frozenInputTradePath(inputManifest, 'volatilityConfirmation')),
+    indexReturnByDate,
+  )
   const indexTrendRiskByDate = buildIndexTrendRiskMap(indexMarketRows)
   const weatherResolutionData = loadWeatherResolutionData()
   const storageData = loadStorageData()
@@ -2948,7 +2982,7 @@ function main() {
       holdoutStart: HOLDOUT_START,
       roundTripCostPct: ROUND_TRIP_COST_PCT,
       oneWayCostPct: ONE_WAY_COST_PCT,
-      fallback: 'Unallocated capital remains in US-INDEX-BASKET close-to-close.',
+      fallback: 'Unallocated capital remains in the configured target-weight US-INDEX-BASKET ETF fallback close-to-close.',
       signalTiming:
         'Frozen Winter Alpha inputs already enforce post-signal execution; NGAS Winter Alpha combines those daily ledgers and recalculates costs.',
       selectionPolicy:

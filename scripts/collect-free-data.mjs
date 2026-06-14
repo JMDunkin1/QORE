@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { loadLocalEnv } from './local-env.mjs'
@@ -7,6 +8,9 @@ const repoDir = process.cwd()
 loadLocalEnv(repoDir)
 
 const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
+const indexBasketConfigPath =
+  process.env.QORE_INDEX_BASKET_CONFIG ?? path.join(repoDir, 'data', 'qore', 'market', 'index-basket-config.json')
+const marketIndexBasket = JSON.parse(readFileSync(indexBasketConfigPath, 'utf8'))
 const timeoutMs = Number(process.env.QORE_FETCH_TIMEOUT_MS ?? 15000)
 const weatherFailureLimit = Number(process.env.QORE_WEATHER_FAILURE_LIMIT ?? 8)
 const todayDate = new Date().toISOString().slice(0, 10)
@@ -64,16 +68,12 @@ const marketSymbols = [
   { symbol: 'UNG', label: 'United States Natural Gas Fund', period1: 1176903000 },
   { symbol: 'NG=F', label: 'Yahoo continuous front-month natural gas future', period1: 967608000 },
   { symbol: 'SPY', label: 'SPDR S&P 500 ETF Trust', period1: 728265600, persistRawJson: false },
+  { symbol: 'VOO', label: 'Vanguard S&P 500 ETF', period1: 1283990400, persistRawJson: false },
   { symbol: 'DIA', label: 'SPDR Dow Jones Industrial Average ETF Trust', period1: 852076800, persistRawJson: false },
   { symbol: 'QQQ', label: 'Invesco QQQ Trust', period1: 921024000, persistRawJson: false },
+  { symbol: 'QQQM', label: 'Invesco NASDAQ 100 ETF', period1: 1602547200, persistRawJson: false },
   { symbol: 'IWM', label: 'iShares Russell 2000 ETF', period1: 959904000, persistRawJson: false },
 ]
-
-const marketIndexBasket = {
-  symbol: 'US-INDEX-BASKET',
-  label: 'Equal-weight US index ETF basket',
-  components: ['SPY', 'DIA', 'QQQ', 'IWM'],
-}
 
 function csvEscape(value) {
   if (value === null || value === undefined) return ''
@@ -288,9 +288,23 @@ async function collectYahooMarket(manifest) {
 async function deriveMarketIndexBasket(manifest) {
   const marketDir = path.join(dataRoot, 'market', 'yahoo')
   const componentRows = []
+  const components = marketIndexBasket.components.map((component) => ({
+    symbol: component.symbol,
+    label: component.label,
+    targetWeight: Number(component.targetWeight),
+  }))
+  const totalWeight = components.reduce((sum, component) => sum + component.targetWeight, 0)
+
+  if (!components.length || !Number.isFinite(totalWeight) || totalWeight <= 0) {
+    throw new Error('Index basket config must include positive component target weights.')
+  }
+  const normalizedComponents = components.map((component) => ({
+    ...component,
+    targetWeight: component.targetWeight / totalWeight,
+  }))
 
   try {
-    for (const symbol of marketIndexBasket.components) {
+    for (const { symbol } of normalizedComponents) {
       const filePath = path.join(marketDir, `${safeMarketSymbol(symbol)}-qore-market.csv`)
       const rows = parseCsv(await readFile(filePath, 'utf8'))
         .map((row) => ({
@@ -312,27 +326,35 @@ async function deriveMarketIndexBasket(manifest) {
     const rowsBySymbol = new Map(
       componentRows.map((component) => [component.symbol, new Map(component.rows.map((row) => [row.date, row]))]),
     )
-    const baseCloseBySymbol = new Map(
-      componentRows.map((component) => [component.symbol, rowsBySymbol.get(component.symbol).get(dates[0]).close]),
-    )
 
-    const basketRows = dates.map((date) => {
-      const components = marketIndexBasket.components.map((symbol) => {
-        const row = rowsBySymbol.get(symbol).get(date)
+    let basketClose = 100
+    const basketRows = dates.map((date, index) => {
+      if (index > 0) {
+        const previousDate = dates[index - 1]
+        const dailyReturn = normalizedComponents.reduce((sum, component) => {
+          const row = rowsBySymbol.get(component.symbol).get(date)
+          const previousRow = rowsBySymbol.get(component.symbol).get(previousDate)
+          return sum + component.targetWeight * (row.close / previousRow.close - 1)
+        }, 0)
+        basketClose *= 1 + dailyReturn
+      }
+      const close = round(basketClose, 6)
+      const rowComponents = normalizedComponents.map((component) => {
+        const row = rowsBySymbol.get(component.symbol).get(date)
         return {
+          symbol: component.symbol,
+          targetWeight: component.targetWeight,
           close: row.close,
-          normalizedClose: row.close / baseCloseBySymbol.get(symbol),
           volume: row.volume,
         }
       })
-      const close = round((components.reduce((sum, component) => sum + component.normalizedClose, 0) / components.length) * 100, 6)
       return {
         date,
         open: close,
         high: close,
         low: close,
         close,
-        volume: components.reduce((sum, component) => sum + (Number.isFinite(component.volume) ? component.volume : 0), 0),
+        volume: rowComponents.reduce((sum, component) => sum + (Number.isFinite(component.volume) ? component.volume : 0), 0),
         contract: marketIndexBasket.symbol,
         storageBcf: 0,
       }
@@ -344,8 +366,15 @@ async function deriveMarketIndexBasket(manifest) {
       status: 'ok',
       symbol: marketIndexBasket.symbol,
       label: marketIndexBasket.label,
-      source: 'Derived equal-weight basket of Yahoo adjusted-close ETF histories.',
-      components: marketIndexBasket.components,
+      source: 'Derived target-weight basket of Yahoo adjusted-close ETF histories.',
+      methodology: marketIndexBasket.methodology,
+      rebalance: marketIndexBasket.rebalance,
+      components: normalizedComponents.map((component) => component.symbol),
+      weights: normalizedComponents.map((component) => ({
+        symbol: component.symbol,
+        label: component.label,
+        targetWeight: round(component.targetWeight, 6),
+      })),
       rows: basketRows.length,
       firstDate: basketRows[0]?.date,
       lastDate: basketRows.at(-1)?.date,
@@ -357,7 +386,7 @@ async function deriveMarketIndexBasket(manifest) {
       status: 'failed',
       symbol: marketIndexBasket.symbol,
       label: marketIndexBasket.label,
-      components: marketIndexBasket.components,
+      components: normalizedComponents.map((component) => component.symbol),
       error: error.message,
     })
     console.warn(`market basket failed: ${marketIndexBasket.symbol}: ${error.message}`)
@@ -366,14 +395,32 @@ async function deriveMarketIndexBasket(manifest) {
 
 async function collectEiaStorage(manifest) {
   const eiaDir = path.join(dataRoot, 'fundamentals', 'eia')
+  const csvPath = path.join(eiaDir, 'working-gas-storage-lower48-weekly.csv')
   await ensureDir(eiaDir)
 
   if (skipEia) {
+    let existingRows = []
+    try {
+      existingRows = parseCsv(await readFile(csvPath, 'utf8'))
+        .map((row) => ({
+          date: row.date,
+          series: row.series,
+          storageBcf: Number(row.storageBcf),
+          unit: row.unit,
+          areaName: row.areaName,
+          source: row.source,
+        }))
+        .filter((row) => row.date && Number.isFinite(row.storageBcf))
+    } catch {
+      existingRows = []
+    }
     manifest.fundamentals.eiaStorage.push({
       status: 'skipped',
-      reason: 'QORE_SKIP_EIA is enabled.',
+      reason: 'QORE_SKIP_EIA is enabled; using existing checked-in EIA storage rows for market joins.',
+      existingRows: existingRows.length,
+      existingFile: path.relative(repoDir, csvPath),
     })
-    return []
+    return existingRows
   }
 
   const url = new URL('https://api.eia.gov/v2/natural-gas/stor/wkly/data/')
@@ -398,7 +445,6 @@ async function collectEiaStorage(manifest) {
         source: 'EIA Open Data API',
       }))
       .filter((row) => row.date && Number.isFinite(row.storageBcf))
-    const csvPath = path.join(eiaDir, 'working-gas-storage-lower48-weekly.csv')
     const jsonPath = path.join(eiaDir, 'working-gas-storage-lower48-weekly.raw.json')
     await writeCsv(csvPath, rows, ['date', 'series', 'storageBcf', 'unit', 'areaName', 'source'])
     await writeJson(jsonPath, json)
@@ -598,6 +644,14 @@ async function buildActualArcticBlastEvents(manifest) {
   const anomalyPath = path.join(dataRoot, 'weather', 'nasa-power', `daily-temperature-anomalies-${startDate}-${endDate}.csv`)
   const eventDir = path.join(dataRoot, 'weather', 'events')
   await ensureDir(eventDir)
+
+  if (skipNasaPower) {
+    manifest.weather.actualArcticBlastEvents.push({
+      status: 'skipped',
+      reason: 'QORE_SKIP_NASA_POWER is enabled; keeping existing actual arctic blast event files.',
+    })
+    return
+  }
 
   let rows
   try {
