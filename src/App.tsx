@@ -1,5 +1,6 @@
 import {
   type ChangeEvent,
+  type CSSProperties,
   type ElementType,
   type ReactNode,
   useCallback,
@@ -36,7 +37,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import './App.css'
 import indexBasketCsv from '../data/qore/market/yahoo/US-INDEX-BASKET-qore-market.csv?raw'
 import ungMarketCsv from '../data/qore/market/yahoo/UNG-qore-market.csv?raw'
@@ -64,7 +65,6 @@ const navItems: Array<{ id: ActiveView; label: string; icon: ElementType }> = [
 
 const activeViews: ActiveView[] = ['overview', 'backtest', 'models', 'data', 'execution', 'github']
 const chartMargin = { top: 16, right: 18, bottom: 4, left: 0 }
-const strategyChartMargin = { top: 16, right: 18, bottom: 12, left: 0 }
 const maxChartWheelZoomPower = 4
 const primaryRankMinTrades = 8
 const minZoomWindow = 4
@@ -72,7 +72,7 @@ const sparseStrategyGapBreakDays = 45
 const strategyDetailLineMaxPoints = 80
 const millisecondsPerYear = 365.25 * 24 * 60 * 60 * 1000
 const benchmarkLabel = 'UNG buy/hold'
-const indexBenchmarkLabel = 'US index basket'
+const indexBenchmarkLabel = 'VOO/QQQM index basket'
 const researchRankScore = (result: (typeof researchBacktestResults)[number]) => {
   const samplePenalty = result.metrics.tradeCount >= primaryRankMinTrades ? 0 : -10000
   const tradeCountCredit = Math.min(result.metrics.tradeCount, 100) * 0.03
@@ -311,6 +311,31 @@ function sideStatsForTrades(trades: ResearchTrade[], weatherSeason: WeatherSideS
       averageTradeReturnPct: roundNumber(averageTradeReturnPct),
     }
   })
+}
+
+type WeatherSideStats = ReturnType<typeof sideStatsForTrades>[number]
+
+function SideSplitCard({ side, className = '' }: { side: WeatherSideStats; className?: string }) {
+  return (
+    <article className={`side-split-card${className ? ` ${className}` : ''}`}>
+      <span>{side.label}</span>
+      <strong className={classForSigned(side.totalReturnPct)}>{signedPercent(side.totalReturnPct)}</strong>
+      <dl>
+        <div>
+          <dt>Trades</dt>
+          <dd>{side.tradeCount}</dd>
+        </div>
+        <div>
+          <dt>Win rate</dt>
+          <dd>{formatNumber(side.winRatePct, 1)}%</dd>
+        </div>
+        <div>
+          <dt>Avg trade</dt>
+          <dd className={classForSigned(side.averageTradeReturnPct)}>{signedPercent(side.averageTradeReturnPct)}</dd>
+        </div>
+      </dl>
+    </article>
+  )
 }
 
 function strategyPerformanceChartSeries(strategyColor: string | undefined, showDetailLines: boolean): SmoothChartSeries<DashboardChartPoint>[] {
@@ -799,9 +824,6 @@ function App() {
   const [market, setMarket] = useState<MarketBar[]>([])
   const settings = defaultSettings
   const [selectedStrategyId, setSelectedStrategyId] = useState(defaultSelectedStrategyId)
-  const [strategyChartRange, setStrategyChartRange] = useState<ChartRange>(() =>
-    fullChartRange(defaultSelectedBacktest?.curve.length ?? 0),
-  )
   const [dataLabel, setDataLabel] = useState(activeStrategyLabel())
   const [importLog, setImportLog] = useState(
     `Tracked real data is available under ${realDataCatalog.defaultDataRoot}; ${activeStrategyLabel()} from vetted strategy artifacts.`,
@@ -822,10 +844,6 @@ function App() {
     () => leaderboard[0]?.strategy ?? [...researchStrategyRegistry].sort((a, b) => b.metrics.totalReturnPct - a.metrics.totalReturnPct)[0] ?? null,
     [leaderboard],
   )
-  const researchOnlyCount = useMemo(
-    () => researchStrategyRegistry.filter((strategy) => strategy.promotionStatus !== 'paper-candidate').length,
-    [],
-  )
   const selectedBacktest = useMemo(
     () => leaderboard.find((result) => result.strategy.id === selectedStrategyId) ?? leaderboard[0] ?? null,
     [leaderboard, selectedStrategyId],
@@ -833,9 +851,11 @@ function App() {
   const selectedSampleStatus = useMemo(() => sampleStatusFor(selectedBacktest), [selectedBacktest])
   const selectedWeatherSideSeason = useMemo(() => weatherSideSeasonForStrategy(selectedBacktest?.strategy), [selectedBacktest])
   const selectedSideStats = useMemo(
-    () => sideStatsForTrades(selectedBacktest?.trades ?? [], selectedWeatherSideSeason),
+    () => sideStatsForTrades(selectedBacktest?.trades ?? [], selectedWeatherSideSeason).filter((side) => side.tradeCount > 0),
     [selectedBacktest, selectedWeatherSideSeason],
   )
+  const selectedComponentSideStats = useMemo(() => selectedSideStats.filter((side) => side.id !== 'index-fallback'), [selectedSideStats])
+  const selectedIndexSideStat = useMemo(() => selectedSideStats.find((side) => side.id === 'index-fallback') ?? null, [selectedSideStats])
   const benchmarkSummaryByStrategyId = useMemo(
     () =>
       new Map(
@@ -906,8 +926,6 @@ function App() {
       dates[0]
     return benchmarkPctByDate(indexBenchmarkMarketBars, dates, benchmarkStartDate)
   }, [joinedRows, selectedBacktest])
-  const latestMarket = market.at(-1)
-  const latestPoint = selectedBacktest?.curve.at(-1) ?? joinedRows.at(-1)
   const hasLabData = weather.length > 0 || market.length > 0
   const chartData: DashboardChartPoint[] = useMemo(
     () =>
@@ -945,25 +963,6 @@ function App() {
           })),
     [benchmarkByDate, indexBenchmarkByDate, joinedRows, selectedBacktest],
   )
-  const clampedStrategyChartRange = useMemo(
-    () => clampChartRange(strategyChartRange, chartData.length),
-    [chartData.length, strategyChartRange],
-  )
-  const scatterData = joinedRows.length
-    ? joinedRows.map((point) => ({
-        date: point.date,
-        weatherSurprise: Number(point.weatherSurprise.toFixed(2)),
-        returnPct: Number((point.dailyReturn * 100).toFixed(3)),
-        storageBcf: point.storageBcf,
-      }))
-    : hasLabData
-      ? []
-      : (selectedBacktest?.curve.map((point) => ({
-          date: point.date,
-          weatherSurprise: Number(point.weatherSurprise.toFixed(2)),
-          returnPct: Number(point.gasReturnPct.toFixed(3)),
-          strategy: selectedBacktest.strategy.name,
-        })) ?? [])
   const weatherScoreBars = weatherMetrics
     ? [
         { name: `${weatherMetrics.metricLabel} MAE`, value: weatherMetrics.mae, color: '#2563eb' },
@@ -972,13 +971,6 @@ function App() {
         { name: 'R2', value: weatherMetrics.r2, color: '#0f766e' },
       ]
     : []
-  const strategyBars = leaderboard.map((result, index) => ({
-    rankLabel: `#${index + 1}`,
-    name: result.strategy.name,
-    returnPct: result.metrics.totalReturnPct,
-    sharpe: result.metrics.sharpe,
-    color: result.strategy.color,
-  }))
   const strategyStripItems = leaderboard.map((result) => ({
     id: result.strategy.id,
     name: result.strategy.name,
@@ -1003,47 +995,6 @@ function App() {
   const selectedHoldoutEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
   const selectedRealityCheck = realityCheckForStrategy(selectedBacktest?.strategy)
   const selectedRealityEvidence = selectedRealityCheck ? evidenceForPValue(selectedRealityCheck.pValue) : null
-  const visibleStrategyBounds = chartRangeDataBounds(clampedStrategyChartRange, chartData.length)
-  const visibleStrategyChartData = chartData.slice(visibleStrategyBounds.startIndex, visibleStrategyBounds.endIndex + 1)
-  const showStrategyDetailLines = visibleStrategyChartData.length <= strategyDetailLineMaxPoints
-  const strategyDetailChartSeries = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
-    () => strategyPerformanceChartSeries(selectedBacktest?.strategy.color, showStrategyDetailLines),
-    [selectedBacktest?.strategy.color, showStrategyDetailLines],
-  )
-  const selectedRangeStats = selectedBacktest
-    ? (() => {
-        const returnRows = visibleStrategyChartData.map((point) => point.gasReturnPct).filter(Number.isFinite)
-        const rangeReturnPct = (returnRows.reduce((equity, value) => equity * (1 + value / 100), 1) - 1) * 100
-        const benchmarkReturnPct = relativeBenchmarkReturn(visibleStrategyChartData.map((point) => point.benchmarkPct))
-        const benchmarkEdgePct = rangeReturnPct - benchmarkReturnPct
-        const indexBenchmarkReturnPct = relativeBenchmarkReturn(visibleStrategyChartData.map((point) => point.indexBenchmarkPct))
-        const indexBenchmarkEdgePct = rangeReturnPct - indexBenchmarkReturnPct
-        const maxDrawdownPct = visibleStrategyChartData.length
-          ? Math.min(...visibleStrategyChartData.map((point) => point.drawdownPct ?? 0))
-          : 0
-        const bestRowPct = returnRows.length ? Math.max(...returnRows) : 0
-        const worstRowPct = returnRows.length ? Math.min(...returnRows) : 0
-        return [
-          { label: 'Visible rows', value: `${visibleStrategyChartData.length}`, tone: 'neutral' as Tone },
-          { label: 'Strategy return', value: signedPercent(roundNumber(rangeReturnPct)), tone: classForSigned(rangeReturnPct) },
-          {
-            label: indexBenchmarkLabel,
-            value: signedPercent(roundNumber(indexBenchmarkReturnPct)),
-            tone: classForSigned(indexBenchmarkReturnPct),
-          },
-          {
-            label: 'Edge vs index',
-            value: signedPercent(roundNumber(indexBenchmarkEdgePct)),
-            tone: classForSigned(indexBenchmarkEdgePct),
-          },
-          { label: benchmarkLabel, value: signedPercent(roundNumber(benchmarkReturnPct)), tone: classForSigned(benchmarkReturnPct) },
-          { label: 'Edge vs UNG', value: signedPercent(roundNumber(benchmarkEdgePct)), tone: classForSigned(benchmarkEdgePct) },
-          { label: 'Max DD', value: signedPercent(maxDrawdownPct), tone: maxDrawdownPct < -5 ? 'negative' : 'neutral' },
-          { label: 'Best row', value: signedPercent(bestRowPct), tone: classForSigned(bestRowPct) },
-          { label: 'Worst row', value: signedPercent(worstRowPct), tone: classForSigned(worstRowPct) },
-        ]
-      })()
-    : []
   const selectedValidationStats = selectedRealityCheck
     ? [
         {
@@ -1136,21 +1087,6 @@ function App() {
 
   const selectStrategy = (strategyId: string) => {
     setSelectedStrategyId(strategyId)
-    const nextLength = leaderboard.find((result) => result.strategy.id === strategyId)?.curve.length ?? chartData.length
-    const nextRange = fullChartRange(nextLength)
-    setStrategyChartRange(nextRange)
-  }
-
-  const zoomStrategyChart = (direction: 'in' | 'out') => {
-    setStrategyChartRange((current) => zoomChartRange(current, chartData.length, direction))
-  }
-
-  const panStrategyChart = (direction: 'left' | 'right') => {
-    setStrategyChartRange((current) => panChartRange(current, chartData.length, direction))
-  }
-
-  const resetStrategyChart = () => {
-    setStrategyChartRange(fullChartRange(chartData.length))
   }
 
   useEffect(() => {
@@ -1378,7 +1314,7 @@ function App() {
           />
           <MetricCard
             icon={LineChartIcon}
-            label="Yearly vs index"
+            label="Annualized alpha"
             value={selectedBacktest ? signedPercent(selectedIndexBenchmarkAnnualEdgePct) : '-'}
             detail={
               selectedBacktest
@@ -1435,319 +1371,15 @@ function App() {
 
         {activeView === 'overview' && (
           <section className="view-stack">
-            <div className="split-layout">
-              <OverviewPerformancePanel
-                key={`${selectedBacktest?.strategy.id ?? 'lab'}-${chartData.length}`}
-                chartData={chartData}
-                onSelectStrategy={selectStrategy}
-                selectedBacktest={selectedBacktest}
-                selectedStrategyId={selectedBacktest?.strategy.id ?? selectedStrategyId}
-                selectedStrategyItem={selectedStrategyItem}
-                strategyItems={strategyStripItems}
-              />
-
-              <article className="panel market-tape">
-                <SectionHeading eyebrow="Market tape" title="Current regime" />
-                <dl>
-                  <div>
-                    <dt>Contract</dt>
-                    <dd>{latestMarket?.contract ?? '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Last close</dt>
-                    <dd>{latestMarket ? `$${formatNumber(latestMarket.close, 3)}` : '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Volume</dt>
-                    <dd>{latestMarket ? formatCompact(latestMarket.volume) : '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Storage</dt>
-                    <dd>{latestMarket ? `${formatNumber(latestMarket.storageBcf, 1)} Bcf` : '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>HDD miss</dt>
-                    <dd className={classForSigned(latestPoint?.hddError ?? 0)}>{latestPoint ? formatNumber(latestPoint.hddError) : '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Weather surprise</dt>
-                    <dd className={classForSigned(latestPoint?.weatherSurprise ?? 0)}>
-                      {latestPoint ? formatNumber(latestPoint.weatherSurprise) : '-'}
-                    </dd>
-                  </div>
-                </dl>
-              </article>
-            </div>
-
-            <div className="three-column">
-              <article className="panel chart-panel">
-                <SectionHeading eyebrow="Weather driver" title="Demand surprise vs return" />
-                <div className="chart-frame">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={chartMargin}>
-                      <CartesianGrid stroke="#e7ebef" strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="weatherSurprise"
-                        name="Weather surprise"
-                        type="number"
-                        domain={['dataMin', 'dataMax']}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <YAxis dataKey="returnPct" name="Return %" type="number" tick={{ fontSize: 12 }} />
-                      <ReferenceLine x={0} stroke="#9aa3af" />
-                      <ReferenceLine y={0} stroke="#9aa3af" />
-                      <Tooltip contentStyle={tooltipStyle} cursor={{ strokeDasharray: '3 3' }} />
-                      <Scatter data={scatterData} fill="#0891b2" isAnimationActive={false} />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                  {!scatterData.length && (
-                    <ChartEmptyOverlay
-                      title={hasLabData ? 'No matched dates' : 'No research curve'}
-                      detail={
-                        hasLabData
-                          ? 'Imported weather and market rows need overlapping dates before this panel can plot.'
-                          : 'Research strategy artifacts need trade rows before this panel can plot.'
-                      }
-                    />
-                  )}
-                </div>
-              </article>
-
-              <article className="panel chart-panel">
-                <SectionHeading eyebrow="Strategy board" title="Return by strategy" />
-                <div className="chart-frame">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={strategyBars} margin={strategyChartMargin}>
-                      <CartesianGrid stroke="#e7ebef" strokeDasharray="3 3" />
-                      <XAxis dataKey="rankLabel" tick={{ fontSize: 11 }} interval={0} tickLine={false} />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        labelFormatter={(label) => strategyBars.find((entry) => entry.rankLabel === String(label))?.name ?? label}
-                      />
-                      <Bar dataKey="returnPct" name="Return %" isAnimationActive={false}>
-                        {strategyBars.map((entry) => (
-                          <Cell key={entry.name} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                  {!strategyBars.length && <ChartEmptyOverlay title="No strategies registered" detail="Real strategies will appear here as soon as they are added." />}
-                </div>
-                {!!strategyBars.length && (
-                  <div className="strategy-chart-key" aria-label="Strategy chart key">
-                    {strategyBars.map((entry) => (
-                      <div key={entry.name}>
-                        <span>
-                          <i style={{ background: entry.color }} />
-                          {entry.rankLabel}
-                        </span>
-                        <strong>{entry.name}</strong>
-                        <em>{signedPercent(entry.returnPct)}</em>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </article>
-
-              <article className="panel run-list">
-                <SectionHeading
-                  eyebrow="Registry"
-                  title="Model run ladder"
-                  action={
-                    <span className={`repo-pill ${researchOnlyCount ? 'warning' : 'positive'}`}>
-                      {researchOnlyCount ? `${researchOnlyCount} research-only` : 'Paper-ready'}
-                    </span>
-                  }
-                />
-                <div className="run-stack">
-                  {researchStrategyRegistry.map((strategy) => (
-                    <article key={strategy.id} className="run-row">
-                      <div>
-                        <span>{strategy.family}</span>
-                        <strong>{strategy.name}</strong>
-                        <em>{strategy.directionPolicy}</em>
-                      </div>
-                      <div className="run-metrics">
-                        <strong className={classForSigned(strategy.metrics.totalReturnPct)}>{signedPercent(strategy.metrics.totalReturnPct)}</strong>
-                        <span>{formatNumber(strategy.metrics.sharpe)} Sharpe</span>
-                        <span>{strategy.metrics.tradeCount} trades</span>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </article>
-            </div>
-          </section>
-        )}
-
-        {activeView === 'backtest' && (
-          <section className="view-stack">
-            <div className="lab-layout">
-              <aside className="panel control-panel">
-                <SectionHeading
-                  eyebrow="Research"
-                  title={
-                    <StrategyTitleSelect
-                      items={strategyStripItems}
-                      selectedItem={selectedStrategyItem}
-                      selectedStrategyId={selectedStrategyId}
-                      onSelectStrategy={selectStrategy}
-                    />
-                  }
-                />
-                <dl className="artifact-summary">
-                  <div>
-                    <dt>Variant</dt>
-                    <dd>{selectedBacktest?.strategy.variant ?? '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Trades</dt>
-                    <dd>{selectedBacktest?.metrics.tradeCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>Quality</dt>
-                    <dd>{selectedSampleStatus.label}</dd>
-                  </div>
-                  <div>
-                    <dt>Period</dt>
-                    <dd>
-                      {selectedBacktest
-                        ? `${selectedBacktest.researchMetrics.firstEntry} to ${selectedBacktest.researchMetrics.lastExit}`
-                        : '-'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Sources</dt>
-                    <dd>{selectedBacktest?.strategy.sourceUniverse.join(', ') || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Capital</dt>
-                    <dd>{formatCurrency(settings.initialCapital)}</dd>
-                  </div>
-                </dl>
-              </aside>
-
-              <article className="panel chart-panel wide">
-                <SectionHeading
-                  eyebrow={selectedBacktest?.strategy.desk ?? 'Strategy lab'}
-                  title={selectedBacktest?.strategy.name ?? 'No research strategies'}
-                  action={
-                    <div className="heading-actions">
-                      <span className={`repo-pill ${selectedSampleStatus.tone}`}>
-                        {selectedSampleStatus.label}
-                      </span>
-                      <ChartZoomToolbar
-                        data={chartData}
-                        range={clampedStrategyChartRange}
-                        onZoomIn={() => zoomStrategyChart('in')}
-                        onZoomOut={() => zoomStrategyChart('out')}
-                        onPanLeft={() => panStrategyChart('left')}
-                        onPanRight={() => panStrategyChart('right')}
-                        onReset={resetStrategyChart}
-                      />
-                    </div>
-                  }
-                />
-                <p className="thesis">
-                  {selectedBacktest?.strategy.thesis ?? 'No research strategy is active.'}
-                </p>
-                <div className="chart-frame tall">
-                  <SmoothZoomChart
-                    breakLinesAfterDays={selectedBacktest ? sparseStrategyGapBreakDays : undefined}
-                    data={chartData}
-                    formatDate={formatShortDate}
-                    minWindow={minZoomWindow}
-                    onRangeChange={setStrategyChartRange}
-                    range={clampedStrategyChartRange}
-                    series={strategyDetailChartSeries}
-                  />
-                  {!selectedBacktest && (
-                    <ChartEmptyOverlay
-                      title="No research strategy selected"
-                      detail="Strategy-test artifacts will populate this chart when available."
-                    />
-                  )}
-                </div>
-                {!!selectedValidationStats.length && selectedRealityEvidence && (
-                  <section className="validation-panel" aria-label="Statistical validation">
-                    <div className="validation-heading">
-                      <span>Statistical validation</span>
-                      <strong className={selectedRealityEvidence.tone}>{selectedRealityEvidence.label}</strong>
-                    </div>
-                    <dl className="validation-grid">
-                      {selectedValidationStats.map((stat) => (
-                        <div key={stat.label}>
-                          <dt>{stat.label}</dt>
-                          <dd className={stat.tone}>{stat.value}</dd>
-                          <em>{stat.detail}</em>
-                        </div>
-                      ))}
-                    </dl>
-                  </section>
-                )}
-                {!!selectedRangeStats.length && (
-                  <dl className="chart-range-stats" aria-label="Visible strategy range">
-                    {selectedRangeStats.map((stat) => (
-                      <div key={stat.label}>
-                        <dt>{stat.label}</dt>
-                        <dd className={stat.tone}>{stat.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </article>
-            </div>
-
-            <div className="stat-grid">
-              {(selectedBacktest
-                ? [
-                    ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive return rows'],
-                    ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
-                    ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Completed trades'],
-                    ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Estimated time in trade'],
-                    ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Trade count proxy'],
-                    ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail return-row loss'],
-                  ]
-                : emptyStats
-              ).map(([label, value, detail]) => (
-                <article key={label} className="stat-tile">
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                  <em>{detail}</em>
-                </article>
-              ))}
-            </div>
-
-            <article className="panel table-panel">
-              <SectionHeading
-                eyebrow="Side split"
-                title="Weather side split"
-                action={<span className={`repo-pill ${selectedSampleStatus.tone}`}>{selectedBacktest?.strategy.promotionStatus ?? 'Pending'}</span>}
-              />
-              <div className="side-split-grid">
-                {selectedSideStats.map((side) => (
-                  <article key={side.id} className="side-split-card">
-                    <span>{side.label}</span>
-                    <strong className={classForSigned(side.totalReturnPct)}>{signedPercent(side.totalReturnPct)}</strong>
-                    <dl>
-                      <div>
-                        <dt>Trades</dt>
-                        <dd>{side.tradeCount}</dd>
-                      </div>
-                      <div>
-                        <dt>Win rate</dt>
-                        <dd>{formatNumber(side.winRatePct, 1)}%</dd>
-                      </div>
-                      <div>
-                        <dt>Avg trade</dt>
-                        <dd className={classForSigned(side.averageTradeReturnPct)}>{signedPercent(side.averageTradeReturnPct)}</dd>
-                      </div>
-                    </dl>
-                  </article>
-                ))}
-              </div>
-            </article>
+            <OverviewPerformancePanel
+              key={`${selectedBacktest?.strategy.id ?? 'lab'}-${chartData.length}`}
+              chartData={chartData}
+              onSelectStrategy={selectStrategy}
+              selectedBacktest={selectedBacktest}
+              selectedStrategyId={selectedBacktest?.strategy.id ?? selectedStrategyId}
+              selectedStrategyItem={selectedStrategyItem}
+              strategyItems={strategyStripItems}
+            />
 
             <article className="panel table-panel">
               <SectionHeading eyebrow="Ranking" title="Strategy leaderboard" />
@@ -1820,6 +1452,89 @@ function App() {
                 </table>
               </div>
             </article>
+
+          </section>
+        )}
+
+        {activeView === 'backtest' && (
+          <section className="view-stack">
+            <article className="panel backtest-summary-panel">
+              <SectionHeading
+                eyebrow={selectedBacktest?.strategy.desk ?? 'Strategy lab'}
+                title="Backtest summary"
+                action={
+                  <span className={`repo-pill ${selectedSampleStatus.tone}`}>
+                    {selectedSampleStatus.label}
+                  </span>
+                }
+              />
+              <div className="backtest-selector-row">
+                <StrategyTitleSelect
+                  items={strategyStripItems}
+                  selectedItem={selectedStrategyItem}
+                  selectedStrategyId={selectedStrategyId}
+                  onSelectStrategy={selectStrategy}
+                />
+              </div>
+              <div className="stat-grid backtest-stat-grid">
+                {(selectedBacktest
+                  ? [
+                      ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive return rows'],
+                      ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
+                      ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Completed trades'],
+                      ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Estimated time in trade'],
+                      ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Trade count proxy'],
+                      ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail return-row loss'],
+                    ]
+                  : emptyStats
+                ).map(([label, value, detail]) => (
+                  <article key={label} className="stat-tile">
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                    <em>{detail}</em>
+                  </article>
+                ))}
+              </div>
+              {!!selectedValidationStats.length && selectedRealityEvidence && (
+                <section className="validation-panel" aria-label="Statistical validation">
+                  <div className="validation-heading">
+                    <span>Statistical validation</span>
+                    <strong className={selectedRealityEvidence.tone}>{selectedRealityEvidence.label}</strong>
+                  </div>
+                  <dl className="validation-grid">
+                    {selectedValidationStats.map((stat) => (
+                      <div key={stat.label}>
+                        <dt>{stat.label}</dt>
+                        <dd className={stat.tone}>{stat.value}</dd>
+                        <em>{stat.detail}</em>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              )}
+            </article>
+
+            <article className="panel table-panel">
+              <SectionHeading
+                eyebrow="Component split"
+                title="Sub-strategy breakdown"
+                action={<span className={`repo-pill ${selectedSampleStatus.tone}`}>{selectedBacktest?.strategy.promotionStatus ?? 'Pending'}</span>}
+              />
+              <div className="side-split-grid">
+                {!!selectedComponentSideStats.length && (
+                  <div
+                    className="side-split-primary-grid"
+                    style={{ '--side-split-columns': selectedComponentSideStats.length || 1 } as CSSProperties}
+                  >
+                    {selectedComponentSideStats.map((side) => (
+                      <SideSplitCard key={side.id} side={side} />
+                    ))}
+                  </div>
+                )}
+                {selectedIndexSideStat && <SideSplitCard side={selectedIndexSideStat} className="index-fallback" />}
+              </div>
+            </article>
+
           </section>
         )}
 
@@ -2065,7 +1780,7 @@ function App() {
         {activeView === 'execution' && (
           <section className="view-stack">
             <article className="panel table-panel">
-              <SectionHeading eyebrow="Routing runway" title="Natural gas instruments" />
+              <SectionHeading eyebrow="Routing runway" title="Orderable instruments" />
               <div className="table-wrap">
                 <table>
                   <thead>
