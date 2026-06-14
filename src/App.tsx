@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import {
@@ -66,6 +67,10 @@ const navItems: Array<{ id: ActiveView; label: string; icon: ElementType }> = [
 const activeViews: ActiveView[] = ['overview', 'backtest', 'models', 'data', 'execution', 'github']
 const chartMargin = { top: 16, right: 18, bottom: 4, left: 0 }
 const maxChartWheelZoomPower = 4
+const maxSvgZoomPowerPerInput = 2.25
+const svgWheelZoomPowerPerPixel = 0.08
+const svgWebKitGestureZoomGain = 3.5
+const minSvgViewportWidth = 18
 const primaryRankMinTrades = 8
 const minZoomWindow = 4
 const sparseStrategyGapBreakDays = 45
@@ -142,6 +147,17 @@ type ChartRange = {
   startIndex: number
   endIndex: number
 }
+type SvgViewport = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+type WebKitGestureEvent = Event & {
+  clientX?: number
+  clientY?: number
+  scale?: number
+}
 type SplitEdgeName = 'train' | 'validation' | 'holdout' | 'all'
 type WeatherSideSeason = 'winter' | 'summer' | 'all-year'
 type RealityCheckPercentiles = {
@@ -171,6 +187,7 @@ type RealityCheckMetrics = {
   minimumResolvablePValue?: number
   iterations?: number
   blockLength?: number
+  componentPValues?: Record<string, number>
 }
 type WeatherSideDefinition = {
   id: string
@@ -187,6 +204,147 @@ type StrategySelectorItem = {
   color: string
   selected: boolean
 }
+type CandidateDiagnostics = {
+  selectedCandidateId?: string
+  selectedCandidateIds?: string[]
+  candidateCount?: number
+  eligibleCandidateCount?: number
+  selectionUsedHoldout?: boolean
+  candidates?: CandidateRecord[]
+}
+type CandidateRecord = Record<string, unknown>
+type CandidateMetricRow = {
+  id: string
+  index: number
+  eligible: boolean
+  selected: boolean
+  trainValidationRank: number | null
+  trainEdgePct: number | null
+  validationEdgePct: number | null
+  holdoutEdgePct: number | null
+  allEdgePct: number | null
+  trainReturnPct: number | null
+  validationReturnPct: number | null
+  holdoutReturnPct: number | null
+  trainSharpe: number | null
+  validationSharpe: number | null
+  holdoutSharpe: number | null
+  trainMaxDrawdownPct: number | null
+  validationMaxDrawdownPct: number | null
+  holdoutMaxDrawdownPct: number | null
+  source: CandidateRecord
+}
+type CandidateParameterDefinition = {
+  label: string
+  keys: readonly string[]
+  order?: readonly string[]
+  nominal?: boolean
+}
+type ParameterHeatmapCell = {
+  xKey: string
+  yKey: string
+  xLabel: string
+  yLabel: string
+  candidateCount: number
+  averageHoldoutEdgePct: number | null
+  averageTrainValidationEdgePct: number | null
+  selected: boolean
+  localNeighbor: boolean
+  stablePlateau: boolean
+}
+type ParameterStabilitySummary = {
+  selectedHoldoutEdgePct: number | null
+  selectedTrainValidationEdgePct: number | null
+  stableThresholdPct: number | null
+  localCellCount: number
+  localStableCellCount: number
+  globalStableCellCount: number
+  scorePct: number | null
+  label: 'Broad plateau' | 'Mixed surface' | 'Isolated spike' | 'No selected cell'
+  detail: string
+}
+type ParameterHeatmapPlot = {
+  xLabel: string
+  yLabel: string
+  xValues: Array<{ key: string; label: string }>
+  yValues: Array<{ key: string; label: string }>
+  cells: ParameterHeatmapCell[]
+  valueMin: number
+  valueMax: number
+  stability: ParameterStabilitySummary
+}
+type ParameterComparisonCell = ParameterHeatmapCell & {
+  displayLabel: string
+  normalizedValue: number
+}
+type MonteCarloStressPath = {
+  id: string
+  label: string
+  selected: boolean
+  eligible: boolean
+  color: string
+  points: number[]
+  finalValue: number
+}
+type MonteCarloStressPlot = {
+  paths: MonteCarloStressPath[]
+  startValue: number
+  valueMin: number
+  valueMax: number
+  positiveFinalPct: number
+  sampleCount: number
+  blockLength: number
+  simulationCount: number
+}
+type HeatmapSurfacePixel = {
+  x: number
+  y: number
+  width: number
+  height: number
+  value: number
+}
+const validationParameterDefinitions: readonly CandidateParameterDefinition[] = [
+  { label: 'Component lane', keys: ['componentValidationLane'], nominal: true },
+  { label: 'Weather resolution', keys: ['weatherResolutionPolicy', 'weatherResolutionMode'], order: ['none', 'graded-shift', 'graded-shift-sizing'] },
+  {
+    label: 'Storage gate',
+    keys: ['coldFollowStoragePolicy'],
+    order: ['storage-seasonal-tight', 'storage-drawdown-400bcf-or-seasonal-tight', 'storage-drawdown-400bcf'],
+  },
+  { label: 'Freshness gate', keys: ['followFreshnessPolicy'], order: ['fresh-follow-5d', 'fresh-follow-3d', 'none'] },
+  { label: 'Demand gate', keys: ['heatingDemandPolicy'], order: ['none', 'hdd-follow-gate-6f', 'hdd-follow-tiered'] },
+  { label: 'Long fade scale', keys: ['reversionLongScale'] },
+  { label: 'Standalone fade', keys: ['standaloneReversionScale'] },
+  { label: 'Overlay cap', keys: ['overlayCap'] },
+  { label: 'Risk multiplier', keys: ['overlayRiskMultiplier'] },
+  { label: 'Weather size', keys: ['weatherFraction'] },
+  { label: 'Reversion size', keys: ['reversionFraction'] },
+  { label: 'Follow hold', keys: ['followHoldDays', 'holdFollowDays'] },
+  { label: 'Fade hold', keys: ['reversionHoldDays', 'holdReversionDays'] },
+  { label: 'Fresh heat', keys: ['freshHeatLookbackDays'] },
+  { label: 'Storage heat tilt', keys: ['storageDeficitHeatMultiplier'] },
+]
+
+const compactParameterLabels: Record<string, string> = {
+  Missing: 'Not used',
+  'graded-shift': 'Graded fade',
+  'graded-shift-sizing': 'Graded sizing',
+  'hdd-follow-gate-6f': 'HDD gate 6F',
+  'hdd-follow-tiered': 'HDD tiered',
+  'fresh-follow-3d': 'Fresh 3d',
+  'fresh-follow-5d': 'Fresh 5d',
+  none: 'None',
+  'storage-drawdown-400bcf': '400 Bcf draw',
+  'storage-drawdown-400bcf-or-seasonal-tight': '400 Bcf or tight',
+  'storage-seasonal-tight': 'Seasonal tight',
+}
+const heatmapColorStops = [
+  { at: 0, color: [49, 21, 99] },
+  { at: 0.42, color: [41, 121, 142] },
+  { at: 0.72, color: [82, 190, 121] },
+  { at: 1, color: [244, 224, 64] },
+] as const
+const monteCarloPalette = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#0891b2', '#ca8a04', '#db2777', '#111827']
 
 const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
   { id: 'cold-long', label: 'Cold-long', seasons: ['winter', 'all-year'], thesisKinds: ['cold-long'] },
@@ -198,10 +356,512 @@ const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
   { id: 'index-fallback', label: 'Index fallback', thesisKinds: ['index-fallback'] },
 ]
 
+function numberOrNull(value: unknown) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function average(values: number[]) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
+}
+
+function finiteNumbers(values: Array<number | null | undefined>) {
+  return values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+}
+
+function parameterRawValue(candidate: CandidateRecord, definition: CandidateParameterDefinition) {
+  for (const key of definition.keys) {
+    const value = candidate[key]
+    if (value !== null && value !== undefined && value !== '') return value
+  }
+  return null
+}
+
+function parameterFingerprint(value: unknown) {
+  if (value === null || value === undefined || value === '') return 'Missing'
+  return String(value)
+}
+
+function compactParameterValue(value: unknown) {
+  const fingerprint = parameterFingerprint(value)
+  if (compactParameterLabels[fingerprint]) return compactParameterLabels[fingerprint]
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  const numericValue = numberOrNull(value)
+  if (numericValue !== null) return formatNumber(numericValue, Number.isInteger(numericValue) ? 0 : 2)
+  return fingerprint.replaceAll('-', ' ')
+}
+
+function parameterSortRank(value: string, definition: CandidateParameterDefinition) {
+  const orderedIndex = definition.order?.indexOf(value) ?? -1
+  if (orderedIndex >= 0) return { bucket: 0, value: orderedIndex, label: value }
+  const numericValue = Number(value)
+  if (Number.isFinite(numericValue)) return { bucket: 1, value: numericValue, label: value }
+  return { bucket: 2, value: 0, label: value }
+}
+
+function sortParameterValuesFor(definition: CandidateParameterDefinition) {
+  return (a: string, b: string) => {
+    const rankA = parameterSortRank(a, definition)
+    const rankB = parameterSortRank(b, definition)
+    return rankA.bucket - rankB.bucket || rankA.value - rankB.value || rankA.label.localeCompare(rankB.label)
+  }
+}
+
+function parameterAxisQuality(definition: CandidateParameterDefinition) {
+  if (definition.nominal) return 0
+  return definition.order ? 1.1 : 1
+}
+
+function strategyCandidateDiagnostics(strategy: ResearchBacktestResult['strategy'] | null | undefined): CandidateDiagnostics | null {
+  const diagnostics = strategy?.params.candidateDiagnostics
+  if (!diagnostics || typeof diagnostics !== 'object') return null
+  const value = diagnostics as CandidateDiagnostics
+  return Array.isArray(value.candidates) ? value : null
+}
+
+function candidateMetricRows(diagnostics: CandidateDiagnostics | null): CandidateMetricRow[] {
+  const selectedCandidateId = diagnostics?.selectedCandidateId
+  const selectedCandidateIds = new Set([selectedCandidateId, ...(diagnostics?.selectedCandidateIds ?? [])].filter(Boolean))
+  return (diagnostics?.candidates ?? [])
+    .map((candidate, index) => {
+      const id = typeof candidate.candidateId === 'string' ? candidate.candidateId : `candidate-${index + 1}`
+      return {
+        id,
+        index,
+        eligible: candidate.eligible === true || candidate.selectionEligible === true,
+        selected: selectedCandidateIds.has(id),
+        trainValidationRank: numberOrNull(candidate.trainValidationRank),
+        trainEdgePct: numberOrNull(candidate.trainEdgePct),
+        validationEdgePct: numberOrNull(candidate.validationEdgePct),
+        holdoutEdgePct: numberOrNull(candidate.holdoutEdgePct),
+        allEdgePct: numberOrNull(candidate.allEdgePct),
+        trainReturnPct: numberOrNull(candidate.trainReturnPct),
+        validationReturnPct: numberOrNull(candidate.validationReturnPct),
+        holdoutReturnPct: numberOrNull(candidate.holdoutReturnPct),
+        trainSharpe: numberOrNull(candidate.trainSharpe),
+        validationSharpe: numberOrNull(candidate.validationSharpe),
+        holdoutSharpe: numberOrNull(candidate.holdoutSharpe),
+        trainMaxDrawdownPct: numberOrNull(candidate.trainMaxDrawdownPct),
+        validationMaxDrawdownPct: numberOrNull(candidate.validationMaxDrawdownPct),
+        holdoutMaxDrawdownPct: numberOrNull(candidate.holdoutMaxDrawdownPct),
+        source: candidate,
+      }
+    })
+    .filter((candidate) => finiteNumbers([candidate.trainEdgePct, candidate.validationEdgePct, candidate.holdoutEdgePct]).length > 0)
+}
+
+function trainValidationEdge(candidate: CandidateMetricRow) {
+  return average(finiteNumbers([candidate.trainEdgePct, candidate.validationEdgePct]))
+}
+
+function selectedCandidateRow(candidates: CandidateMetricRow[]) {
+  return candidates.find((candidate) => candidate.selected) ?? candidates[0] ?? null
+}
+
+function parameterAxisCandidates(candidates: CandidateMetricRow[]) {
+  return validationParameterDefinitions
+    .map((definition) => {
+      const values = new Set<string>()
+      let coverage = 0
+      let selectedCoverage = 0
+      candidates.forEach((candidate) => {
+        const key = parameterFingerprint(parameterRawValue(candidate.source, definition))
+        if (key === 'Missing') return
+        values.add(key)
+        coverage += 1
+        if (candidate.selected) selectedCoverage += 1
+      })
+      return {
+        definition,
+        values: [...values].sort(sortParameterValuesFor(definition)),
+        coverage,
+        selectedCoverage,
+      }
+    })
+    .filter((axis) => axis.values.length > 1)
+    .sort(
+      (a, b) =>
+        parameterAxisQuality(b.definition) - parameterAxisQuality(a.definition) ||
+        b.values.length - a.values.length ||
+        b.coverage - a.coverage ||
+        b.selectedCoverage - a.selectedCoverage,
+    )
+}
+
+function emptyParameterStabilitySummary(): ParameterStabilitySummary {
+  return {
+    selectedHoldoutEdgePct: null,
+    selectedTrainValidationEdgePct: null,
+    stableThresholdPct: null,
+    localCellCount: 0,
+    localStableCellCount: 0,
+    globalStableCellCount: 0,
+    scorePct: null,
+    label: 'No selected cell',
+    detail: 'No selected setting was found on this surface.',
+  }
+}
+
+function buildParameterStabilitySummary(cells: ParameterHeatmapCell[], xValues: string[], yValues: string[]): ParameterStabilitySummary {
+  const selectedCell = cells
+    .filter((cell) => cell.selected && cell.averageHoldoutEdgePct !== null)
+    .sort((a, b) => (b.averageHoldoutEdgePct ?? Number.NEGATIVE_INFINITY) - (a.averageHoldoutEdgePct ?? Number.NEGATIVE_INFINITY))[0]
+  if (!selectedCell || selectedCell.averageHoldoutEdgePct === null) return emptyParameterStabilitySummary()
+
+  const selectedXIndex = xValues.indexOf(selectedCell.xKey)
+  const selectedYIndex = yValues.indexOf(selectedCell.yKey)
+  const populatedCells = cells.filter((cell) => cell.candidateCount > 0 && cell.averageHoldoutEdgePct !== null)
+  const tolerancePct = Math.max(3, Math.abs(selectedCell.averageHoldoutEdgePct) * 0.18)
+  const stableThresholdPct = selectedCell.averageHoldoutEdgePct - tolerancePct
+  const localCells = populatedCells.filter((cell) => {
+    const xIndex = xValues.indexOf(cell.xKey)
+    const yIndex = yValues.indexOf(cell.yKey)
+    return Math.abs(xIndex - selectedXIndex) <= 1 && Math.abs(yIndex - selectedYIndex) <= 1
+  })
+  const localStableCells = localCells.filter((cell) => (cell.averageHoldoutEdgePct ?? Number.NEGATIVE_INFINITY) >= stableThresholdPct)
+  const globalStableCells = populatedCells.filter((cell) => (cell.averageHoldoutEdgePct ?? Number.NEGATIVE_INFINITY) >= stableThresholdPct)
+  const scorePct = localCells.length ? (localStableCells.length / localCells.length) * 100 : null
+  const label =
+    scorePct === null
+      ? 'No selected cell'
+      : scorePct >= 70
+        ? 'Broad plateau'
+        : scorePct >= 35
+          ? 'Mixed surface'
+          : 'Isolated spike'
+  const detail =
+    scorePct === null
+      ? 'No selected setting was found on this surface.'
+      : `${formatNumber(localStableCells.length, 0)} of ${formatNumber(localCells.length, 0)} nearby cells stay within ${formatNumber(tolerancePct, 1)} pts of selected holdout.`
+
+  return {
+    selectedHoldoutEdgePct: selectedCell.averageHoldoutEdgePct,
+    selectedTrainValidationEdgePct: selectedCell.averageTrainValidationEdgePct,
+    stableThresholdPct,
+    localCellCount: localCells.length,
+    localStableCellCount: localStableCells.length,
+    globalStableCellCount: globalStableCells.length,
+    scorePct,
+    label,
+    detail,
+  }
+}
+
+function annotateParameterStabilityCells(
+  cells: ParameterHeatmapCell[],
+  xValues: string[],
+  yValues: string[],
+  stability: ParameterStabilitySummary,
+) {
+  const selectedCell = cells
+    .filter((cell) => cell.selected && cell.averageHoldoutEdgePct !== null)
+    .sort((a, b) => (b.averageHoldoutEdgePct ?? Number.NEGATIVE_INFINITY) - (a.averageHoldoutEdgePct ?? Number.NEGATIVE_INFINITY))[0]
+  if (!selectedCell || stability.stableThresholdPct === null) return cells
+  const stableThresholdPct = stability.stableThresholdPct
+  const selectedXIndex = xValues.indexOf(selectedCell.xKey)
+  const selectedYIndex = yValues.indexOf(selectedCell.yKey)
+  return cells.map((cell) => {
+    const xIndex = xValues.indexOf(cell.xKey)
+    const yIndex = yValues.indexOf(cell.yKey)
+    const localNeighbor = Math.abs(xIndex - selectedXIndex) <= 1 && Math.abs(yIndex - selectedYIndex) <= 1
+    return {
+      ...cell,
+      localNeighbor,
+      stablePlateau: localNeighbor && cell.averageHoldoutEdgePct !== null && cell.averageHoldoutEdgePct >= stableThresholdPct,
+    }
+  })
+}
+
+function buildParameterHeatmapCells(
+  rows: CandidateMetricRow[],
+  xAxis: { definition: CandidateParameterDefinition },
+  yAxis: { definition: CandidateParameterDefinition } | null,
+  xValues: string[],
+  yValues: string[],
+) {
+  const groups = new Map<string, CandidateMetricRow[]>()
+  rows.forEach((candidate) => {
+    const xKey = parameterFingerprint(parameterRawValue(candidate.source, xAxis.definition))
+    const yKey = yAxis ? parameterFingerprint(parameterRawValue(candidate.source, yAxis.definition)) : 'All'
+    const groupKey = `${xKey}\u0000${yKey}`
+    const group = groups.get(groupKey) ?? []
+    group.push(candidate)
+    groups.set(groupKey, group)
+  })
+
+  return yValues.flatMap((yKey) =>
+    xValues.map((xKey) => {
+      const group = groups.get(`${xKey}\u0000${yKey}`) ?? []
+      const holdoutEdges = finiteNumbers(group.map((row) => row.holdoutEdgePct))
+      return {
+        xKey,
+        yKey,
+        xLabel: compactParameterValue(xKey),
+        yLabel: compactParameterValue(yKey),
+        candidateCount: group.length,
+        averageHoldoutEdgePct: holdoutEdges.length ? average(holdoutEdges) : null,
+        averageTrainValidationEdgePct: group.length ? average(group.map(trainValidationEdge)) : null,
+        selected: group.some((row) => row.selected),
+        localNeighbor: false,
+        stablePlateau: false,
+      }
+    }),
+  )
+}
+
+function buildParameterHeatmapPlot(candidates: CandidateMetricRow[]): ParameterHeatmapPlot | null {
+  const axes = parameterAxisCandidates(candidates)
+  if (!axes.length) return null
+  const pairOptions = axes
+    .flatMap((xAxis) =>
+      axes
+        .filter((yAxis) => yAxis.definition.label !== xAxis.definition.label)
+        .map((yAxis) => {
+          const rows = candidates.filter((candidate) => {
+            const xKey = parameterFingerprint(parameterRawValue(candidate.source, xAxis.definition))
+            const yKey = parameterFingerprint(parameterRawValue(candidate.source, yAxis.definition))
+            return xKey !== 'Missing' && yKey !== 'Missing'
+          })
+          const xValues = [
+            ...new Set(rows.map((candidate) => parameterFingerprint(parameterRawValue(candidate.source, xAxis.definition)))),
+          ].sort(sortParameterValuesFor(xAxis.definition))
+          const yValues = [
+            ...new Set(rows.map((candidate) => parameterFingerprint(parameterRawValue(candidate.source, yAxis.definition)))),
+          ].sort(sortParameterValuesFor(yAxis.definition))
+          const cells = buildParameterHeatmapCells(rows, xAxis, yAxis, xValues, yValues)
+          const stability = buildParameterStabilitySummary(cells, xValues, yValues)
+          const populatedCells = cells.filter((cell) => cell.candidateCount > 0 && cell.averageHoldoutEdgePct !== null)
+          const values = finiteNumbers(cells.map((cell) => cell.averageHoldoutEdgePct))
+          const holdoutSpread = values.length ? Math.max(...values) - Math.min(...values) : 0
+          return { xAxis, yAxis, rows, xValues, yValues, cells, stability, populatedCells, holdoutSpread }
+        }),
+    )
+    .filter(
+      (option) =>
+        option.xValues.length > 1 &&
+        option.yValues.length > 1 &&
+        option.populatedCells.length >= 4 &&
+        option.stability.selectedHoldoutEdgePct !== null,
+    )
+    .sort(
+      (a, b) =>
+        parameterAxisQuality(b.xAxis.definition) +
+          parameterAxisQuality(b.yAxis.definition) -
+          (parameterAxisQuality(a.xAxis.definition) + parameterAxisQuality(a.yAxis.definition)) ||
+        a.stability.localStableCellCount / Math.max(a.stability.localCellCount, 1) -
+          b.stability.localStableCellCount / Math.max(b.stability.localCellCount, 1) ||
+        b.xValues.length * b.yValues.length - a.xValues.length * a.yValues.length ||
+        b.holdoutSpread - a.holdoutSpread ||
+        b.rows.length - a.rows.length,
+    )
+
+  const fallbackAxis = axes.find((axis) => !axis.definition.nominal) ?? axes[0]
+  const fallbackRows = candidates.filter(
+    (candidate) => parameterFingerprint(parameterRawValue(candidate.source, fallbackAxis.definition)) !== 'Missing',
+  )
+  const fallbackXValues = [
+    ...new Set(fallbackRows.map((candidate) => parameterFingerprint(parameterRawValue(candidate.source, fallbackAxis.definition)))),
+  ].sort(sortParameterValuesFor(fallbackAxis.definition))
+  const bestPair = pairOptions[0]
+  const xAxis = bestPair?.xAxis ?? fallbackAxis
+  const yAxis = bestPair?.yAxis
+  const rows = bestPair?.rows ?? fallbackRows
+  const xValues = bestPair?.xValues ?? fallbackXValues
+  const yValues = bestPair?.yValues ?? ['All']
+  if (!xValues.length || !yValues.length) return null
+
+  const rawCells = bestPair?.cells ?? buildParameterHeatmapCells(rows, xAxis, yAxis ?? null, xValues, yValues)
+  const stability = bestPair?.stability ?? buildParameterStabilitySummary(rawCells, xValues, yValues)
+  const cells = annotateParameterStabilityCells(rawCells, xValues, yValues, stability)
+  const values = finiteNumbers(cells.map((cell) => cell.averageHoldoutEdgePct))
+  return {
+    xLabel: xAxis.definition.label,
+    yLabel: yAxis?.definition.label ?? 'Candidate set',
+    xValues: xValues.map((key) => ({ key, label: compactParameterValue(key) })),
+    yValues: yValues.map((key) => ({ key, label: compactParameterValue(key) })),
+    cells,
+    valueMin: values.length ? Math.min(...values) : 0,
+    valueMax: values.length ? Math.max(...values) : 1,
+    stability,
+  }
+}
+
+function hashString(value: string) {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function seededRandom(seed: string) {
+  let state = hashString(seed) || 1
+  return () => {
+    state = Math.imul(state, 1664525) + 1013904223
+    return (state >>> 0) / 4294967296
+  }
+}
+
+function sampledReturnPathPoints(returnsPct: number[], startValue = 100) {
+  const points = [startValue]
+  let value = startValue
+  returnsPct.forEach((returnPct) => {
+    value = Math.max(startValue * 0.2, value * (1 + returnPct / 100))
+    points.push(Number(value.toFixed(2)))
+  })
+  return points
+}
+
+function downsamplePathPoints(points: number[], maxPoints = 48) {
+  if (points.length <= maxPoints) return points
+  return Array.from({ length: maxPoints }, (_, index) => {
+    const sourceIndex = Math.round((index / Math.max(maxPoints - 1, 1)) * (points.length - 1))
+    return points[sourceIndex] ?? points[points.length - 1] ?? 100
+  })
+}
+
+function bootstrapReturnPath(returnsPct: number[], simulationIndex: number, blockLength: number) {
+  const random = seededRandom(`selected-active-path-${simulationIndex}`)
+  const sampledReturns: number[] = []
+  while (sampledReturns.length < returnsPct.length) {
+    const startIndex = Math.floor(random() * returnsPct.length)
+    for (let offset = 0; offset < blockLength && sampledReturns.length < returnsPct.length; offset += 1) {
+      sampledReturns.push(returnsPct[(startIndex + offset) % returnsPct.length] ?? 0)
+    }
+  }
+  return sampledReturns
+}
+
+function activeReturnPctForTrade(trade: ResearchTrade) {
+  const netReturnPct = numberOrNull(trade.netReturnPct) ?? 0
+  const indexReturnPct = numberOrNull(trade.indexReturnPct) ?? 0
+  return netReturnPct - indexReturnPct
+}
+
+function buildMonteCarloStressPlot(trades: ResearchTrade[]): MonteCarloStressPlot {
+  const startValue = 100
+  const returnsPct = trades.map(activeReturnPctForTrade).filter((value) => Number.isFinite(value))
+  const blockLength = Math.max(1, Math.min(10, Math.round(Math.sqrt(Math.max(returnsPct.length, 1)))))
+  const simulationCount = returnsPct.length ? 120 : 0
+  const simulatedPaths = Array.from({ length: simulationCount }, (_, simulationIndex) => {
+    const sampledReturns = bootstrapReturnPath(returnsPct, simulationIndex, blockLength)
+    const fullPoints = sampledReturnPathPoints(sampledReturns, startValue)
+    return {
+      id: `bootstrap-${simulationIndex}`,
+      label: `Bootstrap ${simulationIndex + 1}`,
+      selected: false,
+      eligible: true,
+      color: monteCarloPalette[simulationIndex % monteCarloPalette.length],
+      points: downsamplePathPoints(fullPoints),
+      finalValue: fullPoints[fullPoints.length - 1] ?? startValue,
+    }
+  })
+  const observedFullPoints = sampledReturnPathPoints(returnsPct, startValue)
+  const observedPath =
+    returnsPct.length > 0
+      ? [
+          {
+            id: 'observed-selected-path',
+            label: 'Observed selected path',
+            selected: true,
+            eligible: true,
+            color: '#111827',
+            points: downsamplePathPoints(observedFullPoints),
+            finalValue: observedFullPoints[observedFullPoints.length - 1] ?? startValue,
+          },
+        ]
+      : []
+  const paths = [...simulatedPaths, ...observedPath]
+  const allValues = paths.flatMap((path) => path.points)
+  const positiveFinalPct = simulatedPaths.length
+    ? (simulatedPaths.filter((path) => path.finalValue >= startValue).length * 100) / simulatedPaths.length
+    : 0
+  return {
+    paths,
+    startValue,
+    valueMin: allValues.length ? Math.min(...allValues) : startValue * 0.7,
+    valueMax: allValues.length ? Math.max(...allValues) : startValue * 1.3,
+    positiveFinalPct,
+    sampleCount: returnsPct.length,
+    blockLength,
+    simulationCount,
+  }
+}
+
+function interpolateColor(left: readonly number[], right: readonly number[], amount: number) {
+  const value = Math.max(0, Math.min(amount, 1))
+  return left.map((channel, index) => Math.round(channel + (right[index] - channel) * value))
+}
+
+function heatmapBackground(value: number | null, minValue: number, maxValue: number) {
+  if (value === null) return '#eef2f7'
+  const span = Math.max(maxValue - minValue, 0.001)
+  const ratio = Math.max(0, Math.min(1, (value - minValue) / span))
+  const rightStop = heatmapColorStops.find((stop) => stop.at >= ratio) ?? heatmapColorStops[heatmapColorStops.length - 1]
+  const leftStop = [...heatmapColorStops].reverse().find((stop) => stop.at <= ratio) ?? heatmapColorStops[0]
+  const stopSpan = Math.max(rightStop.at - leftStop.at, 0.001)
+  const [red, green, blue] = interpolateColor(leftStop.color, rightStop.color, (ratio - leftStop.at) / stopSpan)
+  return `rgb(${red}, ${green}, ${blue})`
+}
+
+function heatmapCellCenter(plot: ParameterHeatmapPlot, cell: ParameterHeatmapCell) {
+  const xIndex = Math.max(0, plot.xValues.findIndex((value) => value.key === cell.xKey))
+  const yIndex = Math.max(0, plot.yValues.findIndex((value) => value.key === cell.yKey))
+  return {
+    x: ((xIndex + 0.5) / Math.max(plot.xValues.length, 1)) * 100,
+    y: ((yIndex + 0.5) / Math.max(plot.yValues.length, 1)) * 100,
+  }
+}
+
+function buildHeatmapSurfacePixels(plot: ParameterHeatmapPlot, columns = 17, rows = 17): HeatmapSurfacePixel[] {
+  const observations = plot.cells
+    .filter((cell) => cell.averageHoldoutEdgePct !== null && cell.candidateCount > 0)
+    .map((cell) => {
+      const center = heatmapCellCenter(plot, cell)
+      return {
+        x: center.x / 100,
+        y: center.y / 100,
+        value: cell.averageHoldoutEdgePct ?? 0,
+      }
+    })
+  if (!observations.length) return []
+  const pixelWidth = 100 / columns
+  const pixelHeight = 100 / rows
+  return Array.from({ length: columns * rows }, (_, index) => {
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    const x = (column + 0.5) / columns
+    const y = (row + 0.5) / rows
+    let weightedValue = 0
+    let totalWeight = 0
+    observations.forEach((observation) => {
+      const distance = Math.hypot(x - observation.x, y - observation.y)
+      const weight = 1 / (distance * distance + 0.012)
+      weightedValue += observation.value * weight
+      totalWeight += weight
+    })
+    return {
+      x: column * pixelWidth,
+      y: row * pixelHeight,
+      width: pixelWidth + 0.4,
+      height: pixelHeight + 0.4,
+      value: weightedValue / Math.max(totalWeight, 0.001),
+    }
+  })
+}
+
 function splitEdgeForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined, split: SplitEdgeName) {
   const splitEdges = strategy?.params.splitEdges
   if (!splitEdges || typeof splitEdges !== 'object') return null
   const value = (splitEdges as Partial<Record<SplitEdgeName, unknown>>)[split]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function splitAnnualEdgeForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined, split: SplitEdgeName) {
+  const splitAnnualEdges = strategy?.params.splitAnnualEdges
+  if (!splitAnnualEdges || typeof splitAnnualEdges !== 'object') return null
+  const value = (splitAnnualEdges as Partial<Record<SplitEdgeName, unknown>>)[split]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
@@ -212,13 +872,6 @@ function realityCheckForStrategy(strategy: ResearchBacktestResult['strategy'] | 
   return typeof value.pValue === 'number' && Number.isFinite(value.pValue) ? (value as RealityCheckMetrics) : null
 }
 
-function evidenceForPValue(pValue: number): { label: string; tone: Tone } {
-  if (pValue <= 0.01) return { label: 'Very strong', tone: 'positive' }
-  if (pValue <= 0.05) return { label: 'Strong', tone: 'positive' }
-  if (pValue <= 0.1) return { label: 'Watchlist', tone: 'warning' }
-  return { label: 'Weak', tone: 'negative' }
-}
-
 function formatPValue(value: number | null | undefined, minimum?: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
   if (minimum && value <= minimum) return `<=${formatNumber(minimum, 4)}`
@@ -226,9 +879,18 @@ function formatPValue(value: number | null | undefined, minimum?: number) {
   return formatNumber(value, 4)
 }
 
-function formatDailyEdgeInterval(interval: RealityCheckPercentiles | null | undefined) {
-  if (!interval) return '-'
-  return `${signedPercent(interval.p05, 4)} to ${signedPercent(interval.p95, 4)}`
+function componentPValueList(realityCheck: RealityCheckMetrics | null | undefined) {
+  return Object.values(realityCheck?.componentPValues ?? {}).filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value),
+  )
+}
+
+function primaryPValueDetail(realityCheck: RealityCheckMetrics | null | undefined) {
+  if (!realityCheck) return 'No reality check'
+  if (componentPValueList(realityCheck).length > 1) return 'Fisher combined'
+  return realityCheck.selectionAdjustedPValue === null || realityCheck.selectionAdjustedPValue === undefined
+    ? 'Single strategy bootstrap'
+    : 'Selection-adjusted bootstrap'
 }
 
 function roundNumber(value: number, digits = 2) {
@@ -543,10 +1205,6 @@ function StrategyTitleSelect({
         </select>
         <ChevronDown size={18} aria-hidden="true" />
       </span>
-      <span className="chart-title-strategy-meta">
-        {selectedItem && <strong className={classForSigned(selectedItem.returnPct)}>{signedPercent(selectedItem.returnPct)}</strong>}
-        <em>{selectedItem ? `${selectedItem.family} / ${selectedItem.status}` : 'No research strategies'}</em>
-      </span>
     </label>
   )
 }
@@ -557,6 +1215,631 @@ function ChartEmptyOverlay({ title, detail }: { title: string; detail: string })
       <strong>{title}</strong>
       <span>{detail}</span>
     </div>
+  )
+}
+
+function fullSvgViewport(): SvgViewport {
+  return { x: 0, y: 0, width: 100, height: 100 }
+}
+
+function clampSvgViewport(viewport: SvgViewport): SvgViewport {
+  const width = Math.max(minSvgViewportWidth, Math.min(Number.isFinite(viewport.width) ? viewport.width : 100, 100))
+  const height = Math.max(minSvgViewportWidth, Math.min(Number.isFinite(viewport.height) ? viewport.height : 100, 100))
+  const x = Math.max(0, Math.min(Number.isFinite(viewport.x) ? viewport.x : 0, 100 - width))
+  const y = Math.max(0, Math.min(Number.isFinite(viewport.y) ? viewport.y : 0, 100 - height))
+  return { x, y, width, height }
+}
+
+function normalizeSvgWheelZoomPower(event: WheelEvent) {
+  const deltaModeScale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 800 : 1
+  return -event.deltaY * deltaModeScale * svgWheelZoomPowerPerPixel
+}
+
+function zoomSvgViewportAtRatio(viewport: SvgViewport, zoomPower: number, anchorXRatio: number, anchorYRatio: number): SvgViewport {
+  if (!Number.isFinite(zoomPower) || zoomPower === 0) return clampSvgViewport(viewport)
+  const current = clampSvgViewport(viewport)
+  const scale = 2 ** Math.max(-maxSvgZoomPowerPerInput, Math.min(zoomPower, maxSvgZoomPowerPerInput))
+  const width = Math.max(minSvgViewportWidth, Math.min(100, current.width / scale))
+  const height = Math.max(minSvgViewportWidth, Math.min(100, current.height / scale))
+  const xRatio = clampRatio(anchorXRatio)
+  const yRatio = clampRatio(anchorYRatio)
+  const anchorX = current.x + current.width * xRatio
+  const anchorY = current.y + current.height * yRatio
+  return clampSvgViewport({ x: anchorX - width * xRatio, y: anchorY - height * yRatio, width, height })
+}
+
+function panSvgViewportByDelta(viewport: SvgViewport, deltaX: number, deltaY: number, frameWidth: number, frameHeight: number): SvgViewport {
+  if ((!Number.isFinite(deltaX) || deltaX === 0) && (!Number.isFinite(deltaY) || deltaY === 0)) return clampSvgViewport(viewport)
+  const current = clampSvgViewport(viewport)
+  const x = frameWidth > 0 ? current.x + (deltaX / frameWidth) * current.width : current.x
+  const y = frameHeight > 0 ? current.y + (deltaY / frameHeight) * current.height : current.y
+  return clampSvgViewport({ x, y, width: current.width, height: current.height })
+}
+
+function isSvgViewportZoomed(viewport: SvgViewport) {
+  const current = clampSvgViewport(viewport)
+  return current.width < 99.999 || current.height < 99.999
+}
+
+function projectSvgX(viewport: SvgViewport, value: number) {
+  const clamped = clampSvgViewport(viewport)
+  return ((value - clamped.x) / clamped.width) * 100
+}
+
+function projectSvgY(viewport: SvgViewport, value: number) {
+  const clamped = clampSvgViewport(viewport)
+  return ((value - clamped.y) / clamped.height) * 100
+}
+
+function projectSvgWidth(viewport: SvgViewport, width: number) {
+  return (width / clampSvgViewport(viewport).width) * 100
+}
+
+function projectSvgHeight(viewport: SvgViewport, height: number) {
+  return (height / clampSvgViewport(viewport).height) * 100
+}
+
+function useSvgTrackpadViewport(enabled: boolean, resetKey: string) {
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const pendingViewportRef = useRef<SvgViewport>(fullSvgViewport())
+  const frameRequestRef = useRef<number | null>(null)
+  const gestureActiveRef = useRef(false)
+  const gestureStartViewportRef = useRef<SvgViewport | null>(null)
+  const gestureAnchorRatioRef = useRef({ x: 0.5, y: 0.5 })
+  const [viewportState, setViewportState] = useState<{ resetKey: string; viewport: SvgViewport }>(() => ({
+    resetKey,
+    viewport: fullSvgViewport(),
+  }))
+  const viewport = viewportState.resetKey === resetKey ? viewportState.viewport : fullSvgViewport()
+
+  useEffect(() => {
+    const nextViewport = fullSvgViewport()
+    pendingViewportRef.current = nextViewport
+    gestureStartViewportRef.current = null
+    gestureActiveRef.current = false
+  }, [resetKey])
+
+  useEffect(() => {
+    pendingViewportRef.current = clampSvgViewport(viewport)
+  }, [viewport])
+
+  useEffect(() => {
+    return () => {
+      if (frameRequestRef.current !== null) window.cancelAnimationFrame(frameRequestRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!enabled) return
+    const svg = svgRef.current
+    if (!svg) return
+
+    const anchorRatiosForClientPoint = (clientX: number | undefined, clientY: number | undefined) => {
+      const rect = svg.getBoundingClientRect()
+      return {
+        x: clampRatio(((clientX ?? rect.left + rect.width / 2) - rect.left) / Math.max(rect.width, 1)),
+        y: clampRatio(((clientY ?? rect.top + rect.height / 2) - rect.top) / Math.max(rect.height, 1)),
+      }
+    }
+
+    const eventStartedInFrame = (event: Event) => {
+      const gestureEvent = event as WebKitGestureEvent
+      const target = event.target
+      if (target instanceof Node && svg.contains(target)) return true
+      if (typeof gestureEvent.clientX !== 'number') return false
+      const rect = svg.getBoundingClientRect()
+      const clientY = typeof gestureEvent.clientY === 'number' ? gestureEvent.clientY : rect.top + rect.height / 2
+      return gestureEvent.clientX >= rect.left && gestureEvent.clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+    }
+
+    const scheduleViewport = (nextViewport: SvgViewport) => {
+      pendingViewportRef.current = clampSvgViewport(nextViewport)
+      if (frameRequestRef.current !== null) return
+      frameRequestRef.current = window.requestAnimationFrame(() => {
+        frameRequestRef.current = null
+        setViewportState({ resetKey, viewport: pendingViewportRef.current })
+      })
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      const isPinchZoom = event.ctrlKey || event.metaKey
+      const isZoomedPan = !isPinchZoom && isSvgViewportZoomed(pendingViewportRef.current)
+      if (!isPinchZoom && !isZoomedPan) return
+
+      if (event.cancelable) event.preventDefault()
+      const rect = svg.getBoundingClientRect()
+      let nextViewport = pendingViewportRef.current
+      if (isZoomedPan) nextViewport = panSvgViewportByDelta(nextViewport, event.deltaX, event.deltaY, rect.width, rect.height)
+      if (isPinchZoom) {
+        const anchor = anchorRatiosForClientPoint(event.clientX, event.clientY)
+        nextViewport = zoomSvgViewportAtRatio(nextViewport, normalizeSvgWheelZoomPower(event), anchor.x, anchor.y)
+      }
+      scheduleViewport(nextViewport)
+    }
+
+    const handleGestureStart = (event: Event) => {
+      if (!eventStartedInFrame(event)) return
+      if (event.cancelable) event.preventDefault()
+      const gestureEvent = event as WebKitGestureEvent
+      gestureActiveRef.current = true
+      gestureStartViewportRef.current = pendingViewportRef.current
+      gestureAnchorRatioRef.current = anchorRatiosForClientPoint(gestureEvent.clientX, gestureEvent.clientY)
+    }
+
+    const handleGestureChange = (event: Event) => {
+      if (!gestureActiveRef.current) return
+      if (event.cancelable) event.preventDefault()
+      const gestureEvent = event as WebKitGestureEvent
+      const scale = typeof gestureEvent.scale === 'number' && Number.isFinite(gestureEvent.scale) ? gestureEvent.scale : 1
+      const zoomPower = Math.log2(Math.max(0.05, scale)) * svgWebKitGestureZoomGain
+      const anchor = gestureAnchorRatioRef.current
+      scheduleViewport(
+        zoomSvgViewportAtRatio(
+          gestureStartViewportRef.current ?? pendingViewportRef.current,
+          zoomPower,
+          anchor.x,
+          anchor.y,
+        ),
+      )
+    }
+
+    const handleGestureEnd = () => {
+      gestureActiveRef.current = false
+      gestureStartViewportRef.current = null
+    }
+
+    svg.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('gesturestart', handleGestureStart, { capture: true, passive: false } as AddEventListenerOptions)
+    window.addEventListener('gesturechange', handleGestureChange, { capture: true, passive: false } as AddEventListenerOptions)
+    window.addEventListener('gestureend', handleGestureEnd, true)
+
+    return () => {
+      svg.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('gesturestart', handleGestureStart, true)
+      window.removeEventListener('gesturechange', handleGestureChange, true)
+      window.removeEventListener('gestureend', handleGestureEnd, true)
+    }
+  }, [enabled, resetKey])
+
+  const clampedViewport = clampSvgViewport(viewport)
+  return {
+    svgRef,
+    viewport: clampedViewport,
+  }
+}
+
+function zoomSvgViewportXAtRatio(viewport: SvgViewport, zoomPower: number, anchorXRatio: number): SvgViewport {
+  const current = clampSvgViewport(viewport)
+  const next = zoomSvgViewportAtRatio(current, zoomPower, anchorXRatio, 0.5)
+  return clampSvgViewport({ x: next.x, y: 0, width: next.width, height: 100 })
+}
+
+function panSvgViewportXByDelta(viewport: SvgViewport, deltaX: number, frameWidth: number): SvgViewport {
+  const current = clampSvgViewport(viewport)
+  const next = panSvgViewportByDelta(current, deltaX, 0, frameWidth, 1)
+  return clampSvgViewport({ x: next.x, y: 0, width: next.width, height: 100 })
+}
+
+function useSvgTrackpadXViewport(enabled: boolean, resetKey: string) {
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const pendingViewportRef = useRef<SvgViewport>(fullSvgViewport())
+  const frameRequestRef = useRef<number | null>(null)
+  const gestureActiveRef = useRef(false)
+  const gestureStartViewportRef = useRef<SvgViewport | null>(null)
+  const gestureAnchorRatioRef = useRef(0.5)
+  const [viewportState, setViewportState] = useState<{ resetKey: string; viewport: SvgViewport }>(() => ({
+    resetKey,
+    viewport: fullSvgViewport(),
+  }))
+  const viewport = viewportState.resetKey === resetKey ? viewportState.viewport : fullSvgViewport()
+
+  useEffect(() => {
+    const nextViewport = fullSvgViewport()
+    pendingViewportRef.current = nextViewport
+    gestureStartViewportRef.current = null
+    gestureActiveRef.current = false
+  }, [resetKey])
+
+  useEffect(() => {
+    const current = clampSvgViewport(viewport)
+    pendingViewportRef.current = { x: current.x, y: 0, width: current.width, height: 100 }
+  }, [viewport])
+
+  useEffect(() => {
+    return () => {
+      if (frameRequestRef.current !== null) window.cancelAnimationFrame(frameRequestRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!enabled) return
+    const svg = svgRef.current
+    if (!svg) return
+
+    const anchorRatioForClientX = (clientX: number | undefined) => {
+      const rect = svg.getBoundingClientRect()
+      return clampRatio(((clientX ?? rect.left + rect.width / 2) - rect.left) / Math.max(rect.width, 1))
+    }
+
+    const eventStartedInFrame = (event: Event) => {
+      const gestureEvent = event as WebKitGestureEvent
+      const target = event.target
+      if (target instanceof Node && svg.contains(target)) return true
+      if (typeof gestureEvent.clientX !== 'number') return false
+      const rect = svg.getBoundingClientRect()
+      const clientY = typeof gestureEvent.clientY === 'number' ? gestureEvent.clientY : rect.top + rect.height / 2
+      return gestureEvent.clientX >= rect.left && gestureEvent.clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+    }
+
+    const scheduleViewport = (nextViewport: SvgViewport) => {
+      const current = clampSvgViewport(nextViewport)
+      pendingViewportRef.current = { x: current.x, y: 0, width: current.width, height: 100 }
+      if (frameRequestRef.current !== null) return
+      frameRequestRef.current = window.requestAnimationFrame(() => {
+        frameRequestRef.current = null
+        setViewportState({ resetKey, viewport: pendingViewportRef.current })
+      })
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      const isPinchZoom = event.ctrlKey || event.metaKey
+      const isHorizontalPan = !isPinchZoom && Math.abs(event.deltaX) > Math.max(2, Math.abs(event.deltaY) * 1.35)
+      if (!isPinchZoom && !isHorizontalPan) return
+
+      if (event.cancelable) event.preventDefault()
+      const rect = svg.getBoundingClientRect()
+      let nextViewport = pendingViewportRef.current
+
+      if (isHorizontalPan) nextViewport = panSvgViewportXByDelta(nextViewport, event.deltaX, rect.width)
+      if (isPinchZoom) {
+        nextViewport = zoomSvgViewportXAtRatio(nextViewport, normalizeSvgWheelZoomPower(event), anchorRatioForClientX(event.clientX))
+      }
+
+      scheduleViewport(nextViewport)
+    }
+
+    const handleGestureStart = (event: Event) => {
+      if (!eventStartedInFrame(event)) return
+      if (event.cancelable) event.preventDefault()
+      const gestureEvent = event as WebKitGestureEvent
+      gestureActiveRef.current = true
+      gestureStartViewportRef.current = pendingViewportRef.current
+      gestureAnchorRatioRef.current = anchorRatioForClientX(gestureEvent.clientX)
+    }
+
+    const handleGestureChange = (event: Event) => {
+      if (!gestureActiveRef.current) return
+      if (event.cancelable) event.preventDefault()
+      const gestureEvent = event as WebKitGestureEvent
+      const scale = typeof gestureEvent.scale === 'number' && Number.isFinite(gestureEvent.scale) ? gestureEvent.scale : 1
+      const zoomPower = Math.log2(Math.max(0.05, scale)) * svgWebKitGestureZoomGain
+      scheduleViewport(zoomSvgViewportXAtRatio(gestureStartViewportRef.current ?? pendingViewportRef.current, zoomPower, gestureAnchorRatioRef.current))
+    }
+
+    const handleGestureEnd = () => {
+      gestureActiveRef.current = false
+      gestureStartViewportRef.current = null
+    }
+
+    svg.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('gesturestart', handleGestureStart, { capture: true, passive: false } as AddEventListenerOptions)
+    window.addEventListener('gesturechange', handleGestureChange, { capture: true, passive: false } as AddEventListenerOptions)
+    window.addEventListener('gestureend', handleGestureEnd, true)
+
+    return () => {
+      svg.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('gesturestart', handleGestureStart, true)
+      window.removeEventListener('gesturechange', handleGestureChange, true)
+      window.removeEventListener('gestureend', handleGestureEnd, true)
+    }
+  }, [enabled, resetKey])
+
+  const current = clampSvgViewport(viewport)
+  return {
+    svgRef,
+    viewport: { x: current.x, y: 0, width: current.width, height: 100 },
+  }
+}
+
+function ValidationEmpty({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="validation-empty">
+      <strong>{title}</strong>
+      <span>{detail}</span>
+    </div>
+  )
+}
+
+function parameterComparisonCells(plot: ParameterHeatmapPlot): ParameterComparisonCell[] {
+  const cells = plot.cells.filter((cell) => cell.candidateCount > 0 && cell.averageHoldoutEdgePct !== null)
+  const values = finiteNumbers(cells.map((cell) => cell.averageHoldoutEdgePct))
+  const minValue = values.length ? Math.min(...values) : 0
+  const maxValue = values.length ? Math.max(...values) : 0
+  const span = Math.max(maxValue - minValue, 0.001)
+  return cells.map((cell) => {
+    const axisLabel = cell.yKey === 'All' ? cell.xLabel : `${cell.xLabel} / ${cell.yLabel}`
+    const value = cell.averageHoldoutEdgePct ?? minValue
+    return {
+      ...cell,
+      displayLabel: axisLabel,
+      normalizedValue: values.length <= 1 ? 1 : 0.18 + ((value - minValue) / span) * 0.82,
+    }
+  })
+}
+
+function ParameterSmallFamilyCheck({ plot }: { plot: ParameterHeatmapPlot }) {
+  const cells = parameterComparisonCells(plot)
+  const values = finiteNumbers(cells.map((cell) => cell.averageHoldoutEdgePct))
+  const minValue = values.length ? Math.min(...values) : null
+  const maxValue = values.length ? Math.max(...values) : null
+  const selectedCell = cells.find((cell) => cell.selected) ?? cells[0] ?? null
+  const rangePct = minValue === null || maxValue === null ? null : maxValue - minValue
+  return (
+    <div className="parameter-comparison" role="img" aria-label={`${plot.xLabel} small candidate-family comparison`}>
+      <div className="parameter-comparison-summary">
+        <div>
+          <span>Selected holdout</span>
+          <strong className={classForSigned(selectedCell?.averageHoldoutEdgePct ?? 0)}>
+            {selectedCell?.averageHoldoutEdgePct === null || selectedCell?.averageHoldoutEdgePct === undefined
+              ? '-'
+              : signedPercent(selectedCell.averageHoldoutEdgePct)}
+          </strong>
+        </div>
+        <div>
+          <span>Compared</span>
+          <strong>{formatNumber(cells.length, 0)}</strong>
+        </div>
+        <div>
+          <span>Holdout range</span>
+          <strong>{rangePct === null ? '-' : `${formatNumber(rangePct, 2)} pts`}</strong>
+        </div>
+      </div>
+      <div className="parameter-comparison-list">
+        {cells.map((cell) => (
+          <div key={`${cell.xKey}-${cell.yKey}`} className={`parameter-comparison-row${cell.selected ? ' selected' : ''}`}>
+            <span>{cell.displayLabel}</span>
+            <i aria-hidden="true">
+              <b style={{ width: `${cell.normalizedValue * 100}%` }} />
+            </i>
+            <strong className={classForSigned(cell.averageHoldoutEdgePct ?? 0)}>{signedPercent(cell.averageHoldoutEdgePct ?? 0)}</strong>
+            <em>{cell.selected ? 'Selected' : 'Checked'}</em>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ParameterStabilityHeatmap({ plot, resetKey }: { plot: ParameterHeatmapPlot | null; resetKey: string }) {
+  const populatedCells = plot?.cells.filter((cell) => cell.candidateCount > 0 && cell.averageHoldoutEdgePct !== null) ?? []
+  const uniqueHoldoutValues = new Set(populatedCells.map((cell) => cell.averageHoldoutEdgePct?.toFixed(4))).size
+  const hasUsableSurface = !!plot && populatedCells.length >= 4 && uniqueHoldoutValues > 1 && plot.stability.selectedHoldoutEdgePct !== null
+  const surfacePixels = plot ? buildHeatmapSurfacePixels(plot) : []
+  const heatmapTitle = plot ? `${plot.yLabel} by ${plot.xLabel}` : 'Parameter stability'
+  const heatmapDetail = plot ? `${plot.stability.label}; ${formatNumber(populatedCells.length, 0)} checked cells` : 'No comparison surface'
+  const { svgRef: heatmapSvgRef, viewport: heatmapViewport } = useSvgTrackpadViewport(hasUsableSurface, resetKey)
+  const heatmapXAxisStyle: CSSProperties = {
+    gridTemplateColumns: `repeat(${plot?.xValues.length ?? 1}, minmax(0, 1fr))`,
+    left: `${(-heatmapViewport.x / heatmapViewport.width) * 100}%`,
+    width: `${(100 / heatmapViewport.width) * 100}%`,
+  }
+  const heatmapYAxisStyle: CSSProperties = {
+    gridTemplateRows: `repeat(${plot?.yValues.length ?? 1}, minmax(0, 1fr))`,
+    height: `${(100 / heatmapViewport.height) * 100}%`,
+    top: `${(-heatmapViewport.y / heatmapViewport.height) * 100}%`,
+  }
+  return (
+    <div className="validation-chart validation-chart-plot validation-chart-heatmap">
+      <div className="validation-chart-heading">
+        <span>Parameter surface</span>
+        <strong>{heatmapTitle}</strong>
+        <em>{heatmapDetail}</em>
+      </div>
+      {plot && hasUsableSurface ? (
+        <div className="parameter-heatmap-wrap">
+          <div className="parameter-heatmap" role="img" aria-label={`${plot.xLabel} by ${plot.yLabel} holdout performance heat map`}>
+            <div className="parameter-heatmap-y-axis-window">
+              <div className="parameter-heatmap-y-axis" style={heatmapYAxisStyle}>
+                {plot.yValues.map((value) => (
+                  <span key={value.key}>{value.label}</span>
+                ))}
+              </div>
+            </div>
+            <svg
+              className="parameter-heatmap-surface"
+              ref={heatmapSvgRef}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <g className="parameter-heatmap-pixels">
+                {surfacePixels.map((pixel, index) => (
+                  <rect
+                    key={index}
+                    x={projectSvgX(heatmapViewport, pixel.x)}
+                    y={projectSvgY(heatmapViewport, pixel.y)}
+                    width={projectSvgWidth(heatmapViewport, pixel.width)}
+                    height={projectSvgHeight(heatmapViewport, pixel.height)}
+                    fill={heatmapBackground(pixel.value, plot.valueMin, plot.valueMax)}
+                  />
+                ))}
+              </g>
+              <g className="parameter-heatmap-hit-cells">
+                {plot.cells.map((cell) => {
+                  const xIndex = Math.max(0, plot.xValues.findIndex((value) => value.key === cell.xKey))
+                  const yIndex = Math.max(0, plot.yValues.findIndex((value) => value.key === cell.yKey))
+                  return (
+                    <rect
+                      key={`${cell.xKey}-${cell.yKey}`}
+                      className={`parameter-heatmap-cell${cell.selected ? ' selected' : ''}${cell.localNeighbor ? ' local-neighbor' : ''}${cell.stablePlateau ? ' stable-plateau' : ''}${cell.candidateCount ? '' : ' empty'}`}
+                      x={projectSvgX(heatmapViewport, (xIndex / plot.xValues.length) * 100)}
+                      y={projectSvgY(heatmapViewport, (yIndex / plot.yValues.length) * 100)}
+                      width={projectSvgWidth(heatmapViewport, 100 / plot.xValues.length)}
+                      height={projectSvgHeight(heatmapViewport, 100 / plot.yValues.length)}
+                    >
+                      <title>
+                        {`${plot.xLabel}: ${cell.xLabel}; ${plot.yLabel}: ${cell.yLabel}; holdout ${
+                          cell.averageHoldoutEdgePct === null ? '-' : signedPercent(cell.averageHoldoutEdgePct)
+                        }; train/validation ${
+                          cell.averageTrainValidationEdgePct === null ? '-' : signedPercent(cell.averageTrainValidationEdgePct)
+                        }; ${formatNumber(cell.candidateCount, 0)} sets${
+                          cell.localNeighbor ? `; ${cell.stablePlateau ? 'inside' : 'below'} local plateau band` : ''
+                        }`}
+                      </title>
+                    </rect>
+                  )
+                })}
+              </g>
+            </svg>
+            <div className="parameter-heatmap-scale" aria-hidden="true">
+              <span>{signedPercent(plot.valueMax)}</span>
+              <i />
+              <span>{signedPercent(plot.valueMin)}</span>
+            </div>
+            <div className="parameter-heatmap-x-axis-window">
+              <div className="parameter-heatmap-x-axis" style={heatmapXAxisStyle}>
+                {plot.xValues.map((value) => (
+                  <span key={value.key}>{value.label}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : plot ? (
+        <ParameterSmallFamilyCheck plot={plot} />
+      ) : (
+        <ValidationEmpty
+          title="No variable parameters"
+          detail="The selected strategy does not have a multi-row parameter family in the loaded artifact."
+        />
+      )}
+    </div>
+  )
+}
+
+function MonteCarloStressChart({ plot, resetKey }: { plot: MonteCarloStressPlot; resetKey: string }) {
+  const hasUsableFan = plot.sampleCount > 1 && plot.simulationCount > 0
+  const { svgRef: monteCarloSvgRef, viewport: monteCarloViewport } = useSvgTrackpadXViewport(plot.paths.length > 0 && hasUsableFan, resetKey)
+  const baseX = (index: number, total: number) => 4 + (index / Math.max(total - 1, 1)) * 92
+  const visibleStartX = monteCarloViewport.x
+  const visibleEndX = monteCarloViewport.x + monteCarloViewport.width
+  const visiblePathValues = plot.paths.flatMap((path) =>
+    path.points.filter((_, index) => {
+      const x = baseX(index, path.points.length)
+      return x >= visibleStartX && x <= visibleEndX
+    }),
+  )
+  const visibleDomainValues = visiblePathValues.length
+    ? [plot.startValue, ...visiblePathValues]
+    : [plot.startValue, plot.valueMin, plot.valueMax]
+  let domainMin = Math.min(...visibleDomainValues)
+  let domainMax = Math.max(...visibleDomainValues)
+  if (domainMin === domainMax) {
+    const pad = Math.max(1, Math.abs(domainMin) * 0.1)
+    domainMin -= pad
+    domainMax += pad
+  } else {
+    const pad = (domainMax - domainMin) * 0.08
+    domainMin -= pad
+    domainMax += pad
+  }
+  const domainSpan = Math.max(domainMax - domainMin, 1)
+  const baseY = (value: number) => 94 - ((value - domainMin) / domainSpan) * 88
+  const toX = (index: number, total: number) => projectSvgX(monteCarloViewport, baseX(index, total))
+  const toY = (value: number) => baseY(value)
+  return (
+    <div className="validation-chart validation-chart-plot">
+      <div className="validation-chart-heading">
+        <span>Monte Carlo</span>
+        <strong>Bootstrap path fan</strong>
+        {!!plot.paths.length && hasUsableFan && (
+          <em>
+            {formatNumber(plot.positiveFinalPct, 0)}% finish above start; {formatNumber(plot.sampleCount, 0)} rows,{' '}
+            {formatNumber(plot.blockLength, 0)}d blocks
+          </em>
+        )}
+      </div>
+      {plot.paths.length && hasUsableFan ? (
+        <div className="monte-carlo-path-chart">
+          <svg
+            ref={monteCarloSvgRef}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            role="img"
+            aria-label="Monte Carlo simulated path fan"
+          >
+            {plot.paths.map((path) => {
+              const points = path.points.map((value, index) => `${toX(index, path.points.length)},${toY(value)}`).join(' ')
+              return (
+                <g key={path.id} className={`monte-carlo-path${path.selected ? ' selected' : ''}${path.eligible ? '' : ' ineligible'}`}>
+                  <title>
+                    {`${path.label}: start ${formatNumber(plot.startValue, 0)}, finish ${formatNumber(path.finalValue, 0)}`}
+                  </title>
+                  <polyline points={points} stroke={path.selected ? '#111827' : path.color} vectorEffect="non-scaling-stroke" />
+                </g>
+              )
+            })}
+          </svg>
+          <div className="validation-axis">
+            <span>{formatNumber(domainMin, 0)}</span>
+            <span>{formatNumber(plot.startValue, 0)} start</span>
+            <span>{formatNumber(domainMax, 0)}</span>
+          </div>
+        </div>
+      ) : plot.paths.length ? (
+        <ValidationEmpty
+          title="Too few return rows"
+          detail="The selected path needs at least two return rows before block-resampled paths are meaningful."
+        />
+      ) : (
+        <ValidationEmpty
+          title="No return samples"
+          detail="The selected strategy has no row-level active returns to resample."
+        />
+      )}
+    </div>
+  )
+}
+
+function OverfitValidationPills({ selectedBacktest }: { selectedBacktest: ResearchBacktestResult | null }) {
+  const diagnostics = useMemo(() => strategyCandidateDiagnostics(selectedBacktest?.strategy), [selectedBacktest])
+  const candidates = useMemo(() => candidateMetricRows(diagnostics), [diagnostics])
+  const selectedCandidate = useMemo(() => selectedCandidateRow(candidates), [candidates])
+  const candidateCount = diagnostics?.candidateCount ?? candidates.length
+  const eligibleCandidateCount = diagnostics?.eligibleCandidateCount ?? candidates.filter((candidate) => candidate.eligible).length
+  const selectedCandidateCount = candidates.filter((candidate) => candidate.selected).length
+  const selectedCandidateLabel =
+    selectedCandidateCount > 1
+      ? `${selectedCandidateCount} selected component sets`
+      : selectedCandidate
+        ? `Selected set ${selectedCandidate.index + 1}`
+        : 'No selected set'
+
+  return (
+    <div className="validation-summary-pills">
+      <span className="repo-pill">{formatNumber(candidateCount, 0)} parameter sets</span>
+      <span className="repo-pill">{formatNumber(eligibleCandidateCount, 0)} eligible</span>
+      <span className={`repo-pill ${diagnostics?.selectionUsedHoldout ? 'negative' : 'positive'}`}>
+        {diagnostics?.selectionUsedHoldout ? 'Holdout used in selection' : 'Holdout report-only'}
+      </span>
+      <span className={`repo-pill ${selectedCandidate ? 'positive' : 'warning'}`}>{selectedCandidateLabel}</span>
+    </div>
+  )
+}
+
+function OverfitValidationBand({ selectedBacktest }: { selectedBacktest: ResearchBacktestResult | null }) {
+  const diagnostics = useMemo(() => strategyCandidateDiagnostics(selectedBacktest?.strategy), [selectedBacktest])
+  const candidates = useMemo(() => candidateMetricRows(diagnostics), [diagnostics])
+  const heatmapPlot = useMemo(() => buildParameterHeatmapPlot(candidates), [candidates])
+  const monteCarloPlot = useMemo(() => buildMonteCarloStressPlot(selectedBacktest?.trades ?? []), [selectedBacktest])
+  const chartResetKey = selectedBacktest?.strategy.id ?? 'no-strategy'
+
+  return (
+    <section className="overfit-validation-band" aria-label="Anti-overfit validation charts">
+      <div className="overfit-chart-grid">
+        <ParameterStabilityHeatmap plot={heatmapPlot} resetKey={chartResetKey} />
+        <MonteCarloStressChart plot={monteCarloPlot} resetKey={chartResetKey} />
+      </div>
+    </section>
   )
 }
 
@@ -856,31 +2139,6 @@ function App() {
   )
   const selectedComponentSideStats = useMemo(() => selectedSideStats.filter((side) => side.id !== 'index-fallback'), [selectedSideStats])
   const selectedIndexSideStat = useMemo(() => selectedSideStats.find((side) => side.id === 'index-fallback') ?? null, [selectedSideStats])
-  const benchmarkSummaryByStrategyId = useMemo(
-    () =>
-      new Map(
-        leaderboard.map((result) => {
-          const dates = result.curve.map((point) => point.date)
-          const benchmarkStartDate =
-            result.researchMetrics.firstEntry ||
-            result.trades
-              .slice()
-              .sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate))[0]?.entryTradeDate ||
-            dates[0]
-          const benchmarkReturnPct = relativeBenchmarkReturn(
-            [...benchmarkPctByDate(benchmarkMarketBars, dates, benchmarkStartDate).values()],
-          )
-          return [
-            result.strategy.id,
-            {
-              returnPct: benchmarkReturnPct,
-              edgePct: result.metrics.totalReturnPct - benchmarkReturnPct,
-            },
-          ] as const
-        }),
-      ),
-    [leaderboard],
-  )
   const indexBenchmarkSummaryByStrategyId = useMemo(
     () =>
       new Map(
@@ -992,67 +2250,13 @@ function App() {
   const selectedIndexBenchmarkAnnualEdgePct = selectedBacktest
     ? selectedBacktest.metrics.cagrPct - selectedIndexBenchmarkAnnualReturnPct
     : 0
-  const selectedHoldoutEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
+  const selectedHoldoutTotalEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
+  const selectedHoldoutAnnualEdgePct = splitAnnualEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
   const selectedRealityCheck = realityCheckForStrategy(selectedBacktest?.strategy)
-  const selectedRealityEvidence = selectedRealityCheck ? evidenceForPValue(selectedRealityCheck.pValue) : null
-  const selectedValidationStats = selectedRealityCheck
-    ? [
-        {
-          label: 'Primary p',
-          value: formatPValue(selectedRealityCheck.pValue, selectedRealityCheck.minimumResolvablePValue),
-          detail: selectedRealityCheck.selectionAdjustedPValue === null || selectedRealityCheck.selectionAdjustedPValue === undefined
-            ? 'Single strategy'
-            : 'Selection adjusted',
-          tone: selectedRealityEvidence?.tone ?? 'neutral',
-        },
-        {
-          label: 'Single p',
-          value: formatPValue(selectedRealityCheck.singleCandidatePValue ?? selectedRealityCheck.pValue, selectedRealityCheck.minimumResolvablePValue),
-          detail: 'Centered bootstrap',
-          tone: evidenceForPValue(selectedRealityCheck.singleCandidatePValue ?? selectedRealityCheck.pValue).tone,
-        },
-        {
-          label: 'Daily edge',
-          value: signedPercent(selectedRealityCheck.observedAverageDailyEdgePct ?? 0, 4),
-          detail: `${formatNumber(selectedRealityCheck.sampleCount ?? chartData.length, 0)} rows / ${formatNumber(selectedRealityCheck.activeOverlayDays ?? selectedBacktest?.metrics.tradeCount ?? 0, 0)} active`,
-          tone: classForSigned(selectedRealityCheck.observedAverageDailyEdgePct ?? 0),
-        },
-        {
-          label: 'Annual edge',
-          value: signedPercent(selectedRealityCheck.observedAnnualizedEdgePct ?? 0),
-          detail: `${formatNumber(selectedRealityCheck.dailyActiveVolPct ?? 0, 2)}% active vol`,
-          tone: classForSigned(selectedRealityCheck.observedAnnualizedEdgePct ?? 0),
-        },
-        {
-          label: 'Mean 90%',
-          value: formatDailyEdgeInterval(selectedRealityCheck.meanConfidenceIntervalDailyEdgePct),
-          detail: 'Bootstrapped daily edge',
-          tone: classForSigned(selectedRealityCheck.meanConfidenceIntervalDailyEdgePct?.p05 ?? 0),
-        },
-        {
-          label: 'Null 90%',
-          value: formatDailyEdgeInterval(selectedRealityCheck.nullConfidenceIntervalDailyEdgePct),
-          detail: 'Zero-edge resamples',
-          tone: 'neutral' as Tone,
-        },
-        {
-          label: 'Family',
-          value: formatNumber(selectedRealityCheck.candidateFamilySize ?? 1, 0),
-          detail: selectedRealityCheck.bestObservedCandidateId ? 'Eligible candidates' : 'Candidate path',
-          tone: (selectedRealityCheck.candidateFamilySize ?? 1) > 1 ? 'warning' : 'neutral',
-        },
-        {
-          label: 'Bootstrap',
-          value: `${formatNumber(selectedRealityCheck.iterations ?? 0, 0)} x ${formatNumber(selectedRealityCheck.blockLength ?? 0, 0)}d`,
-          detail: `Min p ${formatPValue(selectedRealityCheck.minimumResolvablePValue)}`,
-          tone: 'neutral' as Tone,
-        },
-      ]
-    : []
   const emptyStats = [
     ['Win rate', '-', 'Positive return rows'],
     ['Profit factor', '-', 'Gross wins / losses'],
-    ['Trades', '0', 'Position changes'],
+    ['P-value', '-', 'No reality check'],
     ['Exposure', '-', 'Average absolute'],
     ['Turnover', '-', 'Path churn'],
     ['CVaR 95', '-', 'Tail return-row loss'],
@@ -1325,14 +2529,16 @@ function App() {
           />
           <MetricCard
             icon={Gauge}
-            label="Holdout edge"
-            value={selectedHoldoutEdgePct === null ? '-' : signedPercent(selectedHoldoutEdgePct)}
+            label="Annual holdout"
+            value={selectedHoldoutAnnualEdgePct === null ? '-' : signedPercent(selectedHoldoutAnnualEdgePct)}
             detail={
-              selectedHoldoutEdgePct === null
+              selectedHoldoutAnnualEdgePct === null
                 ? 'No holdout split for selected strategy'
-                : `Report-only edge vs ${indexBenchmarkLabel} after selection`
+                : selectedHoldoutTotalEdgePct === null
+                  ? `Report-only annual edge vs ${indexBenchmarkLabel}`
+                  : `Report-only vs index basket; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
             }
-            tone={selectedHoldoutEdgePct === null ? 'warning' : classForSigned(selectedHoldoutEdgePct)}
+            tone={selectedHoldoutAnnualEdgePct === null ? 'warning' : classForSigned(selectedHoldoutAnnualEdgePct)}
           />
           <MetricCard
             icon={Activity}
@@ -1384,16 +2590,13 @@ function App() {
             <article className="panel table-panel">
               <SectionHeading eyebrow="Ranking" title="Strategy leaderboard" />
               <div className="table-wrap">
-                <table>
+                <table className="leaderboard-table">
                   <thead>
                     <tr>
                       <th>Strategy</th>
                       <th>Total return</th>
                       <th>Index</th>
-                      <th>Vs index</th>
-                      <th>Holdout edge</th>
-                      <th>UNG</th>
-                      <th>Vs UNG</th>
+                      <th>Holdout edge/yr</th>
                       <th>Sharpe</th>
                       <th>Drawdown</th>
                       <th>Win rate</th>
@@ -1405,9 +2608,8 @@ function App() {
                     {leaderboard.length ? (
                       leaderboard.map((result, index) => {
                         const sampleStatus = sampleStatusFor(result)
-                        const benchmarkSummary = benchmarkSummaryByStrategyId.get(result.strategy.id)
                         const indexBenchmarkSummary = indexBenchmarkSummaryByStrategyId.get(result.strategy.id)
-                        const holdoutEdgePct = splitEdgeForStrategy(result.strategy, 'holdout')
+                        const holdoutAnnualEdgePct = splitAnnualEdgeForStrategy(result.strategy, 'holdout')
                         return (
                           <tr
                             key={result.strategy.id}
@@ -1422,14 +2624,9 @@ function App() {
                             <td className={classForSigned(indexBenchmarkSummary?.returnPct ?? 0)}>
                               {signedPercent(indexBenchmarkSummary?.returnPct ?? 0)}
                             </td>
-                            <td className={classForSigned(indexBenchmarkSummary?.edgePct ?? 0)}>
-                              {signedPercent(indexBenchmarkSummary?.edgePct ?? 0)}
+                            <td className={holdoutAnnualEdgePct === null ? undefined : classForSigned(holdoutAnnualEdgePct)}>
+                              {holdoutAnnualEdgePct === null ? '-' : signedPercent(holdoutAnnualEdgePct)}
                             </td>
-                            <td className={holdoutEdgePct === null ? undefined : classForSigned(holdoutEdgePct)}>
-                              {holdoutEdgePct === null ? '-' : signedPercent(holdoutEdgePct)}
-                            </td>
-                            <td className={classForSigned(benchmarkSummary?.returnPct ?? 0)}>{signedPercent(benchmarkSummary?.returnPct ?? 0)}</td>
-                            <td className={classForSigned(benchmarkSummary?.edgePct ?? 0)}>{signedPercent(benchmarkSummary?.edgePct ?? 0)}</td>
                             <td>{formatNumber(result.metrics.sharpe)}</td>
                             <td className="negative">{signedPercent(result.metrics.maxDrawdownPct)}</td>
                             <td>{formatNumber(result.metrics.winRatePct, 1)}%</td>
@@ -1442,7 +2639,7 @@ function App() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={12}>
+                        <td colSpan={9}>
                           <strong>No research strategies</strong>
                           <span>Research strategy results will populate this table.</span>
                         </td>
@@ -1461,11 +2658,14 @@ function App() {
             <article className="panel backtest-summary-panel">
               <SectionHeading
                 eyebrow={selectedBacktest?.strategy.desk ?? 'Strategy lab'}
-                title="Backtest summary"
+                title="Anti-overfit validation"
                 action={
-                  <span className={`repo-pill ${selectedSampleStatus.tone}`}>
-                    {selectedSampleStatus.label}
-                  </span>
+                  <div className="heading-actions backtest-heading-actions">
+                    <OverfitValidationPills selectedBacktest={selectedBacktest} />
+                    <span className={`repo-pill ${selectedSampleStatus.tone}`}>
+                      {selectedSampleStatus.label}
+                    </span>
+                  </div>
                 }
               />
               <div className="backtest-selector-row">
@@ -1476,12 +2676,19 @@ function App() {
                   onSelectStrategy={selectStrategy}
                 />
               </div>
+              <OverfitValidationBand selectedBacktest={selectedBacktest} />
               <div className="stat-grid backtest-stat-grid">
                 {(selectedBacktest
                   ? [
                       ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive return rows'],
                       ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
-                      ['Trades', `${selectedBacktest.metrics.tradeCount}`, 'Completed trades'],
+                      [
+                        'P-value',
+                        selectedRealityCheck
+                          ? formatPValue(selectedRealityCheck.pValue, selectedRealityCheck.minimumResolvablePValue)
+                          : '-',
+                        primaryPValueDetail(selectedRealityCheck),
+                      ],
                       ['Exposure', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Estimated time in trade'],
                       ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Trade count proxy'],
                       ['CVaR 95', `${formatNumber(selectedBacktest.metrics.cvar95Pct)}%`, 'Tail return-row loss'],
@@ -1495,23 +2702,6 @@ function App() {
                   </article>
                 ))}
               </div>
-              {!!selectedValidationStats.length && selectedRealityEvidence && (
-                <section className="validation-panel" aria-label="Statistical validation">
-                  <div className="validation-heading">
-                    <span>Statistical validation</span>
-                    <strong className={selectedRealityEvidence.tone}>{selectedRealityEvidence.label}</strong>
-                  </div>
-                  <dl className="validation-grid">
-                    {selectedValidationStats.map((stat) => (
-                      <div key={stat.label}>
-                        <dt>{stat.label}</dt>
-                        <dd className={stat.tone}>{stat.value}</dd>
-                        <em>{stat.detail}</em>
-                      </div>
-                    ))}
-                  </dl>
-                </section>
-              )}
             </article>
 
             <article className="panel table-panel">

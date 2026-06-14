@@ -115,10 +115,12 @@ type RealityCheckSummary = {
   sampleCount?: number
   activeOverlayDays?: number
   minimumResolvablePValue?: number
+  componentPValues?: Record<string, number>
 }
 
 type HybridSummary = {
   strategyId: string
+  candidates?: Array<Record<string, unknown>>
   selected: {
     candidateId: string
     architectureLabel: string
@@ -194,6 +196,7 @@ type DualWeatherSummary = HybridSummary & {
 
 type WinterAlphaSummary = {
   strategyId: string
+  candidates?: Array<Record<string, unknown>>
   data: {
     marketStartDate: string
     marketEndDate: string
@@ -417,6 +420,8 @@ export type ArcticBlastResearchBacktestResult = {
 const initialCapital = 100000
 const tradingDaysPerYear = 252
 const allYearAlphaStrategyId = 'ngas-all-year-alpha'
+const bootstrapPValuePromotionThreshold = 0.05
+const allYearMaxDrawdownPromotionFloorPct = -20
 
 const ngasWinterAlphaStrategyColor = '#d97706'
 const summerWeatherStrategyColor = '#db2777'
@@ -426,8 +431,9 @@ export const arcticBlastPromotionGates = [
   'Keep all gas overlay entries strictly after the signal-date close.',
   'Select alpha candidates using train/validation data only; holdout rows stay report-only.',
   'Keep NGAS Winter Alpha weather and volatility inputs frozen inside its own lane, not active strategies.',
-  'Keep NGAS Winter Alpha marked needs-more-validation unless the frozen-input blend clears holdout edge and bootstrap reality checks.',
-  'Keep NGAS Summer Alpha marked needs-more-validation unless both cooling-season sides clear holdout edge and bootstrap reality checks.',
+  'Keep NGAS Winter Alpha marked needs-more-validation unless the frozen-input blend clears holdout edge and a bootstrap p-value below 0.05.',
+  'Keep NGAS Summer Alpha marked needs-more-validation unless both cooling-season sides clear holdout edge and a bootstrap p-value below 0.05.',
+  'Let NGAS All-Year Alpha use its own composite holdout edge, combined bootstrap p-value, and drawdown guard instead of inheriting component sleeve gates.',
   'Prove a non-overlapping paper ledger before any broker adapter exists.',
   'Separate ETF proxy results from futures-grade Henry Hub contract results.',
   'Require human approval for promotion from research-baseline to paper-candidate.',
@@ -476,6 +482,137 @@ function riskLevelFor(metrics: ArcticBlastStrategyMetrics): ArcticBlastResearchS
   if (metrics.maxDrawdownPct <= -25) return 'High'
   if (metrics.maxDrawdownPct <= -12) return 'Medium'
   return 'Low'
+}
+
+function clearsBootstrapPromotionGate(pValue: number | undefined) {
+  return typeof pValue === 'number' && Number.isFinite(pValue) && pValue < bootstrapPValuePromotionThreshold
+}
+
+function candidateDiagnosticsFromSummary(summary: {
+  selected: { candidateId: string }
+  search?: {
+    candidateCount?: number
+    eligibleCandidateCount?: number
+    selectionUsedHoldout?: boolean
+  }
+  candidates?: Array<Record<string, unknown>>
+}) {
+  const candidates = summary.candidates ?? []
+  return {
+    selectedCandidateId: summary.selected.candidateId,
+    candidateCount: summary.search?.candidateCount ?? candidates.length,
+    eligibleCandidateCount:
+      summary.search?.eligibleCandidateCount ??
+      candidates.filter((candidate) => candidate.eligible === true || candidate.selectionEligible === true).length,
+    selectionUsedHoldout: summary.search?.selectionUsedHoldout ?? false,
+    candidates,
+  }
+}
+
+function candidateDiagnosticsFromStrategies(strategies: ArcticBlastResearchStrategy[]) {
+  const diagnostics = strategies
+    .map((strategy) => ({
+      strategy,
+      diagnostic: strategy.params.candidateDiagnostics,
+    }))
+    .filter((entry): entry is {
+      strategy: ArcticBlastResearchStrategy
+      diagnostic: {
+        selectedCandidateId?: string
+        candidateCount?: number
+        eligibleCandidateCount?: number
+        selectionUsedHoldout?: boolean
+        candidates?: Array<Record<string, unknown>>
+      }
+    } => Boolean(entry.diagnostic && typeof entry.diagnostic === 'object' && Array.isArray((entry.diagnostic as { candidates?: unknown }).candidates)))
+
+  const candidates = diagnostics.flatMap(({ diagnostic, strategy }) =>
+    (diagnostic.candidates ?? []).map((candidate) => ({
+      ...candidate,
+      componentValidationLane: strategy.name,
+    })),
+  )
+  return {
+    selectedCandidateIds: diagnostics.map(({ diagnostic }) => diagnostic.selectedCandidateId).filter(Boolean),
+    candidateCount: diagnostics.reduce(
+      (sum, { diagnostic }) => sum + (diagnostic.candidateCount ?? diagnostic.candidates?.length ?? 0),
+      0,
+    ),
+    eligibleCandidateCount: diagnostics.reduce(
+      (sum, { diagnostic }) =>
+        sum +
+        (diagnostic.eligibleCandidateCount ??
+          diagnostic.candidates?.filter((candidate) => candidate.eligible === true || candidate.selectionEligible === true).length ??
+          0),
+      0,
+    ),
+    selectionUsedHoldout: diagnostics.some(({ diagnostic }) => diagnostic.selectionUsedHoldout),
+    candidates,
+  }
+}
+
+function realityCheckFromStrategy(strategy: ArcticBlastResearchStrategy) {
+  const realityCheck = strategy.params.realityCheck
+  if (!realityCheck || typeof realityCheck !== 'object') return null
+  const value = realityCheck as Partial<RealityCheckSummary>
+  return typeof value.pValue === 'number' && Number.isFinite(value.pValue) ? (value as RealityCheckSummary) : null
+}
+
+function fisherCombinedPValue(pValues: number[]) {
+  const safePValues = pValues
+    .map((value) => Math.max(Number.MIN_VALUE, Math.min(1, value)))
+    .filter((value) => Number.isFinite(value) && value > 0 && value <= 1)
+  if (!safePValues.length) return 1
+  if (safePValues.length === 1) return safePValues[0]
+
+  const halfStatistic = -safePValues.reduce((sum, value) => sum + Math.log(value), 0)
+  let term = 1
+  let survivalSum = 1
+  for (let index = 1; index < safePValues.length; index += 1) {
+    term *= halfStatistic / index
+    survivalSum += term
+  }
+  return Math.max(0, Math.min(1, Math.exp(-halfStatistic) * survivalSum))
+}
+
+function allYearRealityCheckFromComponents(
+  trades: ArcticBlastTrade[],
+  sourceStrategies: ArcticBlastResearchStrategy[],
+): RealityCheckSummary | null {
+  const componentChecks = sourceStrategies
+    .map((strategy) => ({ strategy, realityCheck: realityCheckFromStrategy(strategy) }))
+    .filter((entry): entry is { strategy: ArcticBlastResearchStrategy; realityCheck: RealityCheckSummary } => Boolean(entry.realityCheck))
+  if (!componentChecks.length) return null
+
+  const dailyEdgePct = trades.map((trade) => (trade.netReturnPct ?? 0) - (trade.indexReturnPct ?? 0))
+  const observedAverageDailyEdgePct = round(mean(dailyEdgePct), 5)
+  const componentPValues = Object.fromEntries(componentChecks.map(({ strategy, realityCheck }) => [strategy.name, realityCheck.pValue]))
+  const componentSingleCandidatePValues = componentChecks.map(({ realityCheck }) => realityCheck.singleCandidatePValue ?? realityCheck.pValue)
+  const componentMinimumPValues = componentChecks
+    .map(({ realityCheck }) => realityCheck.minimumResolvablePValue)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
+
+  return {
+    method: 'Fisher combined component reality-check p-values',
+    comparison: 'all-year composite net daily return minus US index basket daily return',
+    alternative: 'greater-than-zero daily active edge',
+    observedAverageDailyEdgePct,
+    observedAnnualizedEdgePct: round(observedAverageDailyEdgePct * tradingDaysPerYear, 2),
+    pValue: round(fisherCombinedPValue(componentChecks.map(({ realityCheck }) => realityCheck.pValue)), 6),
+    singleCandidatePValue: round(fisherCombinedPValue(componentSingleCandidatePValues), 6),
+    selectionAdjustedPValue: round(fisherCombinedPValue(componentChecks.map(({ realityCheck }) => realityCheck.pValue)), 6),
+    candidateFamilySize: componentChecks.reduce((sum, { realityCheck }) => sum + (realityCheck.candidateFamilySize ?? 1), 0),
+    bestObservedCandidateId: allYearAlphaStrategyId,
+    bestObservedAverageDailyEdgePct: observedAverageDailyEdgePct,
+    dailyActiveVolPct: round(std(dailyEdgePct) * Math.sqrt(tradingDaysPerYear), 4),
+    standardErrorDailyEdgePct: round(std(dailyEdgePct) / Math.sqrt(Math.max(dailyEdgePct.length, 1)), 5),
+    sampleCount: trades.length,
+    activeOverlayDays: trades.filter((trade) => trade.thesisKind !== 'index-fallback').length,
+    minimumResolvablePValue: componentMinimumPValues.length ? round(fisherCombinedPValue(componentMinimumPValues), 6) : undefined,
+    iterations: Math.min(...componentChecks.map(({ realityCheck }) => realityCheck.iterations)),
+    blockLength: Math.max(...componentChecks.map(({ realityCheck }) => realityCheck.blockLength)),
+    componentPValues,
+  }
 }
 
 function parseWeatherRotationTrades(csv: string, variant: ArcticBlastStrategyVariant): ArcticBlastTrade[] {
@@ -606,7 +743,7 @@ function createNgasSummerAlphaStrategy(summary: DualWeatherSummary, trades: Arct
   const realityCheckPValue = summary.validation.realityCheck.pValue
   const hasCoolSideEvidence = selected.legCounts.trainValidation.summerColdShort >= 4 && selected.legCounts.holdout.summerColdShort >= 2
   const promotionStatus: StrategyPromotionStatus =
-    holdoutEdge > 0 && realityCheckPValue <= 0.1 && hasCoolSideEvidence ? 'research-baseline' : 'needs-more-validation'
+    holdoutEdge > 0 && clearsBootstrapPromotionGate(realityCheckPValue) && hasCoolSideEvidence ? 'research-baseline' : 'needs-more-validation'
 
   return {
     id: summary.strategyId,
@@ -657,9 +794,11 @@ function createNgasSummerAlphaStrategy(summary: DualWeatherSummary, trades: Arct
       fallback: contract.fallback,
       roundTripCostPct: contract.roundTripCostPct,
       splitEdges: selected.splitEdges,
+      splitAnnualEdges: splitAnnualEdgesFromSelectedMetrics(selected),
       legCounts: selected.legCounts,
       indexMetrics: selected.indexMetrics,
       search: summary.search,
+      candidateDiagnostics: candidateDiagnosticsFromSummary(summary),
       realityCheck: summary.validation.realityCheck,
       selectionPolicy: contract.selectionPolicy,
       signalTiming: contract.signalTiming,
@@ -681,7 +820,7 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
   const holdoutEdge = selected.splitEdges.holdout
   const realityCheckPValue = summary.validation.realityCheck.pValue
   const promotionStatus: StrategyPromotionStatus =
-    holdoutEdge > 0 && realityCheckPValue <= 0.1 ? 'research-baseline' : 'needs-more-validation'
+    holdoutEdge > 0 && clearsBootstrapPromotionGate(realityCheckPValue) ? 'research-baseline' : 'needs-more-validation'
 
   return {
     id: summary.strategyId,
@@ -741,10 +880,12 @@ function createNgasWinterAlphaStrategy(summary: WinterAlphaSummary, trades: Arct
       roundTripCostPct: contract.roundTripCostPct,
       oneWayCostPct: contract.oneWayCostPct,
       splitEdges: selected.splitEdges,
+      splitAnnualEdges: splitAnnualEdgesFromSelectedMetrics(selected),
       sideReturns: selected.sideReturns,
       legCounts: selected.legCounts,
       indexMetrics: selected.indexMetrics,
       search: summary.search,
+      candidateDiagnostics: candidateDiagnosticsFromSummary(summary),
       realityCheck: summary.validation.realityCheck,
       selectionPolicy: contract.selectionPolicy,
       signalTiming: contract.signalTiming,
@@ -834,6 +975,15 @@ function combineAllYearAlphaTrades(summerTrades: ArcticBlastTrade[], winterTrade
 function compoundReturnPct(trades: ArcticBlastTrade[], returnKey: 'netReturnPct' | 'indexReturnPct') {
   const total = trades.reduce((equity, trade) => equity * (1 + (trade[returnKey] ?? 0) / 100), 1)
   return round((total - 1) * 100, 2)
+}
+
+function annualizedCompoundReturnPct(trades: ArcticBlastTrade[], returnKey: 'netReturnPct' | 'indexReturnPct') {
+  const orderedTrades = [...trades].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
+  const total = orderedTrades.reduce((equity, trade) => equity * (1 + (trade[returnKey] ?? 0) / 100), 1)
+  const firstEntry = orderedTrades[0]?.entryTradeDate ?? ''
+  const lastExit = orderedTrades.at(-1)?.targetTradeDate ?? orderedTrades.at(-1)?.entryTradeDate ?? firstEntry
+  const years = firstEntry && lastExit ? daysBetween(firstEntry, lastExit) / 365.25 : 1
+  return round((total ** (1 / Math.max(years, 1 / 365.25)) - 1) * 100, 2)
 }
 
 function profitFactor(returns: number[]) {
@@ -941,6 +1091,48 @@ function splitEdgesFromTrades(
   }
 }
 
+function splitAnnualEdgesFromTrades(
+  trades: ArcticBlastTrade[],
+  contractsByStrategyId: Map<string, SeasonalAlphaSplitContract>,
+) {
+  const splits = {
+    train: [] as ArcticBlastTrade[],
+    validation: [] as ArcticBlastTrade[],
+    holdout: [] as ArcticBlastTrade[],
+    all: trades,
+  }
+  trades.forEach((trade) => {
+    const split = splitNameForTrade(trade, contractsByStrategyId)
+    if (split !== 'all') splits[split].push(trade)
+  })
+  return {
+    train: round(annualizedCompoundReturnPct(splits.train, 'netReturnPct') - annualizedCompoundReturnPct(splits.train, 'indexReturnPct'), 2),
+    validation: round(annualizedCompoundReturnPct(splits.validation, 'netReturnPct') - annualizedCompoundReturnPct(splits.validation, 'indexReturnPct'), 2),
+    holdout: round(annualizedCompoundReturnPct(splits.holdout, 'netReturnPct') - annualizedCompoundReturnPct(splits.holdout, 'indexReturnPct'), 2),
+    all: round(annualizedCompoundReturnPct(splits.all, 'netReturnPct') - annualizedCompoundReturnPct(splits.all, 'indexReturnPct'), 2),
+  }
+}
+
+function splitAnnualEdgesFromSelectedMetrics(selected: {
+  allMetrics: HybridSummaryMetrics
+  trainMetrics: HybridSummaryMetrics
+  validationMetrics: HybridSummaryMetrics
+  holdoutMetrics: HybridSummaryMetrics
+  indexMetrics: {
+    all: HybridSummaryMetrics
+    train: HybridSummaryMetrics
+    validation: HybridSummaryMetrics
+    holdout: HybridSummaryMetrics
+  }
+}) {
+  return {
+    train: round(selected.trainMetrics.cagrPct - selected.indexMetrics.train.cagrPct, 2),
+    validation: round(selected.validationMetrics.cagrPct - selected.indexMetrics.validation.cagrPct, 2),
+    holdout: round(selected.holdoutMetrics.cagrPct - selected.indexMetrics.holdout.cagrPct, 2),
+    all: round(selected.allMetrics.cagrPct - selected.indexMetrics.all.cagrPct, 2),
+  }
+}
+
 function createNgasAllYearAlphaStrategy(
   summerStrategy: ArcticBlastResearchStrategy,
   winterStrategy: ArcticBlastResearchStrategy,
@@ -948,9 +1140,6 @@ function createNgasAllYearAlphaStrategy(
 ): ArcticBlastResearchStrategy {
   const metrics = researchMetricsFromDailyTrades(trades)
   const sourceStrategies = [summerStrategy, winterStrategy]
-  const promotionStatus: StrategyPromotionStatus = sourceStrategies.every((strategy) => strategy.promotionStatus === 'research-baseline')
-    ? 'research-baseline'
-    : 'needs-more-validation'
   const splitEdges = splitEdgesFromTrades(
     trades,
     new Map<string, SeasonalAlphaSplitContract>([
@@ -958,6 +1147,20 @@ function createNgasAllYearAlphaStrategy(
       [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaSummary.contract] as const,
     ]),
   )
+  const splitAnnualEdges = splitAnnualEdgesFromTrades(
+    trades,
+    new Map<string, SeasonalAlphaSplitContract>([
+      [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaSummary.contract] as const,
+      [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaSummary.contract] as const,
+    ]),
+  )
+  const realityCheck = allYearRealityCheckFromComponents(trades, sourceStrategies)
+  const promotionStatus: StrategyPromotionStatus =
+    splitEdges.holdout > 0 &&
+    clearsBootstrapPromotionGate(realityCheck?.pValue) &&
+    metrics.maxDrawdownPct > allYearMaxDrawdownPromotionFloorPct
+      ? 'research-baseline'
+      : 'needs-more-validation'
 
   return {
     id: allYearAlphaStrategyId,
@@ -981,7 +1184,7 @@ function createNgasAllYearAlphaStrategy(
     theoryAlignment:
       'No new alpha thesis. This row selector preserves the current seasonal strategies while avoiding manual switching between their active and fallback daily paths.',
     samplePolicy:
-      `Composite wrapper only; no re-optimization or new thresholds. Component validation remains in ${summerStrategy.name} and ${winterStrategy.name}.`,
+      `Composite wrapper only; no re-optimization or new thresholds. Promotion uses the composite holdout edge, combined component bootstrap p-value below ${bootstrapPValuePromotionThreshold}, and max drawdown above ${allYearMaxDrawdownPromotionFloorPct}%; component sleeve validation remains in ${summerStrategy.name} and ${winterStrategy.name}.`,
     tradeFile: `${summerStrategy.tradeFile} + ${winterStrategy.tradeFile}`,
     params: {
       candidateId: allYearAlphaStrategyId,
@@ -994,6 +1197,9 @@ function createNgasAllYearAlphaStrategy(
       materialRowDefinition:
         'A source row is material when it has a non-index thesis, non-zero gas position, or non-zero trading cost.',
       splitEdges,
+      splitAnnualEdges,
+      candidateDiagnostics: candidateDiagnosticsFromStrategies(sourceStrategies),
+      ...(realityCheck ? { realityCheck } : {}),
       componentTradeCounts: {
         summer: trades.filter((trade) => trade.componentStrategyId === summerStrategy.id && trade.thesisKind !== 'index-fallback').length,
         winter: trades.filter((trade) => trade.componentStrategyId === winterStrategy.id && trade.thesisKind !== 'index-fallback').length,
