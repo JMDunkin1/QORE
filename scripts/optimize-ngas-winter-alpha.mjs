@@ -3020,7 +3020,6 @@ function main() {
     outputFiles: {
       candidateSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'candidate-summary.csv')),
       selectedTrades: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'selected-trades.csv')),
-      report: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'report.md')),
     },
   }
 

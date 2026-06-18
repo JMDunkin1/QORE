@@ -1135,7 +1135,6 @@ function main() {
       candidates: path.relative(REPO_ROOT, path.join(OUT_DIR, 'worker2-regularized-logistic-regression-candidates.csv')),
       postTrades: path.relative(REPO_ROOT, path.join(OUT_DIR, 'worker2-regularized-logistic-regression-post-trades.csv')),
       validationTrades: path.relative(REPO_ROOT, path.join(OUT_DIR, 'worker2-regularized-logistic-regression-validation-trades.csv')),
-      report: path.relative(REPO_ROOT, path.join(OUT_DIR, 'REPORT.md')),
     },
   }, null, 2))
 }

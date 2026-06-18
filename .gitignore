@@ -15,6 +15,9 @@ dist-ssr
 output/
 *.local
 
+# Keep generated research reports/notes out of the repo narrative.
+data/qore/**/*.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

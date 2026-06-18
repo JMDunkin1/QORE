@@ -1183,7 +1183,6 @@ function main() {
       metricsCsv,
       tradesCsv,
       summaryJson: path.relative(REPO_ROOT, path.join(OUT_DIR, 'run-summary.json')),
-      reportMd: path.relative(REPO_ROOT, path.join(OUT_DIR, 'report.md')),
     },
     recommendation,
     integrationAction,

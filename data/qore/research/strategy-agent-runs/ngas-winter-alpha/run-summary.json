@@ -8560,7 +8560,6 @@
   },
   "outputFiles": {
     "candidateSummary": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/candidate-summary.csv",
-    "selectedTrades": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv",
-    "report": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/report.md"
+    "selectedTrades": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv"
   }
 }

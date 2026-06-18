@@ -999,8 +999,7 @@
     "selectedTrades": "data/qore/research/strategy-agent-runs/dual-weather-rotation/selected-trades.csv",
     "selectedEvents": "data/qore/research/strategy-agent-runs/dual-weather-rotation/selected-events.csv",
     "candidateSummary": "data/qore/research/strategy-agent-runs/dual-weather-rotation/candidate-summary.csv",
-    "runSummary": "data/qore/research/strategy-agent-runs/dual-weather-rotation/run-summary.json",
-    "report": "data/qore/research/strategy-agent-runs/dual-weather-rotation/report.md"
+    "runSummary": "data/qore/research/strategy-agent-runs/dual-weather-rotation/run-summary.json"
   },
   "candidates": [
     {

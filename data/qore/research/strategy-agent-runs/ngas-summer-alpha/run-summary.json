@@ -1028,8 +1028,7 @@
     "selectedTrades": "data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv",
     "selectedEvents": "data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-events.csv",
     "candidateSummary": "data/qore/research/strategy-agent-runs/ngas-summer-alpha/candidate-summary.csv",
-    "runSummary": "data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json",
-    "report": "data/qore/research/strategy-agent-runs/ngas-summer-alpha/report.md"
+    "runSummary": "data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json"
   },
   "candidates": [
     {

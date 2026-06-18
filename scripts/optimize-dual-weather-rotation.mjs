@@ -1313,7 +1313,6 @@ function main() {
       selectedEvents: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'selected-events.csv')),
       candidateSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'candidate-summary.csv')),
       runSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'run-summary.json')),
-      report: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'report.md')),
     },
     candidates: summaryCandidates.slice(0, 75),
   }

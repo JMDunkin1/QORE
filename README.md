@@ -63,7 +63,7 @@ npm run collect:free-data
 This writes no-key market and weather research data under `data/qore/` so it can be shared with the project. Check `data/qore/runs/free-data-manifest.json` to see which sources succeeded or failed. Set `QORE_DATA_ROOT=.local/qore` when you want a private scratch cache.
 By default it refreshes the full shared backtest window from `2021-01-01` through the latest complete UTC day; set `QORE_TEST_START` / `QORE_TEST_END` only when you need a fixed historical slice.
 
-Market cache note: `UNG` is ETF history, `NG=F` is a Yahoo continuous front-month proxy, and `VOO`/`QQQM` are live-orderable broad US equity ETF proxies used to derive the target-weight `US-INDEX-BASKET`. The synthetic basket is research provenance only; future live adapters must route the ETF component legs. Do not label results as futures-grade Henry Hub NG performance until `data/qore/market/futures/henry-hub-ng-readiness.md` is satisfied with per-contract prices, expiry dates, and roll logic.
+Market cache note: `UNG` is ETF history, `NG=F` is a Yahoo continuous front-month proxy, and `VOO`/`QQQM` are live-orderable broad US equity ETF proxies used to derive the target-weight `US-INDEX-BASKET`. The synthetic basket is research provenance only; future live adapters must route the ETF component legs. Do not label results as futures-grade Henry Hub NG performance until per-contract prices, expiry dates, and roll logic exist.
 
 NOAA forecast signal calendars:
 

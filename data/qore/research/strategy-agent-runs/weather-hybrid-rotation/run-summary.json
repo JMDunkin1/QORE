@@ -495,8 +495,7 @@
     "selectedTrades": "data/qore/research/strategy-agent-runs/weather-hybrid-rotation/selected-trades.csv",
     "selectedEvents": "data/qore/research/strategy-agent-runs/weather-hybrid-rotation/selected-events.csv",
     "candidateSummary": "data/qore/research/strategy-agent-runs/weather-hybrid-rotation/candidate-summary.csv",
-    "runSummary": "data/qore/research/strategy-agent-runs/weather-hybrid-rotation/run-summary.json",
-    "report": "data/qore/research/strategy-agent-runs/weather-hybrid-rotation/report.md"
+    "runSummary": "data/qore/research/strategy-agent-runs/weather-hybrid-rotation/run-summary.json"
   },
   "candidates": [
     {

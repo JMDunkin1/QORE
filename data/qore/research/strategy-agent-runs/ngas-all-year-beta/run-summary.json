@@ -353,8 +353,7 @@
   "outputFiles": {
     "selectedTrades": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
     "candidateSummary": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/candidate-summary.csv",
-    "runSummary": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json",
-    "report": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/report.md"
+    "runSummary": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json"
   },
   "candidates": [
     {

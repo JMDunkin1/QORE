@@ -737,8 +737,7 @@
   "outputFiles": {
     "selectedTrades": "data/qore/research/strategy-agent-runs/volatility-mean-reversion/selected-trades.csv",
     "candidateSummary": "data/qore/research/strategy-agent-runs/volatility-mean-reversion/candidate-summary.csv",
-    "runSummary": "data/qore/research/strategy-agent-runs/volatility-mean-reversion/run-summary.json",
-    "report": "data/qore/research/strategy-agent-runs/volatility-mean-reversion/report.md"
+    "runSummary": "data/qore/research/strategy-agent-runs/volatility-mean-reversion/run-summary.json"
   },
   "candidates": [
     {
