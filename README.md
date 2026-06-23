@@ -79,7 +79,8 @@ These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS fore
 
 - Opens on the tracked `data/qore` research catalog without bundled starter rows.
 - Shows source-backed market, weather, forecast-calendar, signal-score, and signal-return inventory.
-- Loads three active research strategies: NGAS Summer Alpha, NGAS Winter Alpha, and NGAS All-Year Beta.
+- Loads one active NGAS research strategy: NGAS All-Year Beta.
+- Keeps NGAS Summer Alpha and NGAS Winter Alpha as deprecated source ledgers for the all-year composite, not active dashboard baselines.
 - Keeps older weather, volatility, and strict-theory lanes archived as research evidence instead of active baselines.
 - Joins explicitly imported weather and market rows by `date` for session-only lab checks.
 - Tracks imported weather forecast quality with HDD/CDD MAE, RMSE, R2, directional accuracy, cold-surprise recall, and calibration.
@@ -111,29 +112,26 @@ For archived Arctic Blast strategy testing, use the `close-after-issue-v1` timin
 
 ## Active Research Strategies
 
-The first active strategy is `ngas-summer-alpha`. It keeps idle capital in `US-INDEX-BASKET`, then uses fresh multi-model day-7 summer heat forecasts to add NG futures exposure while skipping clustered heat-follow longs, and fades same-direction gas rallies after the observation window only when lagged storage is not below its trailing seasonal norm. The selected fade can size heat-rally shorts by forecast CDD demand intensity. Cool-short evidence stays diagnostic until enough validated cooling-season cool events exist.
-
-```bash
-npm run optimize:ngas-summer-alpha
-```
-
-The selected summer run made `374.22%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-19.5%` max drawdown. Train return was `96.6%`, validation was `50.6%`, and holdout was `60.16%`; holdout edge versus the index basket was `28.95%`. The selected overlay uses `0.35x` base NG exposure, allows the storage-deficit heat tilt to reach `0.4375x`, and lets CDD-tiered fade sizing lift qualifying heat-rally shorts up to `0.5x`. It remains needs-more-validation, not broker-ready.
-
-The second active strategy is `ngas-winter-alpha`. It now owns frozen weather-follow, weather-reversion, and volatility-confirmation ledgers inside its own lane instead of reading archived strategy folders. The frozen inputs preserve the current winter blend exactly: cold-follow and warm-short context, post-window fade context, selected same-direction fade confirmation, and optional shorter daily-ledger holds when train/validation prefers faster exits.
-
-```bash
-npm run optimize:ngas-winter-alpha
-```
-
-The selected winter run made `347.49%` full-sample versus `117.16%` for the VOO/QQQM index basket, with `-23.5%` max drawdown. Train return was `103%`, validation was `59.95%`, and holdout was `37.81%`; holdout edge versus the index basket was `28.29%`. The selected blend uses frozen-input holds, a `400 Bcf` cold-follow storage-drawdown gate, adverse standalone-fade vetoes, and a `1.25x` gas-overlay risk multiplier capped at `0.5625x`. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
-
-The third active strategy is `ngas-all-year-beta`. It is its own checked-in artifact, but it does not add a new threshold, entry rule, or optimization layer: each date uses the exact material Summer Alpha row, else the exact material Winter Alpha row, else the shared no-cost index fallback row.
+The active NGAS strategy is `ngas-all-year-beta`. It is its own checked-in artifact, but it does not add a new threshold, entry rule, or optimization layer: each date uses the exact material Summer Alpha row, else the exact material Winter Alpha row, else the shared no-cost index fallback row.
 
 ```bash
 npm run optimize:ngas-all-year-beta
 ```
 
 The selected beta artifact made `877.16%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-15.86%` max drawdown. Train return was `186.29%`, validation was `70.74%`, and holdout was `99.9%`; holdout edge versus the index basket was `69.74%`. Its direct all-year centered circular block bootstrap p-value is `0.00005`, replacing the old Fisher-combined component p-value. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+
+## Deprecated Component Lanes
+
+`ngas-summer-alpha` and `ngas-winter-alpha` remain checked in as source ledgers for the all-year composite. They are still loaded by `src/strategies/arcticBlast.ts` so the all-year artifact can verify exact row selection and drift, but they are no longer exported as active dashboard strategies.
+
+Use these optimizers only when intentionally refreshing the component source ledgers:
+
+```bash
+npm run optimize:ngas-summer-alpha
+npm run optimize:ngas-winter-alpha
+```
+
+Summer Alpha keeps idle capital in `US-INDEX-BASKET`, then uses fresh multi-model day-7 summer heat forecasts to add NG futures exposure while skipping clustered heat-follow longs and fading same-direction gas rallies. Winter Alpha owns the frozen weather-follow, weather-reversion, and volatility-confirmation ledgers that supply the winter rows. Their standalone metrics remain research context, but the active surface is the all-year composite.
 
 ## Non-Live Execution Architecture
 

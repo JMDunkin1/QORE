@@ -1382,6 +1382,9 @@ const ngasAllYearBetaStrategy = createNgasAllYearBetaStrategy(ngasAllYearBetaSum
   ngasSummerAlphaStrategy,
   ngasWinterAlphaStrategy,
 ])
+// Summer/Winter stay loaded as source ledgers for All-Year, but are deprecated from the active dashboard registry.
+const activeArcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = [ngasAllYearBetaStrategy]
+
 const tradesByStrategyId = new Map([
   [ngasSummerAlphaSummary.strategyId, ngasSummerAlphaTrades] as const,
   [ngasWinterAlphaSummary.strategyId, ngasWinterAlphaTrades] as const,
@@ -1393,11 +1396,7 @@ const dailyRotationMetricsByStrategyId = new Map([
   [ngasAllYearBetaSummary.strategyId, createHybridBacktestMetrics(ngasAllYearBetaSummary)] as const,
 ])
 
-export const arcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = [
-  ngasSummerAlphaStrategy,
-  ngasWinterAlphaStrategy,
-  ngasAllYearBetaStrategy,
-]
+export const arcticBlastResearchStrategies: ArcticBlastResearchStrategy[] = activeArcticBlastResearchStrategies
 
 export const arcticBlastResearchBacktestResults: ArcticBlastResearchBacktestResult[] = arcticBlastResearchStrategies.map((strategy) => {
   const trades = tradesByStrategyId.get(strategy.id) ?? []
