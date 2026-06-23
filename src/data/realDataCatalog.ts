@@ -19,10 +19,10 @@ export type SupportDatasetSummary = {
 }
 
 export const realDataCatalog = {
-  generatedAt: '2026-06-10T16:19:51.579Z',
+  generatedAt: '2026-06-23T03:30:40.753Z',
   defaultDataRoot: 'data/qore',
-  fileCount: 173,
-  totalBytes: 103030868,
+  fileCount: 201,
+  totalBytes: 208818973,
   forecastCalendars: [
     {
       id: 'gfs',
@@ -164,6 +164,11 @@ export const realDataCatalog = {
       label: 'Arctic blast events',
       path: 'weather/events',
       detail: 'Actual event windows and derived market joins for the thesis window.',
+    },
+    {
+      label: 'Prediction time-ladder',
+      path: 'research/strategy-agent-runs/prediction-time-ladder',
+      detail: 'Kalshi and Polymarket date-threshold scans, same-venue deadline-ladder pairs, Kalshi candle support observations, candidate diagnostics, and selected paper rows.',
     },
   ] satisfies SupportDatasetSummary[],
 }

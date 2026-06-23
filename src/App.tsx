@@ -159,7 +159,7 @@ type WebKitGestureEvent = Event & {
   scale?: number
 }
 type SplitEdgeName = 'train' | 'validation' | 'holdout' | 'all'
-type WeatherSideSeason = 'winter' | 'summer' | 'all-year'
+type WeatherSideSeason = 'winter' | 'summer' | 'all-year' | 'prediction'
 type RealityCheckPercentiles = {
   p05: number
   p50: number
@@ -169,8 +169,8 @@ type RealityCheckMetrics = {
   method?: string
   comparison?: string
   alternative?: string
-  pValue: number
-  singleCandidatePValue?: number
+  pValue?: number | null
+  singleCandidatePValue?: number | null
   selectionAdjustedPValue?: number | null
   observedAverageDailyEdgePct?: number
   observedAnnualizedEdgePct?: number
@@ -183,11 +183,13 @@ type RealityCheckMetrics = {
   bestObservedCandidateId?: string | null
   bestObservedAverageDailyEdgePct?: number | null
   sampleCount?: number
+  selectedSampleCount?: number
   activeOverlayDays?: number
-  minimumResolvablePValue?: number
+  minimumResolvablePValue?: number | null
   iterations?: number
   blockLength?: number
   componentPValues?: Record<string, number>
+  limitation?: string
 }
 type WeatherSideDefinition = {
   id: string
@@ -323,6 +325,10 @@ const validationParameterDefinitions: readonly CandidateParameterDefinition[] = 
   { label: 'Fade hold', keys: ['reversionHoldDays', 'holdReversionDays'] },
   { label: 'Fresh heat', keys: ['freshHeatLookbackDays'] },
   { label: 'Storage heat tilt', keys: ['storageDeficitHeatMultiplier'] },
+  { label: 'Min edge', keys: ['minGrossEdgeCents'] },
+  { label: 'Spacing', keys: ['minSpacingHours'] },
+  { label: 'Fee haircut', keys: ['feeHaircutCents'] },
+  { label: 'Capital canary', keys: ['capitalAllocationPct'] },
 ]
 
 const compactParameterLabels: Record<string, string> = {
@@ -347,6 +353,7 @@ const heatmapColorStops = [
 const monteCarloPalette = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#0891b2', '#ca8a04', '#db2777', '#111827']
 
 const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
+  { id: 'time-ladder-package', label: 'Time-ladder package', seasons: ['prediction'], thesisKinds: ['time-ladder-package'] },
   { id: 'cold-long', label: 'Cold-long', seasons: ['winter', 'all-year'], thesisKinds: ['cold-long'] },
   { id: 'warm-short', label: 'Warm-short', seasons: ['winter', 'all-year'], thesisKinds: ['warm-short'] },
   { id: 'summer-cold-short', label: 'Summer cold-short', seasons: ['summer', 'all-year'], thesisKinds: ['summer-cold-short'] },
@@ -869,10 +876,12 @@ function realityCheckForStrategy(strategy: ResearchBacktestResult['strategy'] | 
   const realityCheck = strategy?.params.realityCheck
   if (!realityCheck || typeof realityCheck !== 'object') return null
   const value = realityCheck as Partial<RealityCheckMetrics>
-  return typeof value.pValue === 'number' && Number.isFinite(value.pValue) ? (value as RealityCheckMetrics) : null
+  const hasPValue = typeof value.pValue === 'number' && Number.isFinite(value.pValue)
+  const hasValidationNote = typeof value.method === 'string' || typeof value.limitation === 'string'
+  return hasPValue || hasValidationNote ? (value as RealityCheckMetrics) : null
 }
 
-function formatPValue(value: number | null | undefined, minimum?: number) {
+function formatPValue(value: number | null | undefined, minimum?: number | null) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
   if (minimum && value <= minimum) return `<=${formatNumber(minimum, 4)}`
   if (value < 0.0001) return '<0.0001'
@@ -887,6 +896,7 @@ function componentPValueList(realityCheck: RealityCheckMetrics | null | undefine
 
 function primaryPValueDetail(realityCheck: RealityCheckMetrics | null | undefined) {
   if (!realityCheck) return 'No reality check'
+  if (typeof realityCheck.pValue !== 'number' || !Number.isFinite(realityCheck.pValue)) return 'No inferential p-value'
   if (componentPValueList(realityCheck).length > 1) return 'Fisher combined'
   return realityCheck.selectionAdjustedPValue === null || realityCheck.selectionAdjustedPValue === undefined
     ? 'Single strategy bootstrap'
@@ -944,9 +954,14 @@ function annualizedReturnPct(totalReturnPct: number, startDate: string | undefin
 }
 
 function weatherSideSeasonForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): WeatherSideSeason {
+  if (strategy?.family === 'prediction-time-ladder') return 'prediction'
   if (strategy?.family === 'weather-summer') return 'summer'
   if (strategy?.family === 'weather-alpha') return 'winter'
   return 'all-year'
+}
+
+function hasIndexBenchmarkForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
+  return strategy?.family !== 'prediction-time-ladder'
 }
 
 function tradeHasThesisKind(trade: ResearchTrade, thesisKind: string) {
@@ -957,7 +972,10 @@ function tradeHasThesisKind(trade: ResearchTrade, thesisKind: string) {
 function sideStatsForTrades(trades: ResearchTrade[], weatherSeason: WeatherSideSeason) {
   return weatherSideDefinitions.filter((side) => !side.seasons || side.seasons.includes(weatherSeason)).map((side) => {
     const sideTrades = trades.filter((trade) => side.thesisKinds.some((thesisKind) => tradeHasThesisKind(trade, thesisKind)))
-    const totalReturnPct = sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
+    const totalReturnPct =
+      weatherSeason === 'prediction'
+        ? sideTrades.reduce((sum, trade) => sum + trade.netReturnPct, 0) / 100
+        : sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
     const winRatePct = sideTrades.length
       ? (sideTrades.filter((trade) => trade.netReturnPct > 0).length / sideTrades.length) * 100
       : 0
@@ -1830,7 +1848,10 @@ function OverfitValidationBand({ selectedBacktest }: { selectedBacktest: Researc
   const diagnostics = useMemo(() => strategyCandidateDiagnostics(selectedBacktest?.strategy), [selectedBacktest])
   const candidates = useMemo(() => candidateMetricRows(diagnostics), [diagnostics])
   const heatmapPlot = useMemo(() => buildParameterHeatmapPlot(candidates), [candidates])
-  const monteCarloPlot = useMemo(() => buildMonteCarloStressPlot(selectedBacktest?.trades ?? []), [selectedBacktest])
+  const monteCarloPlot = useMemo(
+    () => buildMonteCarloStressPlot(selectedBacktest?.strategy.family === 'prediction-time-ladder' ? [] : (selectedBacktest?.trades ?? [])),
+    [selectedBacktest],
+  )
   const chartResetKey = selectedBacktest?.strategy.id ?? 'no-strategy'
 
   return (
@@ -2141,9 +2162,18 @@ function App() {
   const selectedIndexSideStat = useMemo(() => selectedSideStats.find((side) => side.id === 'index-fallback') ?? null, [selectedSideStats])
   const indexBenchmarkSummaryByStrategyId = useMemo(
     () =>
-      new Map(
+      new Map<string, { returnPct: number | null; edgePct: number | null }>(
         leaderboard.map((result) => {
-          const dates = result.curve.map((point) => point.date)
+          if (!hasIndexBenchmarkForStrategy(result.strategy)) {
+            return [
+              result.strategy.id,
+              {
+                returnPct: null,
+                edgePct: null,
+              },
+            ] as const
+          }
+          const dates = [result.researchMetrics.firstEntry, result.researchMetrics.lastExit].filter((date): date is string => !!date)
           const benchmarkStartDate =
             result.researchMetrics.firstEntry ||
             result.trades
@@ -2165,6 +2195,7 @@ function App() {
     [leaderboard],
   )
   const benchmarkByDate = useMemo(() => {
+    if (selectedBacktest && !hasIndexBenchmarkForStrategy(selectedBacktest.strategy)) return new Map<string, number | null>()
     const dates = selectedBacktest ? selectedBacktest.curve.map((point) => point.date) : joinedRows.map((point) => point.date)
     const benchmarkStartDate =
       selectedBacktest?.researchMetrics.firstEntry ||
@@ -2175,6 +2206,7 @@ function App() {
     return benchmarkPctByDate(selectedBacktest ? benchmarkMarketBars : market, dates, benchmarkStartDate)
   }, [joinedRows, market, selectedBacktest])
   const indexBenchmarkByDate = useMemo(() => {
+    if (selectedBacktest && !hasIndexBenchmarkForStrategy(selectedBacktest.strategy)) return new Map<string, number | null>()
     const dates = selectedBacktest ? selectedBacktest.curve.map((point) => point.date) : joinedRows.map((point) => point.date)
     const benchmarkStartDate =
       selectedBacktest?.researchMetrics.firstEntry ||
@@ -2239,19 +2271,32 @@ function App() {
     selected: result.strategy.id === selectedStrategyId,
   }))
   const selectedStrategyItem = strategyStripItems.find((strategy) => strategy.selected) ?? strategyStripItems[0] ?? null
-  const selectedIndexBenchmarkPoints = chartData.filter((point) => Number.isFinite(point.indexBenchmarkPct))
-  const selectedIndexBenchmarkValues = selectedIndexBenchmarkPoints.map((point) => point.indexBenchmarkPct as number)
-  const selectedIndexBenchmarkReturnPct = relativeBenchmarkReturn(selectedIndexBenchmarkValues)
-  const selectedIndexBenchmarkAnnualReturnPct = annualizedReturnPct(
-    selectedIndexBenchmarkReturnPct,
-    selectedIndexBenchmarkPoints[0]?.date,
-    selectedIndexBenchmarkPoints.at(-1)?.date,
-  )
-  const selectedIndexBenchmarkAnnualEdgePct = selectedBacktest
-    ? selectedBacktest.metrics.cagrPct - selectedIndexBenchmarkAnnualReturnPct
-    : 0
+  const selectedHasIndexBenchmark = hasIndexBenchmarkForStrategy(selectedBacktest?.strategy)
+  const selectedMetricWindowStartDate = selectedBacktest?.researchMetrics.firstEntry
+  const selectedMetricWindowEndDate = selectedBacktest?.researchMetrics.lastExit
+  const selectedIndexBenchmarkWindowValues =
+    selectedBacktest && selectedHasIndexBenchmark
+      ? [
+          ...benchmarkPctByDate(
+            indexBenchmarkMarketBars,
+            [selectedMetricWindowStartDate, selectedMetricWindowEndDate].filter((date): date is string => !!date),
+            selectedMetricWindowStartDate,
+          ).values(),
+        ]
+      : []
+  const selectedIndexBenchmarkReturnPct =
+    selectedBacktest && selectedHasIndexBenchmark ? relativeBenchmarkReturn(selectedIndexBenchmarkWindowValues) : null
+  const selectedIndexBenchmarkAnnualReturnPct =
+    selectedBacktest && selectedIndexBenchmarkReturnPct !== null
+      ? annualizedReturnPct(selectedIndexBenchmarkReturnPct, selectedMetricWindowStartDate, selectedMetricWindowEndDate)
+      : null
+  const selectedIndexBenchmarkAnnualEdgePct =
+    selectedBacktest && selectedIndexBenchmarkAnnualReturnPct !== null
+      ? selectedBacktest.metrics.cagrPct - selectedIndexBenchmarkAnnualReturnPct
+      : null
   const selectedHoldoutTotalEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
   const selectedHoldoutAnnualEdgePct = splitAnnualEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
+  const selectedUsesAbsoluteSplitReturns = selectedBacktest?.strategy.family === 'prediction-time-ladder'
   const selectedRealityCheck = realityCheckForStrategy(selectedBacktest?.strategy)
   const emptyStats = [
     ['Win rate', '-', 'Positive return rows'],
@@ -2519,13 +2564,15 @@ function App() {
           <MetricCard
             icon={LineChartIcon}
             label="Annualized alpha"
-            value={selectedBacktest ? signedPercent(selectedIndexBenchmarkAnnualEdgePct) : '-'}
+            value={selectedIndexBenchmarkAnnualEdgePct === null ? '-' : signedPercent(selectedIndexBenchmarkAnnualEdgePct)}
             detail={
-              selectedBacktest
-                ? `${indexBenchmarkLabel} ${signedPercent(selectedIndexBenchmarkAnnualReturnPct)} yearly over same window`
-                : 'Needs a selected strategy window'
+              !selectedBacktest
+                ? 'Needs a selected strategy window'
+                : selectedIndexBenchmarkAnnualReturnPct === null
+                  ? 'No benchmark edge modeled for this strategy'
+                  : `${indexBenchmarkLabel} ${signedPercent(selectedIndexBenchmarkAnnualReturnPct)} yearly over same window`
             }
-            tone={selectedBacktest ? classForSigned(selectedIndexBenchmarkAnnualEdgePct) : 'warning'}
+            tone={selectedIndexBenchmarkAnnualEdgePct === null ? 'warning' : classForSigned(selectedIndexBenchmarkAnnualEdgePct)}
           />
           <MetricCard
             icon={Gauge}
@@ -2535,8 +2582,10 @@ function App() {
               selectedHoldoutAnnualEdgePct === null
                 ? 'No holdout split for selected strategy'
                 : selectedHoldoutTotalEdgePct === null
-                  ? `Report-only annual edge vs ${indexBenchmarkLabel}`
-                  : `Report-only vs index basket; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
+                  ? 'Report-only annual split return'
+                  : selectedUsesAbsoluteSplitReturns
+                    ? `Report-only absolute return; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
+                    : `Report-only vs index basket; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
             }
             tone={selectedHoldoutAnnualEdgePct === null ? 'warning' : classForSigned(selectedHoldoutAnnualEdgePct)}
           />
@@ -2596,7 +2645,7 @@ function App() {
                       <th>Strategy</th>
                       <th>Total return</th>
                       <th>Index</th>
-                      <th>Holdout edge/yr</th>
+                      <th>Holdout/yr</th>
                       <th>Sharpe</th>
                       <th>Drawdown</th>
                       <th>Win rate</th>
@@ -2609,6 +2658,7 @@ function App() {
                       leaderboard.map((result, index) => {
                         const sampleStatus = sampleStatusFor(result)
                         const indexBenchmarkSummary = indexBenchmarkSummaryByStrategyId.get(result.strategy.id)
+                        const indexBenchmarkReturnPct = indexBenchmarkSummary?.returnPct
                         const holdoutAnnualEdgePct = splitAnnualEdgeForStrategy(result.strategy, 'holdout')
                         return (
                           <tr
@@ -2621,8 +2671,8 @@ function App() {
                               <span>{result.strategy.desk}</span>
                             </td>
                             <td className={classForSigned(result.metrics.totalReturnPct)}>{signedPercent(result.metrics.totalReturnPct)}</td>
-                            <td className={classForSigned(indexBenchmarkSummary?.returnPct ?? 0)}>
-                              {signedPercent(indexBenchmarkSummary?.returnPct ?? 0)}
+                            <td className={typeof indexBenchmarkReturnPct === 'number' ? classForSigned(indexBenchmarkReturnPct) : undefined}>
+                              {typeof indexBenchmarkReturnPct === 'number' ? signedPercent(indexBenchmarkReturnPct) : '-'}
                             </td>
                             <td className={holdoutAnnualEdgePct === null ? undefined : classForSigned(holdoutAnnualEdgePct)}>
                               {holdoutAnnualEdgePct === null ? '-' : signedPercent(holdoutAnnualEdgePct)}

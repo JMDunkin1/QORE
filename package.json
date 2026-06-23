@@ -12,6 +12,7 @@
     "dev:vite": "vite",
     "github-service": "node scripts/qore-git-service.mjs",
     "collect:free-data": "node scripts/collect-free-data.mjs",
+    "collect:prediction-time-ladder": "node scripts/collect-prediction-time-ladder.mjs",
     "collect:gfs-calendar": "node scripts/build-gfs-forecast-calendar.mjs",
     "collect:gefs-calendar": "QORE_FORECAST_SOURCE=gefs-mean node scripts/build-gfs-forecast-calendar.mjs",
     "collect:graphcast-calendar": "QORE_FORECAST_SOURCE=graphcastgfs QORE_GFS_CALENDAR_START=2024-04-26 node scripts/build-gfs-forecast-calendar.mjs",
