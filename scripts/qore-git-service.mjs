@@ -17,12 +17,13 @@ const enableLaunchUpdate = process.env.QORE_GIT_SERVICE_LAUNCH_UPDATE !== '0'
 const serviceStartedAt = new Date().toISOString()
 const apiToken = await readOrCreateServiceToken(repoDir)
 const dependencyFiles = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json']
-const defaultAllowedOrigins = [
-  'http://127.0.0.1:5173',
-  'http://localhost:5173',
-  'http://127.0.0.1:4173',
-  'http://localhost:4173',
-]
+
+function localOriginsForPorts(ports) {
+  return ports.flatMap((dashboardPort) => [`http://127.0.0.1:${dashboardPort}`, `http://localhost:${dashboardPort}`])
+}
+
+const defaultDashboardPorts = Array.from({ length: 50 }, (_, index) => 5173 + index)
+const defaultAllowedOrigins = [...localOriginsForPorts(defaultDashboardPorts), ...localOriginsForPorts([4173])]
 const allowedOrigins = new Set(
   String(process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ?? defaultAllowedOrigins.join(','))
     .split(',')

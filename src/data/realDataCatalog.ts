@@ -170,6 +170,11 @@ export const realDataCatalog = {
       path: 'research/strategy-agent-runs/prediction-time-ladder',
       detail: 'Kalshi and Polymarket date-threshold scans, same-venue deadline-ladder pairs, Kalshi candle support observations, candidate diagnostics, and selected paper rows.',
     },
+    {
+      label: 'Prediction cross-market RV',
+      path: 'research/strategy-agent-runs/prediction-cross-market-rv',
+      detail: 'Kalshi/Polymarket cross-venue relative-value paper scan, including SPX/SPY threshold-curve comparisons and targeted comparable-market rows.',
+    },
   ] satisfies SupportDatasetSummary[],
 }
 

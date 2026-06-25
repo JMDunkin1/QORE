@@ -646,6 +646,28 @@ function splitForDate(date, splitDates) {
   return 'train'
 }
 
+function uniqueSortedValues(values) {
+  return [...new Set(values)].sort((left, right) => left - right)
+}
+
+function splitDatesFromObservations(observations) {
+  const dates = [...new Set(observations.map((observation) => observation.observedDate).filter(Boolean))].sort()
+  const minDate = dates[0] ?? isoDate(now)
+  const maxDate = dates.at(-1) ?? isoDate(now)
+  const validationStartIndex = Math.floor(dates.length * 0.55)
+  const holdoutStartIndex = Math.floor(dates.length * 0.82)
+  return {
+    dates,
+    minDate,
+    maxDate,
+    splitDates: {
+      trainEnd: dates[validationStartIndex] ?? minDate,
+      validationEnd: dates[holdoutStartIndex] ?? maxDate,
+      holdoutStart: dates[holdoutStartIndex] ?? maxDate,
+    },
+  }
+}
+
 function rowEntryDate(row) {
   return row.entryTradeDate ?? row.observedDate ?? row.signalDate ?? ''
 }
@@ -827,7 +849,8 @@ function selectedScreenRealityCheck(trades, observations, candidate) {
 function buildCandidates(observations, splitDates) {
   const candidates = []
   const configs = []
-  for (const minGrossEdgeCents of [0.5, 1, 2, 3, 4]) {
+  const minGrossEdgeCentsValues = uniqueSortedValues([config.feeHaircutCents, 1.5, 2, 3, 4, 5])
+  for (const minGrossEdgeCents of minGrossEdgeCentsValues) {
     for (const minSpacingHours of [1, 6, 24]) {
       configs.push({ minGrossEdgeCents, minSpacingHours })
     }
@@ -837,13 +860,21 @@ function buildCandidates(observations, splitDates) {
     const trades = selectTradesForCandidate(observations, candidate, splitDates)
     const splitEdges = splitEdgesForTrades(trades)
     const splitMetrics = splitMetricsForTrades(trades)
+    const trainTradeCount = trades.filter((trade) => trade.split === 'train').length
+    const validationTradeCount = trades.filter((trade) => trade.split === 'validation').length
+    const holdoutTradeCount = trades.filter((trade) => trade.split === 'holdout').length
+    const selectionEligible =
+      trainTradeCount >= 8 &&
+      validationTradeCount >= 8 &&
+      splitEdges.train > 0 &&
+      splitEdges.validation > 0
     candidates.push({
       candidateId,
       minGrossEdgeCents: candidate.minGrossEdgeCents,
       feeHaircutCents: config.feeHaircutCents,
       minSpacingHours: candidate.minSpacingHours,
-      eligible: trades.length >= 8 && trades.some((trade) => trade.split === 'holdout'),
-      selectionEligible: trades.length >= 8 && trades.some((trade) => trade.split === 'holdout'),
+      eligible: selectionEligible && holdoutTradeCount >= 8,
+      selectionEligible,
       trainValidationRank: 0,
       trainEdgePct: splitEdges.train,
       validationEdgePct: splitEdges.validation,
@@ -859,7 +890,7 @@ function buildCandidates(observations, splitDates) {
       validationMaxDrawdownPct: splitMetrics.validation.maxDrawdownPct,
       holdoutMaxDrawdownPct: splitMetrics.holdout.maxDrawdownPct,
       tradeCount: trades.length,
-      holdoutTradeCount: trades.filter((trade) => trade.split === 'holdout').length,
+      holdoutTradeCount,
       averageNetReturnPct: round(mean(trades.map((trade) => trade.netReturnPct)), 4),
       averagePackageReturnPct: round(mean(trades.map((trade) => trade.packageReturnPct)), 4),
     })
@@ -874,7 +905,7 @@ function buildCandidates(observations, splitDates) {
 
 function selectedCandidate(candidates) {
   return (
-    candidates.find((candidate) => candidate.minGrossEdgeCents === 2 && candidate.minSpacingHours === 6) ??
+    candidates.find((candidate) => candidate.selectionEligible) ??
     candidates.find((candidate) => candidate.eligible) ??
     candidates[0]
   )
@@ -1007,16 +1038,7 @@ async function main() {
   pairs.sort((a, b) => (b.grossEdge ?? -Infinity) - (a.grossEdge ?? -Infinity))
 
   const observations = await buildHistoricalObservations(pairs)
-  const dates = observations.map((observation) => observation.observedDate).sort()
-  const minDate = dates[0] ?? isoDate(now)
-  const maxDate = dates.at(-1) ?? isoDate(now)
-  const validationStartIndex = Math.floor(dates.length * 0.55)
-  const holdoutStartIndex = Math.floor(dates.length * 0.82)
-  const splitDates = {
-    trainEnd: dates[validationStartIndex] ?? minDate,
-    validationEnd: dates[holdoutStartIndex] ?? maxDate,
-    holdoutStart: dates[holdoutStartIndex] ?? maxDate,
-  }
+  const { dates, minDate, maxDate, splitDates } = splitDatesFromObservations(observations)
   const candidates = buildCandidates(observations, splitDates)
   const selected = selectedCandidate(candidates)
   const selectedTrades = selectTradesForCandidate(
@@ -1197,11 +1219,11 @@ async function main() {
       capitalAllocationPct: config.capitalAllocationPct,
       fallback: 'No idle capital allocation is modeled; rows represent detected package entries only.',
       selectionPolicy:
-        'Candidate threshold and spacing variants are ranked on train/validation diagnostics; holdout is report-only. The checked-in selected lane uses the selected gross-edge and pair-spacing gates.',
+        'Candidate threshold and spacing variants are ranked on train/validation diagnostics across unique observation days; holdout is report-only and is not used for selection. The checked-in selected lane uses the selected gross-edge and pair-spacing gates.',
       signalTiming:
         'Use venue top-of-book quotes only. The executable package is buy NO on the earlier deadline plus buy YES on the later deadline.',
       overfitControl:
-        'No contract wording is auto-promoted and no inferential p-value is reported for quote-edge-selected rows. Every positive package remains subject to same-underlier, same-resolution-source, fee, liquidity, and settlement review before paper execution.',
+        `No contract wording is auto-promoted and no inferential p-value is reported for quote-edge-selected rows. The split uses ${dates.length.toLocaleString()} unique observed days with a hidden holdout starting ${splitDates.holdoutStart}. Every positive package remains subject to same-underlier, same-resolution-source, fee, liquidity, and settlement review before paper execution.`,
     },
     selected: {
       candidateId: selected.candidateId,
@@ -1234,7 +1256,7 @@ async function main() {
     },
     search: {
       candidateCount: candidates.length,
-      eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
+      eligibleCandidateCount: candidates.filter((candidate) => candidate.selectionEligible).length,
       selectionUsedHoldout: false,
     },
     validation: {

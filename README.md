@@ -79,7 +79,7 @@ These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS fore
 
 - Opens on the tracked `data/qore` research catalog without bundled starter rows.
 - Shows source-backed market, weather, forecast-calendar, signal-score, and signal-return inventory.
-- Loads one active NGAS research strategy: NGAS All-Year Beta.
+- Loads active research strategies from vetted artifacts; current-paper scans are gated out unless they have same-day `generatedAt` metadata and non-expired current rows.
 - Keeps NGAS Summer Alpha and NGAS Winter Alpha as deprecated source ledgers for the all-year composite, not active dashboard baselines.
 - Keeps older weather, volatility, and strict-theory lanes archived as research evidence instead of active baselines.
 - Joins explicitly imported weather and market rows by `date` for session-only lab checks.
@@ -119,6 +119,20 @@ npm run optimize:ngas-all-year-beta
 ```
 
 The selected beta artifact made `877.16%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-15.86%` max drawdown. Train return was `186.29%`, validation was `70.74%`, and holdout was `99.9%`; holdout edge versus the index basket was `69.74%`. Its direct all-year centered circular block bootstrap p-value is `0.00005`, replacing the old Fisher-combined component p-value. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+
+The active prediction-market checked-in artifact is `prediction-time-ladder-alpha`. `prediction-cross-market-rv-alpha` remains cataloged as a separate cross-venue model, but its current-paper scan is gated out of the active dashboard registry until it has same-day `generatedAt` metadata and non-expired current rows.
+
+`prediction-time-ladder-alpha` scans Kalshi and Polymarket date-threshold markets for nested deadline packages where buying NO on the earlier deadline plus YES on the later deadline shows positive quote edge after fees.
+
+```bash
+npm run collect:prediction-time-ladder
+```
+
+The checked-in artifact scanned `63,849` Kalshi markets and `2,100` Polymarket markets, parsed `10,709` date-threshold markets, found `3,386` same-venue ladder pairs, and selected `981` historical paper rows. Candidate selection ranks gross-edge and pair-spacing gates on train/validation only across `181` unique observed days, then reports a hidden holdout starting `2026-05-22`. The selected `edge-1c-spacing-1h` lane made `32.14%` modeled total return, with `6.83%` train, `12.82%` validation, and `12.49%` hidden holdout. It reports no inferential p-value because selected rows are mechanically positive after quote-edge gating. It is a research and paper-candidate artifact, not live routing, and every package still needs contract-language, liquidity, fee, and settlement review.
+
+`prediction-cross-market-rv-alpha` is the separate cross-venue relative-value model. It compares economically similar Kalshi and Polymarket contracts, currently including SPX/SPY threshold-curve differences plus targeted comparable-market searches, then paper-trades the cheap YES side against the rich NO side.
+
+The current checked-in cross-market artifact is a stale June 23, 2026 paper scan with expired SPX/SPY opportunities. It is kept as support evidence only; it must be regenerated with current rows and `generatedAt` metadata before it can appear as an active dashboard strategy.
 
 ## Deprecated Component Lanes
 

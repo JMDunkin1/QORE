@@ -2,6 +2,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,21 +10,46 @@ import { fileURLToPath } from 'node:url'
 const scriptPath = fileURLToPath(import.meta.url)
 const appDir = path.resolve(process.env.QORE_APP_DIR ?? path.join(path.dirname(scriptPath), '..'))
 const host = process.env.QORE_HOST ?? '127.0.0.1'
-const port = String(process.env.QORE_PORT ?? '5173')
-const url = `http://${host}:${port}/`
+const preferredPort = normalizePort(process.env.QORE_PORT) ?? 5173
+const fallbackLimit = normalizePositiveInteger(process.env.QORE_PORT_FALLBACK_LIMIT) ?? 50
 const tempRoot = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? tmpdir()
 const logDir = path.join(tempRoot, 'qore')
 const logFile = path.join(logDir, 'vite.log')
 const pidFile = path.join(logDir, 'vite.pid')
+const stateFile = path.join(logDir, 'vite.json')
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const allowedOrigins =
-  process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ?? `http://${host}:${port},http://localhost:${port},http://127.0.0.1:${port}`
+
+function normalizePort(value) {
+  const candidate = Number(value)
+  return Number.isInteger(candidate) && candidate > 0 && candidate < 65536 ? candidate : null
+}
+
+function normalizePositiveInteger(value) {
+  const candidate = Number(value)
+  return Number.isInteger(candidate) && candidate > 0 ? candidate : null
+}
+
+function dashboardForPort(port) {
+  return { host, port: String(port) }
+}
+
+function dashboardUrl(dashboard) {
+  return `http://${dashboard.host}:${dashboard.port}/`
+}
+
+function allowedOrigins(dashboard) {
+  return (
+    process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ??
+    `http://${dashboard.host}:${dashboard.port},http://localhost:${dashboard.port},http://127.0.0.1:${dashboard.port}`
+  )
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function dashboardIsUp() {
+function dashboardIsUp(dashboard) {
+  const url = dashboardUrl(dashboard)
   return new Promise((resolve) => {
     const req = request(url, { timeout: 1000 }, (res) => {
       let body = ''
@@ -44,7 +70,8 @@ function dashboardIsUp() {
   })
 }
 
-function openUrl() {
+function openUrl(dashboard) {
+  const url = dashboardUrl(dashboard)
   const command =
     process.platform === 'darwin'
       ? 'open'
@@ -63,7 +90,10 @@ function stopLegacyScreen() {
 }
 
 function killPidFile() {
-  if (!existsSync(pidFile)) return
+  if (!existsSync(pidFile)) {
+    rmSync(stateFile, { force: true })
+    return
+  }
   const rawPid = readFileSync(pidFile, 'utf8').trim()
   const pid = Number(rawPid)
   if (Number.isFinite(pid) && pid > 0) {
@@ -74,6 +104,7 @@ function killPidFile() {
     }
   }
   rmSync(pidFile, { force: true })
+  rmSync(stateFile, { force: true })
 }
 
 function ensureDependencies() {
@@ -87,21 +118,75 @@ function ensureDependencies() {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
-function startServer() {
+function readDashboardState() {
+  try {
+    const state = JSON.parse(readFileSync(stateFile, 'utf8'))
+    const statePort = normalizePort(state?.port)
+    const stateHost = typeof state?.host === 'string' && state.host ? state.host : host
+    return statePort ? { host: stateHost, port: String(statePort) } : null
+  } catch {
+    return null
+  }
+}
+
+function writeDashboardState(dashboard, pid) {
+  writeFileSync(
+    stateFile,
+    `${JSON.stringify({ pid, host: dashboard.host, port: Number(dashboard.port), url: dashboardUrl(dashboard), startedAt: new Date().toISOString() }, null, 2)}\n`,
+    'utf8',
+  )
+}
+
+function portIsAvailable(dashboard) {
+  return new Promise((resolve) => {
+    const server = createNetServer()
+    server.once('error', () => resolve(false))
+    server.once('listening', () => {
+      server.close(() => resolve(true))
+    })
+    server.listen({ host: dashboard.host, port: Number(dashboard.port) })
+  })
+}
+
+async function findRunningDashboard() {
+  const saved = readDashboardState()
+  if (saved && (await dashboardIsUp(saved))) return saved
+
+  for (let offset = 0; offset < fallbackLimit; offset += 1) {
+    const candidatePort = preferredPort + offset
+    if (candidatePort >= 65536) break
+    const dashboard = dashboardForPort(candidatePort)
+    if (!(await portIsAvailable(dashboard)) && (await dashboardIsUp(dashboard))) return dashboard
+  }
+  return null
+}
+
+async function chooseAvailableDashboard() {
+  for (let offset = 0; offset < fallbackLimit; offset += 1) {
+    const candidatePort = preferredPort + offset
+    if (candidatePort >= 65536) break
+    const dashboard = dashboardForPort(candidatePort)
+    if (await portIsAvailable(dashboard)) return dashboard
+  }
+  throw new Error(`No open QORE dashboard port found starting at ${preferredPort}.`)
+}
+
+function startServer(dashboard) {
   mkdirSync(logDir, { recursive: true })
   const logFd = openSync(logFile, 'w')
-  const child = spawn(npmCommand, ['run', 'dev', '--', '--host', host, '--port', port, '--strictPort'], {
+  const child = spawn(npmCommand, ['run', 'dev', '--', '--host', dashboard.host, '--port', dashboard.port, '--strictPort'], {
     cwd: appDir,
     detached: true,
     env: {
       ...process.env,
-      QORE_GIT_SERVICE_ALLOWED_ORIGINS: allowedOrigins,
+      QORE_GIT_SERVICE_ALLOWED_ORIGINS: allowedOrigins(dashboard),
     },
     shell: process.platform === 'win32',
     stdio: ['ignore', logFd, logFd],
   })
   closeSync(logFd)
   writeFileSync(pidFile, `${child.pid}\n`, 'utf8')
+  writeDashboardState(dashboard, child.pid)
   child.unref()
 }
 
@@ -124,8 +209,9 @@ if (command === 'stop') {
 }
 
 if (command === 'status') {
-  if (await dashboardIsUp()) {
-    console.log(`QORE is running: ${url}`)
+  const runningDashboard = await findRunningDashboard()
+  if (runningDashboard) {
+    console.log(`QORE is running: ${dashboardUrl(runningDashboard)}`)
   } else {
     console.log('QORE is not running.')
   }
@@ -137,27 +223,39 @@ if (command !== 'open') {
   process.exit(1)
 }
 
-if (await dashboardIsUp()) {
-  openUrl()
-  console.log(`QORE is already running: ${url}`)
+const runningDashboard = await findRunningDashboard()
+if (runningDashboard) {
+  openUrl(runningDashboard)
+  console.log(`QORE is already running: ${dashboardUrl(runningDashboard)}`)
   process.exit(0)
 }
 
+let dashboard = null
+try {
+  dashboard = await chooseAvailableDashboard()
+} catch (error) {
+  console.error(error.message)
+  process.exit(1)
+}
+
 ensureDependencies()
-console.log(`Starting QORE on ${url}...`)
-startServer()
+if (Number(dashboard.port) !== preferredPort) {
+  console.log(`QORE dashboard port ${preferredPort} is busy; using ${dashboardUrl(dashboard)}`)
+}
+console.log(`Starting QORE on ${dashboardUrl(dashboard)}...`)
+startServer(dashboard)
 
 for (let attempt = 0; attempt < 60; attempt += 1) {
-  if (await dashboardIsUp()) {
-    openUrl()
-    console.log(`QORE open: ${url}`)
+  if (await dashboardIsUp(dashboard)) {
+    openUrl(dashboard)
+    console.log(`QORE open: ${dashboardUrl(dashboard)}`)
     console.log(`Server log: ${logFile}`)
     process.exit(0)
   }
   await sleep(250)
 }
 
-console.log(`QORE did not become ready at ${url}.`)
+console.log(`QORE did not become ready at ${dashboardUrl(dashboard)}.`)
 console.log('Recent server log:')
 printRecentLog()
 process.exit(1)

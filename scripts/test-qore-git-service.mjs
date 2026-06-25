@@ -110,6 +110,8 @@ async function preflight(baseUrl, requestPath, options = {}) {
 async function startService(repoDir, options = {}) {
   const port = nextPort++
   const token = options.token ?? `test-token-${port}-0123456789abcdef`
+  const allowedOriginsEnv =
+    options.allowedOrigins === null ? {} : { QORE_GIT_SERVICE_ALLOWED_ORIGINS: options.allowedOrigins ?? allowedOrigin }
   const child = spawn(process.execPath, [serviceScript], {
     cwd: projectRoot,
     env: {
@@ -121,7 +123,7 @@ async function startService(repoDir, options = {}) {
       QORE_GIT_SERVICE_TOKEN: token,
       QORE_GIT_SERVICE_LAUNCH_UPDATE: options.launchUpdate ? '1' : '0',
       QORE_GITHUB_CHECK_INTERVAL_MS: '3600000',
-      QORE_GIT_SERVICE_ALLOWED_ORIGINS: allowedOrigin,
+      ...allowedOriginsEnv,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -191,6 +193,24 @@ const tests = [
           const ok = await request(service.baseUrl, '/api/github/status', { token: service.token })
           assert.equal(ok.status, 200)
           assert.equal(ok.payload.status.repoDir, repo)
+        } finally {
+          await service.stop()
+        }
+      }),
+  },
+  {
+    name: 'allows fallback dashboard ports by default',
+    run: () =>
+      withFixture(createRepoWithoutRemote, async ({ repo }) => {
+        const service = await startService(repo, { allowedOrigins: null })
+        try {
+          const fallbackPreflight = await preflight(service.baseUrl, '/api/github/status', { origin: 'http://127.0.0.1:5174' })
+          assert.equal(fallbackPreflight.status, 204)
+          assert.equal(fallbackPreflight.allowOrigin, 'http://127.0.0.1:5174')
+          assert.match(fallbackPreflight.allowHeaders.toLowerCase(), /x-qore-git-token/)
+
+          const outsideDefaultRange = await preflight(service.baseUrl, '/api/github/status', { origin: 'http://127.0.0.1:5224' })
+          assert.equal(outsideDefaultRange.status, 403)
         } finally {
           await service.stop()
         }

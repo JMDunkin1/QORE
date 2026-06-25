@@ -158,7 +158,7 @@ type WebKitGestureEvent = Event & {
   clientY?: number
   scale?: number
 }
-type SplitEdgeName = 'train' | 'validation' | 'holdout' | 'all'
+type SplitEdgeName = 'train' | 'validation' | 'holdout' | 'current' | 'all'
 type WeatherSideSeason = 'winter' | 'summer' | 'all-year' | 'prediction'
 type RealityCheckPercentiles = {
   p05: number
@@ -212,6 +212,7 @@ type CandidateDiagnostics = {
   candidateCount?: number
   eligibleCandidateCount?: number
   selectionUsedHoldout?: boolean
+  validationScope?: 'historical-holdout' | 'current-paper-scan'
   candidates?: CandidateRecord[]
 }
 type CandidateRecord = Record<string, unknown>
@@ -354,6 +355,7 @@ const monteCarloPalette = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#0891b2'
 
 const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
   { id: 'time-ladder-package', label: 'Time-ladder package', seasons: ['prediction'], thesisKinds: ['time-ladder-package'] },
+  { id: 'cross-venue-rv', label: 'Cross-venue RV', seasons: ['prediction'], thesisKinds: ['cross-venue-rv'] },
   { id: 'cold-long', label: 'Cold-long', seasons: ['winter', 'all-year'], thesisKinds: ['cold-long'] },
   { id: 'warm-short', label: 'Warm-short', seasons: ['winter', 'all-year'], thesisKinds: ['warm-short'] },
   { id: 'summer-cold-short', label: 'Summer cold-short', seasons: ['summer', 'all-year'], thesisKinds: ['summer-cold-short'] },
@@ -364,6 +366,7 @@ const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
 ]
 
 function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
 }
@@ -953,15 +956,27 @@ function annualizedReturnPct(totalReturnPct: number, startDate: string | undefin
   return ((1 + totalReturnPct / 100) ** (1 / years) - 1) * 100
 }
 
+function isPredictionMarketStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
+  return strategy?.family === 'prediction-time-ladder' || strategy?.family === 'prediction-cross-market'
+}
+
 function weatherSideSeasonForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): WeatherSideSeason {
-  if (strategy?.family === 'prediction-time-ladder') return 'prediction'
+  if (isPredictionMarketStrategy(strategy)) return 'prediction'
   if (strategy?.family === 'weather-summer') return 'summer'
   if (strategy?.family === 'weather-alpha') return 'winter'
   return 'all-year'
 }
 
 function hasIndexBenchmarkForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  return strategy?.family !== 'prediction-time-ladder'
+  return !isPredictionMarketStrategy(strategy)
+}
+
+function validationScopeForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
+  return strategy?.params.validationScope === 'current-paper-scan' ? 'current-paper-scan' : 'historical-holdout'
+}
+
+function isCurrentPaperScanStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
+  return validationScopeForStrategy(strategy) === 'current-paper-scan'
 }
 
 function tradeHasThesisKind(trade: ResearchTrade, thesisKind: string) {
@@ -1825,6 +1840,7 @@ function OverfitValidationPills({ selectedBacktest }: { selectedBacktest: Resear
   const candidateCount = diagnostics?.candidateCount ?? candidates.length
   const eligibleCandidateCount = diagnostics?.eligibleCandidateCount ?? candidates.filter((candidate) => candidate.eligible).length
   const selectedCandidateCount = candidates.filter((candidate) => candidate.selected).length
+  const isCurrentPaperScan = diagnostics?.validationScope === 'current-paper-scan'
   const selectedCandidateLabel =
     selectedCandidateCount > 1
       ? `${selectedCandidateCount} selected component sets`
@@ -1836,8 +1852,8 @@ function OverfitValidationPills({ selectedBacktest }: { selectedBacktest: Resear
     <div className="validation-summary-pills">
       <span className="repo-pill">{formatNumber(candidateCount, 0)} parameter sets</span>
       <span className="repo-pill">{formatNumber(eligibleCandidateCount, 0)} eligible</span>
-      <span className={`repo-pill ${diagnostics?.selectionUsedHoldout ? 'negative' : 'positive'}`}>
-        {diagnostics?.selectionUsedHoldout ? 'Holdout used in selection' : 'Holdout report-only'}
+      <span className={`repo-pill ${diagnostics?.selectionUsedHoldout ? 'negative' : isCurrentPaperScan ? 'warning' : 'positive'}`}>
+        {diagnostics?.selectionUsedHoldout ? 'Holdout used in selection' : isCurrentPaperScan ? 'Current paper scan' : 'Holdout report-only'}
       </span>
       <span className={`repo-pill ${selectedCandidate ? 'positive' : 'warning'}`}>{selectedCandidateLabel}</span>
     </div>
@@ -1849,7 +1865,7 @@ function OverfitValidationBand({ selectedBacktest }: { selectedBacktest: Researc
   const candidates = useMemo(() => candidateMetricRows(diagnostics), [diagnostics])
   const heatmapPlot = useMemo(() => buildParameterHeatmapPlot(candidates), [candidates])
   const monteCarloPlot = useMemo(
-    () => buildMonteCarloStressPlot(selectedBacktest?.strategy.family === 'prediction-time-ladder' ? [] : (selectedBacktest?.trades ?? [])),
+    () => buildMonteCarloStressPlot(isPredictionMarketStrategy(selectedBacktest?.strategy) ? [] : (selectedBacktest?.trades ?? [])),
     [selectedBacktest],
   )
   const chartResetKey = selectedBacktest?.strategy.id ?? 'no-strategy'
@@ -2296,7 +2312,22 @@ function App() {
       : null
   const selectedHoldoutTotalEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
   const selectedHoldoutAnnualEdgePct = splitAnnualEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
-  const selectedUsesAbsoluteSplitReturns = selectedBacktest?.strategy.family === 'prediction-time-ladder'
+  const selectedCurrentScanEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'current')
+  const selectedIsCurrentPaperScan = isCurrentPaperScanStrategy(selectedBacktest?.strategy)
+  const selectedUsesAbsoluteSplitReturns = isPredictionMarketStrategy(selectedBacktest?.strategy)
+  const selectedValidationCardLabel = selectedIsCurrentPaperScan ? 'Paper scan' : 'Annual holdout'
+  const selectedValidationCardValuePct = selectedIsCurrentPaperScan ? selectedCurrentScanEdgePct : selectedHoldoutAnnualEdgePct
+  const selectedValidationCardDetail = selectedIsCurrentPaperScan
+    ? selectedCurrentScanEdgePct === null
+      ? 'Current scan has no selected paper rows'
+      : `Current top-of-book scan; no historical holdout split`
+    : selectedHoldoutAnnualEdgePct === null
+      ? 'No holdout split for selected strategy'
+      : selectedHoldoutTotalEdgePct === null
+        ? 'Report-only annual split return'
+        : selectedUsesAbsoluteSplitReturns
+          ? `Report-only absolute return; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
+          : `Report-only vs index basket; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
   const selectedRealityCheck = realityCheckForStrategy(selectedBacktest?.strategy)
   const emptyStats = [
     ['Win rate', '-', 'Positive return rows'],
@@ -2576,18 +2607,10 @@ function App() {
           />
           <MetricCard
             icon={Gauge}
-            label="Annual holdout"
-            value={selectedHoldoutAnnualEdgePct === null ? '-' : signedPercent(selectedHoldoutAnnualEdgePct)}
-            detail={
-              selectedHoldoutAnnualEdgePct === null
-                ? 'No holdout split for selected strategy'
-                : selectedHoldoutTotalEdgePct === null
-                  ? 'Report-only annual split return'
-                  : selectedUsesAbsoluteSplitReturns
-                    ? `Report-only absolute return; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
-                    : `Report-only vs index basket; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
-            }
-            tone={selectedHoldoutAnnualEdgePct === null ? 'warning' : classForSigned(selectedHoldoutAnnualEdgePct)}
+            label={selectedValidationCardLabel}
+            value={selectedValidationCardValuePct === null ? '-' : signedPercent(selectedValidationCardValuePct)}
+            detail={selectedValidationCardDetail}
+            tone={selectedValidationCardValuePct === null ? 'warning' : classForSigned(selectedValidationCardValuePct)}
           />
           <MetricCard
             icon={Activity}
@@ -2645,7 +2668,7 @@ function App() {
                       <th>Strategy</th>
                       <th>Total return</th>
                       <th>Index</th>
-                      <th>Holdout/yr</th>
+                      <th>Holdout/scan</th>
                       <th>Sharpe</th>
                       <th>Drawdown</th>
                       <th>Win rate</th>
@@ -2659,7 +2682,10 @@ function App() {
                         const sampleStatus = sampleStatusFor(result)
                         const indexBenchmarkSummary = indexBenchmarkSummaryByStrategyId.get(result.strategy.id)
                         const indexBenchmarkReturnPct = indexBenchmarkSummary?.returnPct
-                        const holdoutAnnualEdgePct = splitAnnualEdgeForStrategy(result.strategy, 'holdout')
+                        const isCurrentPaperScan = isCurrentPaperScanStrategy(result.strategy)
+                        const validationEdgePct = isCurrentPaperScan
+                          ? splitEdgeForStrategy(result.strategy, 'current')
+                          : splitAnnualEdgeForStrategy(result.strategy, 'holdout')
                         return (
                           <tr
                             key={result.strategy.id}
@@ -2674,8 +2700,8 @@ function App() {
                             <td className={typeof indexBenchmarkReturnPct === 'number' ? classForSigned(indexBenchmarkReturnPct) : undefined}>
                               {typeof indexBenchmarkReturnPct === 'number' ? signedPercent(indexBenchmarkReturnPct) : '-'}
                             </td>
-                            <td className={holdoutAnnualEdgePct === null ? undefined : classForSigned(holdoutAnnualEdgePct)}>
-                              {holdoutAnnualEdgePct === null ? '-' : signedPercent(holdoutAnnualEdgePct)}
+                            <td className={validationEdgePct === null ? undefined : classForSigned(validationEdgePct)}>
+                              {validationEdgePct === null ? '-' : signedPercent(validationEdgePct)}
                             </td>
                             <td>{formatNumber(result.metrics.sharpe)}</td>
                             <td className="negative">{signedPercent(result.metrics.maxDrawdownPct)}</td>

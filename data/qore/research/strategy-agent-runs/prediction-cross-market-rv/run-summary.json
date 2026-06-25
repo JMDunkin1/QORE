@@ -1,0 +1,141 @@
+{
+  "strategyId": "prediction-cross-market-rv-alpha",
+  "displayName": "Prediction Cross-Market RV Alpha",
+  "data": {
+    "kalshiMarkets": 15000,
+    "polymarketMarkets": 2100,
+    "parsedDateThresholdMarkets": 72,
+    "ladderPairs": 8,
+    "currentPositivePackages": 9,
+    "currentPackagesAboveSelectedThreshold": 9,
+    "historicalPairsRequested": 0,
+    "historicalObservations": 0,
+    "historicalStartDate": "2026-06-23",
+    "historicalEndDate": "2026-06-23",
+    "historyDaysRequested": 1,
+    "candleIntervalMinutes": 0,
+    "portfolioAllocationPct": 1,
+    "crossVenueSignals": 9,
+    "crossVenueActionablePaperSignals": 8,
+    "crossVenueExactBoxCandidates": 0,
+    "crossVenueRelativeValuePaperSignals": 8,
+    "crossVenueWatchlistSignals": 1,
+    "spxSpyKalshiCurvePoints": 61,
+    "spxSpyPolymarketCurvePoints": 11,
+    "targetedKalshiMarketsSearched": 160
+  },
+  "contract": {
+    "trainEnd": null,
+    "validationEnd": null,
+    "holdoutStart": null,
+    "feeHaircutCents": 1,
+    "capitalAllocationPct": 1,
+    "fallback": "No idle capital allocation is modeled; rows represent detected cross-venue paper entries only.",
+    "selectionPolicy": "Current cross-venue candidates are paper scans only. SPX/SPY threshold-curve rows are selected by net convergence edge after fee and basis haircuts; low-liquidity, restricted, or loose comparable-market rows remain watchlist-only and do not count in selected returns.",
+    "signalTiming": "Use current venue top-of-book quotes only. The paper pair is buy cheap YES and buy rich NO, then exit when the gap compresses, reverses, basis worsens, or the market closes.",
+    "overfitControl": "No contract wording is auto-promoted and no historical fill edge is promoted. The selected artifact excludes restricted/low-liquidity comparable rows and every pair remains subject to same-underlier, source, fee, liquidity, rule-text, restriction, and venue-basis review before any paper or live execution."
+  },
+  "selected": {
+    "candidateId": "spx-spy-threshold-rv-current-scan-v2",
+    "architectureLabel": "Cross-venue midpoint relative-value detector",
+    "sourceSetLabel": "Kalshi public market data + Polymarket Gamma/CLOB metadata",
+    "sourceIds": [
+      "kalshi-public-markets",
+      "polymarket-gamma",
+      "polymarket-public-search",
+      "polymarket-clob"
+    ],
+    "minGrossEdgeCents": 1.5,
+    "feeHaircutCents": 1,
+    "minSpacingHours": 0,
+    "capitalAllocationPct": 1,
+    "allMetrics": {
+      "totalReturnPct": 0.5,
+      "cagrPct": 0.5,
+      "annualVolPct": 0,
+      "sharpe": 0,
+      "sortino": 0,
+      "maxDrawdownPct": 0,
+      "calmar": 0,
+      "winRatePct": 100,
+      "profitFactor": 999,
+      "tradeCount": 8,
+      "exposurePct": 8,
+      "turnover": 8,
+      "var95Pct": 0,
+      "cvar95Pct": 0,
+      "averageDailyPnlPct": 0.0623,
+      "firstEntry": "2026-06-23",
+      "lastExit": "2026-06-23",
+      "averageHoldDays": 1,
+      "averageTradeReturnPct": 0.0623
+    },
+    "trainMetrics": null,
+    "validationMetrics": null,
+    "holdoutMetrics": null,
+    "currentMetrics": {
+      "totalReturnPct": 0.5,
+      "cagrPct": 0.5,
+      "annualVolPct": 0,
+      "sharpe": 0,
+      "sortino": 0,
+      "maxDrawdownPct": 0,
+      "calmar": 0,
+      "winRatePct": 100,
+      "profitFactor": 999,
+      "tradeCount": 8,
+      "exposurePct": 8,
+      "turnover": 8,
+      "var95Pct": 0,
+      "cvar95Pct": 0,
+      "averageDailyPnlPct": 0.0623,
+      "firstEntry": "2026-06-23",
+      "lastExit": "2026-06-23",
+      "averageHoldDays": 1,
+      "averageTradeReturnPct": 0.0623
+    },
+    "splitEdges": {
+      "current": 0.5,
+      "all": 0.5
+    },
+    "splitAnnualEdges": {
+      "current": 0.5,
+      "all": 0.5
+    },
+    "sourceUniverse": [
+      "spx_spy_threshold_ladder_rv"
+    ],
+    "currentTopOpportunities": [
+      {
+        "sourceId": "spx_spy_threshold_ladder_rv",
+        "direction": "buy_yes_polymarket_buy_no_kalshi",
+        "grossEdgeCents": 8.8255,
+        "basisFlags": "SPX_vs_SPY_basis;Pyth_vs_Kalshi_source_basis;threshold_ladder_interpolation"
+      }
+    ]
+  },
+  "search": {
+    "candidateCount": 2,
+    "eligibleCandidateCount": 1,
+    "selectionUsedHoldout": false,
+    "validationScope": "current-paper-scan"
+  },
+  "validation": {
+    "realityCheck": {
+      "method": "current-cross-venue-paper-scan",
+      "comparison": "Kalshi/Polymarket SPX/SPY threshold-curve top-of-book relative-value rows",
+      "alternative": "No historical fill edge promoted; low-liquidity/restricted comparable rows are watchlist-only",
+      "pValue": null,
+      "sampleCount": 9,
+      "selectedSampleCount": 8,
+      "activeOverlayDays": 1,
+      "limitation": "This is a current paper scan, not a historical fill backtest. Basis, rule text, source, orderbook depth, and venue restrictions must be reviewed before execution."
+    }
+  },
+  "outputFiles": {
+    "selectedTrades": "data/qore/research/strategy-agent-runs/prediction-cross-market-rv/selected-trades.csv",
+    "candidateSummary": "data/qore/research/strategy-agent-runs/prediction-cross-market-rv/candidate-summary.csv",
+    "crossVenueSignals": "data/qore/research/strategy-agent-runs/prediction-cross-market-rv/cross-venue-signals.csv"
+  },
+  "caveat": "This is a research and paper-candidate artifact, not live routing. Current cross-venue rows are not a historical fill backtest; only SPX/SPY threshold-curve rows are selected, while loose comparable or low-liquidity rows stay watchlist-only until rule text and venue-basis are reviewed."
+}
