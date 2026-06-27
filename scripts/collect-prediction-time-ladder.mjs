@@ -23,6 +23,7 @@ const config = {
   candleIntervalMinutes: numberEnv('QORE_TIME_LADDER_CANDLE_INTERVAL_MINUTES', 60),
   feeHaircutCents: numberEnv('QORE_TIME_LADDER_FEE_HAIRCUT_CENTS', 1),
   capitalAllocationPct: numberEnv('QORE_TIME_LADDER_CAPITAL_ALLOCATION_PCT', 1),
+  allowPartialHistory: process.argv.includes('--allow-partial-history') || booleanEnv('QORE_TIME_LADDER_ALLOW_PARTIAL_HISTORY'),
 }
 
 const monthNumbers = new Map(
@@ -73,6 +74,10 @@ function numberEnv(name, fallback) {
 function optionalNumberEnv(name) {
   const value = Number(process.env[name])
   return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function booleanEnv(name) {
+  return ['1', 'true', 'yes'].includes(String(process.env[name] ?? '').toLowerCase())
 }
 
 function sleep(ms) {
@@ -602,17 +607,30 @@ async function buildHistoricalObservations(pairs) {
     )
     .slice(0, config.maxHistoricalPairs)
   const observations = []
+  const failures = []
   for (let index = 0; index < rankedPairs.length; index += 1) {
     const pair = rankedPairs[index]
     if (index % 25 === 0) console.log(`historical candles ${index + 1}/${rankedPairs.length}`)
     try {
       observations.push(...(await kalshiCandles(pair, startTs, endTs)))
     } catch (error) {
-      console.log(`historical failed ${pair.earlyMarketId}->${pair.laterMarketId}: ${error.message}`)
+      const message = error instanceof Error ? error.message : String(error)
+      failures.push({
+        pairId: `${pair.earlyMarketId}|${pair.laterMarketId}`,
+        earlyMarketId: pair.earlyMarketId,
+        laterMarketId: pair.laterMarketId,
+        message,
+      })
+      console.log(`historical failed ${pair.earlyMarketId}->${pair.laterMarketId}: ${message}`)
     }
     await sleep(55)
   }
-  return observations.sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.pairId.localeCompare(b.pairId))
+  return {
+    observations: observations.sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.pairId.localeCompare(b.pairId)),
+    pairsRequested: rankedPairs.length,
+    pairsSucceeded: rankedPairs.length - failures.length,
+    failures,
+  }
 }
 
 function round(value, digits = 4) {
@@ -1037,7 +1055,15 @@ async function main() {
   pairs = await refinePolymarketPairs(pairs)
   pairs.sort((a, b) => (b.grossEdge ?? -Infinity) - (a.grossEdge ?? -Infinity))
 
-  const observations = await buildHistoricalObservations(pairs)
+  const historicalResult = await buildHistoricalObservations(pairs)
+  if (historicalResult.failures.length && !config.allowPartialHistory) {
+    const failedIds = historicalResult.failures.map((failure) => failure.pairId).join(', ')
+    throw new Error(
+      `time-ladder historical collection failed for ${historicalResult.failures.length}/${historicalResult.pairsRequested} pairs (${failedIds}); ` +
+        'rerun with --allow-partial-history or QORE_TIME_LADDER_ALLOW_PARTIAL_HISTORY=1 to write a partial artifact',
+    )
+  }
+  const { observations } = historicalResult
   const { dates, minDate, maxDate, splitDates } = splitDatesFromObservations(observations)
   const candidates = buildCandidates(observations, splitDates)
   const selected = selectedCandidate(candidates)
@@ -1203,7 +1229,11 @@ async function main() {
       ladderPairs: pairs.length,
       currentPositivePackages: currentOpportunities.length,
       currentPackagesAboveSelectedThreshold: currentStrongOpportunities.length,
-      historicalPairsRequested: Math.min(config.maxHistoricalPairs, pairs.filter((pair) => pair.venue === 'kalshi').length),
+      historicalPairsRequested: historicalResult.pairsRequested,
+      historicalPairsSucceeded: historicalResult.pairsSucceeded,
+      historicalPairsFailed: historicalResult.failures.length,
+      historicalFailedPairIds: historicalResult.failures.map((failure) => failure.pairId),
+      historicalAllowPartial: config.allowPartialHistory,
       historicalObservations: observations.length,
       historicalStartDate: minDate,
       historicalEndDate: maxDate,
