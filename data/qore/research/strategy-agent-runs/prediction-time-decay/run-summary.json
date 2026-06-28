@@ -1,0 +1,119 @@
+{
+  "generatedAt": "2026-06-28T05:24:32.103Z",
+  "strategyId": "prediction-time-decay-alpha",
+  "displayName": "Prediction Time-Decay Alpha",
+  "data": {
+    "kalshiMarkets": 59550,
+    "polymarketMarkets": 2100,
+    "parsedDateThresholdMarkets": 8023,
+    "timeDecayMarkets": 8023,
+    "timeDecayHistoricalMarketsRequested": 240,
+    "timeDecayHistoricalMarketsSucceeded": 240,
+    "historicalPairsRequested": 240,
+    "historicalPairsSucceeded": 240,
+    "historicalPairsFailed": 0,
+    "historicalFailedPairIds": [],
+    "historicalAllowPartial": false,
+    "historicalObservations": 804478,
+    "historicalStartDate": "2025-06-28",
+    "historicalEndDate": "2026-06-28",
+    "historyDaysRequested": 365,
+    "holdoutMonths": 2,
+    "actualHoldoutDays": 62,
+    "validationDays": 45,
+    "candleIntervalMinutes": 60,
+    "portfolioAllocationPct": 1,
+    "feeHaircutCents": 1,
+    "selectedRows": 0,
+    "currentDecayCandidates": 0
+  },
+  "contract": {
+    "trainEnd": "2026-03-13",
+    "validationEnd": "2026-04-27",
+    "holdoutStart": "2026-04-28",
+    "requestedHoldoutStart": "2026-04-28",
+    "feeHaircutCents": 1,
+    "capitalAllocationPct": 1,
+    "fallback": "No idle capital allocation is modeled; rows represent buy-NO/fade-YES entries on time-bound markets, then quote-mark exits after the selected short horizon.",
+    "selectionPolicy": "Venue set, YES-price band, days-to-deadline band, recent-upmove filter, pair-spacing, and hold-time variants are ranked only on train/validation marked quote exits. The final two calendar months are report-only holdout and are not used for selection.",
+    "signalTiming": "Enter by fading YES when a time-bound market remains inside the selected YES-price and days-to-deadline band without a disqualifying 24-hour upmove. Kalshi uses entry YES bid and exit YES ask; Polymarket uses CLOB price-history proxies with an explicit fee haircut.",
+    "overfitControl": "Candidate ranking never reads holdout. The split uses 366 unique observed days with the requested final 2 calendar months hidden from selection starting 2026-04-28. The strategy remains paper/research until rule text, fees, depth, locate/margin mechanics, and settlement behavior are reviewed."
+  },
+  "selection": {
+    "status": "no-selection",
+    "reason": "No candidate passed selectionEligible/eligible gates; fallback candidates are diagnostic only and selected-trades.csv is intentionally empty.",
+    "diagnosticFallback": {
+      "candidateId": "decay-polymarket-yes-25-95c-days-2-730-rise-any-spacing-24h-hold-24h",
+      "eligible": false,
+      "selectionEligible": false,
+      "trainValidationRank": 1,
+      "trainValidationScore": -21.3125,
+      "trainValidationReturnPct": -6.62,
+      "trainTradeCount": 1139,
+      "validationTradeCount": 560,
+      "preHoldoutTradeCount": 1699,
+      "tradeCount": 2296,
+      "holdoutTradeCount": 597,
+      "trainReturnPct": 0.64,
+      "validationReturnPct": -7.26,
+      "holdoutReturnPct": -10.55,
+      "allReturnPct": -17.16,
+      "diagnosticRows": 2296
+    }
+  },
+  "selected": null,
+  "search": {
+    "candidateCount": 972,
+    "eligibleCandidateCount": 0,
+    "selectionUsedHoldout": false,
+    "validationScope": "historical-holdout"
+  },
+  "validation": {
+    "realityCheck": {
+      "method": "time-decay-marked-quote-exit-block-bootstrap",
+      "comparison": "diagnostic fallback buy-NO marked quote-exit rows versus sign-flipped candidate-family null",
+      "alternative": "positive mean daily marked edge after fixed train/validation selection",
+      "pValue": 1,
+      "singleCandidatePValue": 0.989,
+      "selectionAdjustedPValue": 1,
+      "observedAverageDailyEdgePct": -0.0477,
+      "observedAnnualizedEdgePct": -17.41,
+      "dailyActiveVolPct": 0.4834,
+      "standardErrorDailyEdgePct": 0.0255,
+      "meanConfidenceIntervalDailyEdgePct": {
+        "p05": -0.09,
+        "p50": -0.0508,
+        "p95": 0.009
+      },
+      "nullConfidenceIntervalDailyEdgePct": {
+        "p05": -0.0389,
+        "p50": 0.0014,
+        "p95": 0.0395
+      },
+      "nullMaxMeanDailyEdgePct": {
+        "p05": 0.6777,
+        "p50": 0.9527,
+        "p95": 1.3015
+      },
+      "candidateFamilySize": 250,
+      "bestObservedCandidateId": "decay-polymarket-yes-25-95c-days-2-730-rise-any-spacing-24h-hold-24h",
+      "bestObservedAverageDailyEdgePct": -0.0477,
+      "sampleCount": 804478,
+      "selectedSampleCount": 2296,
+      "activeOverlayDays": 286,
+      "minimumResolvablePValue": 0.001,
+      "iterations": 1000,
+      "blockLength": 10,
+      "positiveSelectedReturnRows": 409,
+      "negativeSelectedReturnRows": 1670,
+      "limitation": "Historical support uses hourly Kalshi bid/ask candles and Polymarket price-history proxies across 366 observed days. Returns are marked to later quotes, not settlement-confirmed fills.",
+      "diagnosticOnly": true
+    }
+  },
+  "outputFiles": {
+    "selectedTrades": "data/qore/research/strategy-agent-runs/prediction-time-decay/selected-trades.csv",
+    "candidateSummary": "data/qore/research/strategy-agent-runs/prediction-time-decay/candidate-summary.csv",
+    "currentMarkets": "data/qore/research/strategy-agent-runs/prediction-time-decay/current-markets.csv"
+  },
+  "caveat": "This is a research artifact, not live routing. When selection.status is no-selection, fallback rows are diagnostic only and must not enter the active strategy registry or leaderboard. Historical rows use quote/proxy marks rather than settlement-confirmed fills; the raw historical-observations.csv dump is local-only and intentionally omitted from the checked-in outputFiles contract because it can exceed repository blob limits. Every market needs contract-language, liquidity, fee, shorting/buy-NO mechanics, and event-news review before paper or live execution."
+}

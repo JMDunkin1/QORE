@@ -6,11 +6,14 @@ import predictionTimeLadderCandidatesCsv from '../../data/qore/research/strategy
 import predictionCrossMarketSummaryJson from '../../data/qore/research/strategy-agent-runs/prediction-cross-market-rv/run-summary.json?raw'
 import predictionCrossMarketTradesCsv from '../../data/qore/research/strategy-agent-runs/prediction-cross-market-rv/selected-trades.csv?raw'
 import predictionCrossMarketCandidatesCsv from '../../data/qore/research/strategy-agent-runs/prediction-cross-market-rv/candidate-summary.csv?raw'
+import predictionTimeDecaySummaryJson from '../../data/qore/research/strategy-agent-runs/prediction-time-decay/run-summary.json?raw'
+import predictionTimeDecayTradesCsv from '../../data/qore/research/strategy-agent-runs/prediction-time-decay/selected-trades.csv?raw'
+import predictionTimeDecayCandidatesCsv from '../../data/qore/research/strategy-agent-runs/prediction-time-decay/candidate-summary.csv?raw'
 
 export type PredictionTimeLadderPromotionStatus = 'research-diagnostic' | 'needs-more-validation'
-type PredictionMarketFamily = 'prediction-time-ladder' | 'prediction-cross-market'
-type PredictionMarketVariant = 'time-ladder-arb' | 'cross-venue-rv'
-type PredictionMarketThesisKind = 'time-ladder-package' | 'cross-venue-rv'
+type PredictionMarketFamily = 'prediction-time-ladder' | 'prediction-cross-market' | 'prediction-time-decay'
+type PredictionMarketVariant = 'time-ladder-arb' | 'cross-venue-rv' | 'time-decay-fade'
+type PredictionMarketThesisKind = 'time-ladder-package' | 'cross-venue-rv' | 'time-decay-fade'
 type PredictionMarketSplit = 'train' | 'validation' | 'holdout' | 'current'
 type PredictionMarketSplitMetric = PredictionMarketSplit | 'all'
 type PredictionMarketValidationScope = 'historical-holdout' | 'current-paper-scan'
@@ -62,7 +65,7 @@ export type PredictionTimeLadderResearchStrategy = {
   color: string
   liveRoutingEnabled: false
   sourceUniverse: string[]
-  timingConvention: 'prediction-market-time-ladder-v1' | 'prediction-cross-market-rv-v1'
+  timingConvention: 'prediction-market-time-ladder-v1' | 'prediction-cross-market-rv-v1' | 'prediction-market-time-decay-v1'
   returnColumn: 'netReturnPct'
   universe: string
   theoryAlignment: string
@@ -83,7 +86,7 @@ export type PredictionTimeLadderTrade = {
   entryTradeDate: string
   exitTradeDate: string
   targetTradeDate: string
-  direction: 'long'
+  direction: 'long' | 'short'
   sourceId: string
   windowId: PredictionMarketThesisKind
   thesisKind: PredictionMarketThesisKind
@@ -155,6 +158,7 @@ type RealityCheckSummary = {
   minimumResolvablePValue?: number | null
   iterations?: number
   blockLength?: number
+  diagnosticOnly?: boolean
   limitation?: string
 }
 
@@ -171,6 +175,9 @@ type PredictionMarketSummaryData = {
   comparablePairs?: number
   parsedDateThresholdMarkets?: number
   ladderPairs?: number
+  timeDecayMarkets?: number
+  timeDecayHistoricalMarketsRequested?: number
+  timeDecayHistoricalMarketsSucceeded?: number
   currentPositivePackages?: number
   currentPackagesAboveSelectedThreshold?: number
   historicalPairsRequested: number
@@ -182,8 +189,17 @@ type PredictionMarketSummaryData = {
   historicalStartDate: string
   historicalEndDate: string
   historyDaysRequested: number
+  holdoutMonths?: number
+  actualHoldoutDays?: number
+  validationDays?: number
+  minSelectionRowsPerPreHoldoutSplit?: number
+  minSelectionTrainTrades?: number
+  minSelectionValidationTrades?: number
+  minSelectionValidationReturnPct?: number
   candleIntervalMinutes: number
   portfolioAllocationPct: number
+  maxConcurrentExposurePct?: number
+  selectedRows?: number
   crossVenueSignals?: number
   crossVenueActionablePaperSignals?: number
   crossVenueExactBoxCandidates?: number
@@ -192,6 +208,32 @@ type PredictionMarketSummaryData = {
   spxSpyKalshiCurvePoints?: number
   spxSpyPolymarketCurvePoints?: number
   targetedKalshiMarketsSearched?: number
+  currentDecayCandidates?: number
+}
+
+type PredictionTimeLadderSelectedSummary = {
+  candidateId: string
+  architectureLabel: string
+  sourceSetLabel: string
+  sourceIds: string[]
+  minGrossEdgeCents: number
+  feeHaircutCents: number
+  minSpacingHours: number
+  holdHours?: number | null
+  maxHoldDays?: number | null
+  capitalAllocationPct: number
+  maxConcurrentExposurePct?: number | null
+  allMetrics: SummaryMetrics
+  trainMetrics: SummaryMetrics | null
+  validationMetrics: SummaryMetrics | null
+  holdoutMetrics: SummaryMetrics | null
+  currentMetrics?: SummaryMetrics | null
+  indexMetrics?: Record<string, SummaryMetrics | null>
+  splitEdges: Partial<Record<PredictionMarketSplitMetric, number | null>>
+  splitAnnualEdges: Partial<Record<PredictionMarketSplitMetric, number | null>>
+  splitTotalReturns?: Partial<Record<PredictionMarketSplitMetric, number | null>>
+  sourceUniverse: string[]
+  currentTopOpportunities: Array<Record<string, unknown>>
 }
 
 type PredictionTimeLadderSummary = {
@@ -209,27 +251,16 @@ type PredictionTimeLadderSummary = {
     selectionPolicy: string
     signalTiming: string
     overfitControl: string
+    requestedHoldoutStart?: string
   }
-  selected: {
-    candidateId: string
-    architectureLabel: string
-    sourceSetLabel: string
-    sourceIds: string[]
-    minGrossEdgeCents: number
-    feeHaircutCents: number
-    minSpacingHours: number
-    capitalAllocationPct: number
-    allMetrics: SummaryMetrics
-    trainMetrics: SummaryMetrics | null
-    validationMetrics: SummaryMetrics | null
-    holdoutMetrics: SummaryMetrics | null
-    currentMetrics?: SummaryMetrics | null
-    splitEdges: Partial<Record<PredictionMarketSplitMetric, number | null>>
-    splitAnnualEdges: Partial<Record<PredictionMarketSplitMetric, number | null>>
-    splitTotalReturns?: Partial<Record<PredictionMarketSplitMetric, number | null>>
-    sourceUniverse: string[]
-    currentTopOpportunities: Array<Record<string, unknown>>
+  selection?: {
+    status?: 'selected' | 'no-selection'
+    candidateId?: string | null
+    reason?: string
+    diagnosticOnly?: boolean
+    diagnosticFallback?: Record<string, unknown> | null
   }
+  selected: PredictionTimeLadderSelectedSummary | null
   search: {
     candidateCount: number
     eligibleCandidateCount: number
@@ -251,6 +282,10 @@ type PredictionTimeLadderSummary = {
     comparablePairs?: string
   }
   caveat: string
+}
+
+type PredictionTimeLadderSelectedSummaryFile = PredictionTimeLadderSummary & {
+  selected: PredictionTimeLadderSelectedSummary
 }
 
 function parseCsv<T extends Record<string, string>>(csv: string): T[] {
@@ -321,9 +356,12 @@ function createBacktestMetrics(metrics: SummaryMetrics): BacktestMetrics {
 
 function parsePredictionTimeLadderTrades(csv: string): PredictionTimeLadderTrade[] {
   return parseCsv<Record<string, string>>(csv).map((row) => {
-    const variant: PredictionMarketVariant = row.variant === 'cross-venue-rv' ? 'cross-venue-rv' : 'time-ladder-arb'
-    const thesisKind: PredictionMarketThesisKind = row.thesisKind === 'cross-venue-rv' ? 'cross-venue-rv' : 'time-ladder-package'
-    const windowId: PredictionMarketThesisKind = row.windowId === 'cross-venue-rv' ? 'cross-venue-rv' : 'time-ladder-package'
+    const variant: PredictionMarketVariant =
+      row.variant === 'cross-venue-rv' ? 'cross-venue-rv' : row.variant === 'time-decay-fade' ? 'time-decay-fade' : 'time-ladder-arb'
+    const thesisKind: PredictionMarketThesisKind =
+      row.thesisKind === 'cross-venue-rv' ? 'cross-venue-rv' : row.thesisKind === 'time-decay-fade' ? 'time-decay-fade' : 'time-ladder-package'
+    const windowId: PredictionMarketThesisKind =
+      row.windowId === 'cross-venue-rv' ? 'cross-venue-rv' : row.windowId === 'time-decay-fade' ? 'time-decay-fade' : 'time-ladder-package'
     return {
       strategyId: row.strategyId,
       variant,
@@ -334,7 +372,7 @@ function parsePredictionTimeLadderTrades(csv: string): PredictionTimeLadderTrade
       entryTradeDate: row.entryTradeDate,
       exitTradeDate: row.exitTradeDate,
       targetTradeDate: row.targetTradeDate,
-      direction: 'long',
+      direction: row.direction === 'short' ? 'short' : 'long',
       sourceId: row.sourceId,
       windowId,
       thesisKind,
@@ -378,6 +416,15 @@ function validationScopeForSummary(summary: PredictionTimeLadderSummary): Predic
   if (summary.validation.realityCheck.method === 'current-cross-venue-paper-scan') return 'current-paper-scan'
   if (summary.data.historicalObservations === 0 && summary.data.crossVenueSignals) return 'current-paper-scan'
   return 'historical-holdout'
+}
+
+function hasSelectedCandidate(summary: PredictionTimeLadderSummary): summary is PredictionTimeLadderSelectedSummaryFile {
+  return Boolean(
+    summary.selected?.candidateId &&
+      summary.search.eligibleCandidateCount > 0 &&
+      summary.selection?.status !== 'no-selection' &&
+      !summary.selection?.diagnosticOnly,
+  )
 }
 
 function isoDatePart(value: string | null | undefined) {
@@ -473,26 +520,50 @@ function splitMetricsForScope(
 
 function candidateDiagnosticsFromCsv(
   csv: string,
-  summary: PredictionTimeLadderSummary,
+  summary: PredictionTimeLadderSelectedSummaryFile,
   validationScope: PredictionMarketValidationScope,
 ) {
   const isCurrentPaperScan = validationScope === 'current-paper-scan'
   const candidates = parseCsv<Record<string, string>>(csv).map((row) => ({
     candidateId: row.candidateId,
+    venueSet: row.venueSet,
+    minYesPriceCents: optionalNumberFrom(row.minYesPriceCents),
+    maxYesPriceCents: optionalNumberFrom(row.maxYesPriceCents),
+    minDaysToDeadline: optionalNumberFrom(row.minDaysToDeadline),
+    maxDaysToDeadline: optionalNumberFrom(row.maxDaysToDeadline),
+    maxRecentRiseCents: optionalNumberFrom(row.maxRecentRiseCents),
     minGrossEdgeCents: numberFrom(row.minGrossEdgeCents),
     feeHaircutCents: numberFrom(row.feeHaircutCents),
     minSpacingHours: numberFrom(row.minSpacingHours),
+    holdHours: optionalNumberFrom(row.holdHours),
+    maxHoldDays: optionalNumberFrom(row.maxHoldDays),
     eligible: booleanFrom(row.eligible),
     selectionEligible: booleanFrom(row.selectionEligible),
     trainValidationRank: numberFrom(row.trainValidationRank),
-    trainEdgePct: optionalNumberFrom(row.trainEdgePct),
-    validationEdgePct: optionalNumberFrom(row.validationEdgePct),
-    holdoutEdgePct: isCurrentPaperScan ? null : optionalNumberFrom(row.holdoutEdgePct),
+    trainValidationAnnualScorePct: optionalNumberFrom(row.trainValidationAnnualScorePct),
+    trainValidationScore: optionalNumberFrom(row.trainValidationScore),
+    trainValidationReturnPct: optionalNumberFrom(row.trainValidationReturnPct),
+    maxConcurrentExposurePct: optionalNumberFrom(row.maxConcurrentExposurePct),
+    trainMaxConcurrentExposurePct: optionalNumberFrom(row.trainMaxConcurrentExposurePct),
+    validationMaxConcurrentExposurePct: optionalNumberFrom(row.validationMaxConcurrentExposurePct),
+    holdoutMaxConcurrentExposurePct: optionalNumberFrom(row.holdoutMaxConcurrentExposurePct),
+    trainTradeCount: optionalNumberFrom(row.trainTradeCount),
+    validationTradeCount: optionalNumberFrom(row.validationTradeCount),
+    trainEdgePct: optionalNumberFrom(row.trainAnnualReturnPct) ?? optionalNumberFrom(row.trainEdgePct),
+    validationEdgePct: optionalNumberFrom(row.validationAnnualReturnPct) ?? optionalNumberFrom(row.validationEdgePct),
+    holdoutEdgePct: isCurrentPaperScan
+      ? null
+      : (optionalNumberFrom(row.holdoutAnnualReturnPct) ?? optionalNumberFrom(row.holdoutEdgePct)),
     currentEdgePct: optionalNumberFrom(row.currentEdgePct) ?? (isCurrentPaperScan ? optionalNumberFrom(row.holdoutEdgePct) : null),
     allEdgePct: optionalNumberFrom(row.allEdgePct),
     trainReturnPct: optionalNumberFrom(row.trainReturnPct),
     validationReturnPct: optionalNumberFrom(row.validationReturnPct),
     holdoutReturnPct: isCurrentPaperScan ? null : optionalNumberFrom(row.holdoutReturnPct),
+    allReturnPct: optionalNumberFrom(row.allReturnPct),
+    trainAnnualReturnPct: optionalNumberFrom(row.trainAnnualReturnPct),
+    validationAnnualReturnPct: optionalNumberFrom(row.validationAnnualReturnPct),
+    holdoutAnnualReturnPct: isCurrentPaperScan ? null : optionalNumberFrom(row.holdoutAnnualReturnPct),
+    allAnnualReturnPct: optionalNumberFrom(row.allAnnualReturnPct),
     currentReturnPct: optionalNumberFrom(row.currentReturnPct) ?? (isCurrentPaperScan ? optionalNumberFrom(row.holdoutReturnPct) : null),
     trainSharpe: optionalNumberFrom(row.trainSharpe),
     validationSharpe: optionalNumberFrom(row.validationSharpe),
@@ -560,48 +631,75 @@ function createCrossMarketSamplePolicy(
   return `${summary.contract.selectionPolicy} This artifact is a current paper scan with ${formatCount(summary.data.crossVenueSignals, metrics.tradeCount)} cross-venue signals, ${formatCount(summary.data.crossVenueActionablePaperSignals, metrics.tradeCount)} selected paper rows, and ${formatCount(summary.data.crossVenueWatchlistSignals)} watchlist rows; it is not a historical fill backtest.`
 }
 
+function createTimeDecayUniverse(summary: PredictionTimeLadderSummary) {
+  return `${summary.data.kalshiMarkets.toLocaleString()} raw Kalshi markets and ${summary.data.polymarketMarkets.toLocaleString()} Polymarket markets; ` +
+    `${formatCount(summary.data.timeDecayMarkets, summary.data.parsedDateThresholdMarkets)} parsed time-bound markets and ` +
+    `${summary.data.historicalObservations.toLocaleString()} hourly quote/proxy observations from ${summary.data.historicalStartDate} through ${summary.data.historicalEndDate}.`
+}
+
+function createTimeDecaySamplePolicy(summary: PredictionTimeLadderSummary, metrics: PredictionTimeLadderMetrics) {
+  return `${summary.contract.selectionPolicy} Historical proof uses ${summary.data.historicalObservations.toLocaleString()} quote/proxy observations across ${formatCount(summary.data.timeDecayHistoricalMarketsRequested, summary.data.historicalPairsRequested)} requested markets; the selected candidate contributes ${metrics.tradeCount.toLocaleString()} marked exit rows, with the final ${summary.data.holdoutMonths ?? 2} calendar months report-only.`
+}
+
 function createPredictionTimeLadderStrategy(
-  summary: PredictionTimeLadderSummary,
+  summary: PredictionTimeLadderSelectedSummaryFile,
   trades: PredictionTimeLadderTrade[],
   candidateSummaryCsv: string,
 ): PredictionTimeLadderResearchStrategy {
   const metrics = createMetrics(summary.selected.allMetrics)
   const isCrossMarket = summary.strategyId === 'prediction-cross-market-rv-alpha'
+  const isTimeDecay = summary.strategyId === 'prediction-time-decay-alpha'
   const validationScope = validationScopeForSummary(summary)
   const scanFreshness = currentPaperScanFreshness(summary, trades)
-  const family: PredictionMarketFamily = isCrossMarket ? 'prediction-cross-market' : 'prediction-time-ladder'
-  const variant: PredictionMarketVariant = isCrossMarket ? 'cross-venue-rv' : 'time-ladder-arb'
+  const family: PredictionMarketFamily = isCrossMarket ? 'prediction-cross-market' : isTimeDecay ? 'prediction-time-decay' : 'prediction-time-ladder'
+  const variant: PredictionMarketVariant = isCrossMarket ? 'cross-venue-rv' : isTimeDecay ? 'time-decay-fade' : 'time-ladder-arb'
   const crossMarketUniverse = isCrossMarket ? createCrossMarketUniverse(summary, metrics, validationScope) : ''
   const crossMarketSamplePolicy = isCrossMarket ? createCrossMarketSamplePolicy(summary, metrics, validationScope) : ''
+  const timeDecayUniverse = isTimeDecay ? createTimeDecayUniverse(summary) : ''
+  const timeDecaySamplePolicy = isTimeDecay ? createTimeDecaySamplePolicy(summary, metrics) : ''
   return {
     id: summary.strategyId,
     name: summary.displayName,
     family,
     variant,
     instrument: 'VOO',
-    desk: isCrossMarket ? 'Prediction market cross-venue relative value' : 'Prediction market deadline arbitrage',
+    desk: isCrossMarket
+      ? 'Prediction market cross-venue relative value'
+      : isTimeDecay
+        ? 'Prediction market time-decay fade'
+        : 'Prediction market deadline arbitrage',
     thesis: isCrossMarket
       ? 'Compare fixed comparable Kalshi and Polymarket contracts, then paper-trade the cheap YES leg against the rich NO leg while keeping rule text, settlement source, and venue basis under review.'
+      : isTimeDecay
+        ? 'Fade YES in time-bound prediction markets over short quote-mark horizons when price, days-to-deadline, and recent-upmove filters suggest ordinary time decay should dominate.'
       : 'Find nested prediction-market deadline ladders where the earlier YES bid is above the later YES ask, then model the package buy NO earlier plus buy YES later as a tiny-capacity canary allocation.',
     directionPolicy: isCrossMarket
       ? 'Only paper-enter when the cross-venue midpoint gap clears fee and basis haircuts; every pair still needs rule-text, settlement-source, liquidity, restriction, and venue-basis review.'
+      : isTimeDecay
+        ? 'Only paper-enter buy-NO/fade-YES rows that match the selected venue, YES-price, days-to-deadline, recent-upmove, spacing, and hold-time gates; all rows remain research until contract and execution mechanics are reviewed.'
       : 'Only enter when the detected package clears the selected gross-edge threshold, fee haircut, and pair-spacing rule; all rows remain paper/research until contract wording is reviewed.',
     promotionStatus: 'needs-more-validation',
     riskLevel: riskLevelFor(metrics),
-    color: isCrossMarket ? '#0f766e' : '#7c3aed',
+    color: isCrossMarket ? '#0f766e' : isTimeDecay ? '#b45309' : '#7c3aed',
     liveRoutingEnabled: false,
     sourceUniverse: summary.selected.sourceUniverse,
-    timingConvention: isCrossMarket ? 'prediction-cross-market-rv-v1' : 'prediction-market-time-ladder-v1',
+    timingConvention: isCrossMarket ? 'prediction-cross-market-rv-v1' : isTimeDecay ? 'prediction-market-time-decay-v1' : 'prediction-market-time-ladder-v1',
     returnColumn: 'netReturnPct',
     universe: isCrossMarket
       ? crossMarketUniverse
+      : isTimeDecay
+        ? timeDecayUniverse
       : `${summary.data.kalshiMarkets.toLocaleString()} Kalshi active markets and ${summary.data.polymarketMarkets.toLocaleString()} Polymarket active markets; ` +
         `${formatCount(summary.data.parsedDateThresholdMarkets)} parsed date-threshold markets and ${formatCount(summary.data.ladderPairs)} same-venue ladders.`,
     theoryAlignment: isCrossMarket
       ? 'Cross-venue relative-value check: compare matched probability curves or close economic substitutes, buy the cheaper probability, hedge with the richer opposite leg, and treat basis flags as paper-only brakes rather than live-order permission.'
+      : isTimeDecay
+        ? 'Time-decay check: if no offsetting event information arrives, the YES probability for an event happening before a deadline should often drift lower as time passes; the model tests that expectation with marked quote exits rather than settled outcomes.'
       : 'Pure monotonicity check: if before-date A is a subset of before-date B, YES(A) should not be more expensive than YES(B). Positive rows are treated as pricing-discrepancy observations, not proof of settlement-safe arbitrage.',
     samplePolicy: isCrossMarket
       ? crossMarketSamplePolicy
+      : isTimeDecay
+        ? timeDecaySamplePolicy
       : `${summary.contract.selectionPolicy} Historical proof uses ${summary.data.historicalObservations.toLocaleString()} Kalshi candle observations across ${summary.data.historicalPairsRequested} ladder pairs from ${summary.data.historicalStartDate} through ${summary.data.historicalEndDate}.`,
     tradeFile: summary.outputFiles.selectedTrades,
     params: {
@@ -614,7 +712,10 @@ function createPredictionTimeLadderStrategy(
       minGrossEdgeCents: summary.selected.minGrossEdgeCents,
       feeHaircutCents: summary.selected.feeHaircutCents,
       minSpacingHours: summary.selected.minSpacingHours,
+      holdHours: summary.selected.holdHours ?? null,
+      maxHoldDays: summary.selected.maxHoldDays ?? null,
       capitalAllocationPct: summary.selected.capitalAllocationPct,
+      maxConcurrentExposurePct: summary.selected.maxConcurrentExposurePct ?? null,
       fallback: summary.contract.fallback,
       splitEdges: splitMetricsForScope(summary.selected.splitEdges, validationScope),
       splitAnnualEdges: splitMetricsForScope(summary.selected.splitAnnualEdges, validationScope),
@@ -638,7 +739,7 @@ function createPredictionTimeLadderStrategy(
 
 function curveFromTrades(trades: PredictionTimeLadderTrade[]): PredictionTimeLadderEquityPoint[] {
   return trades.map((trade) => ({
-    date: trade.entryTradeDate,
+    date: trade.variant === 'time-ladder-arb' ? trade.entryTradeDate : trade.observedAt,
     equity: round(trade.equity, 2),
     equityPct: round(trade.equityPct, 4),
     dailyPnlPct: round(trade.netReturnPct, 4),
@@ -658,41 +759,69 @@ function curveFromTrades(trades: PredictionTimeLadderTrade[]): PredictionTimeLad
   }))
 }
 
+function selectedSummaryOrThrow(summary: PredictionTimeLadderSummary): PredictionTimeLadderSelectedSummaryFile {
+  if (!hasSelectedCandidate(summary)) {
+    throw new Error(`${summary.strategyId} has no selected prediction-market candidate`)
+  }
+  return summary
+}
+
 const predictionTimeLadderSummary = JSON.parse(predictionTimeLadderSummaryJson) as PredictionTimeLadderSummary
+const activePredictionTimeLadderSummary = selectedSummaryOrThrow(predictionTimeLadderSummary)
 const predictionTimeLadderTrades = parsePredictionTimeLadderTrades(predictionTimeLadderTradesCsv)
 const predictionTimeLadderStrategy = createPredictionTimeLadderStrategy(
-  predictionTimeLadderSummary,
+  activePredictionTimeLadderSummary,
   predictionTimeLadderTrades,
   predictionTimeLadderCandidatesCsv,
 )
 const predictionCrossMarketSummary = JSON.parse(predictionCrossMarketSummaryJson) as PredictionTimeLadderSummary
+const activePredictionCrossMarketSummary = selectedSummaryOrThrow(predictionCrossMarketSummary)
 const predictionCrossMarketTrades = parsePredictionTimeLadderTrades(predictionCrossMarketTradesCsv)
 const predictionCrossMarketStrategy = createPredictionTimeLadderStrategy(
-  predictionCrossMarketSummary,
+  activePredictionCrossMarketSummary,
   predictionCrossMarketTrades,
   predictionCrossMarketCandidatesCsv,
 )
+const predictionTimeDecaySummary = JSON.parse(predictionTimeDecaySummaryJson) as PredictionTimeLadderSummary
+const activePredictionTimeDecaySummary = hasSelectedCandidate(predictionTimeDecaySummary) ? predictionTimeDecaySummary : null
+const predictionTimeDecayTrades = parsePredictionTimeLadderTrades(predictionTimeDecayTradesCsv)
+const predictionTimeDecayStrategy = activePredictionTimeDecaySummary
+  ? createPredictionTimeLadderStrategy(activePredictionTimeDecaySummary, predictionTimeDecayTrades, predictionTimeDecayCandidatesCsv)
+  : null
 const predictionCrossMarketBacktestResult: PredictionTimeLadderBacktestResult = {
   strategy: predictionCrossMarketStrategy,
   researchMetrics: predictionCrossMarketStrategy.metrics,
-  metrics: createBacktestMetrics(predictionCrossMarketSummary.selected.allMetrics),
+  metrics: createBacktestMetrics(activePredictionCrossMarketSummary.selected.allMetrics),
   curve: curveFromTrades(predictionCrossMarketTrades),
   trades: predictionCrossMarketTrades,
   joined: [],
 }
+const predictionTimeDecayBacktestResult: PredictionTimeLadderBacktestResult | null =
+  activePredictionTimeDecaySummary && predictionTimeDecayStrategy
+    ? {
+        strategy: predictionTimeDecayStrategy,
+        researchMetrics: predictionTimeDecayStrategy.metrics,
+        metrics: createBacktestMetrics(activePredictionTimeDecaySummary.selected.allMetrics),
+        curve: curveFromTrades(predictionTimeDecayTrades),
+        trades: predictionTimeDecayTrades,
+        joined: [],
+      }
+    : null
 
 export const predictionTimeLadderResearchStrategies: PredictionTimeLadderResearchStrategy[] = [
   predictionTimeLadderStrategy,
   predictionCrossMarketStrategy,
+  ...(predictionTimeDecayStrategy ? [predictionTimeDecayStrategy] : []),
 ]
 export const predictionTimeLadderResearchBacktestResults: PredictionTimeLadderBacktestResult[] = [
   {
     strategy: predictionTimeLadderStrategy,
     researchMetrics: predictionTimeLadderStrategy.metrics,
-    metrics: createBacktestMetrics(predictionTimeLadderSummary.selected.allMetrics),
+    metrics: createBacktestMetrics(activePredictionTimeLadderSummary.selected.allMetrics),
     curve: curveFromTrades(predictionTimeLadderTrades),
     trades: predictionTimeLadderTrades,
     joined: [],
   },
   predictionCrossMarketBacktestResult,
+  ...(predictionTimeDecayBacktestResult ? [predictionTimeDecayBacktestResult] : []),
 ]

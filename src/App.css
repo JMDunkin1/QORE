@@ -1211,6 +1211,21 @@ dd {
   font-style: normal;
 }
 
+.capital-impact-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.capital-impact-panel td span {
+  display: block;
+  margin-top: 3px;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .side-split-grid {
   display: grid;
   gap: 14px;
@@ -1606,6 +1621,58 @@ code {
   color: var(--ink);
 }
 
+.risk-policy-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.risk-control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.risk-control-card {
+  min-height: 148px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.risk-control-card svg {
+  color: #0f766e;
+}
+
+.risk-control-card span {
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.risk-control-card strong {
+  font-size: 22px;
+}
+
+.risk-control-card p,
+.risk-note-list p {
+  margin: 0;
+  color: var(--soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.risk-note-list {
+  display: grid;
+  gap: 8px;
+  border-left: 3px solid #0f766e;
+  padding-left: 12px;
+}
+
 .execution-card {
   display: grid;
   gap: 18px;
@@ -1769,6 +1836,7 @@ code {
 
   .three-column,
   .connector-grid,
+  .risk-control-grid,
   .repo-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1835,6 +1903,7 @@ code {
   .three-column,
   .models-grid,
   .connector-grid,
+  .risk-control-grid,
   .stat-grid,
   .repo-status-grid,
   .overfit-chart-grid,

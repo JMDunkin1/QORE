@@ -1,5 +1,14 @@
 import { createOrderIntent, defaultDryRunRiskPolicy } from './risk'
-import type { ExecutionGateway, OrderIntent, OrderLegIntent, PaperFill, PaperReferencePrices, RiskPolicy, StrategySignalIntent } from './types'
+import type {
+  ExecutionGateway,
+  OrderIntent,
+  OrderLegIntent,
+  PaperFill,
+  PaperReferencePrices,
+  RiskEvaluationContext,
+  RiskPolicy,
+  StrategySignalIntent,
+} from './types'
 
 export const dryRunGatewayProfile = {
   id: 'qore-dry-run-paper-gateway',
@@ -42,8 +51,9 @@ export function createPaperOrderIntent(
   requestedNotionalUsd: number,
   referencePrices: number | PaperReferencePrices,
   policy: RiskPolicy = defaultDryRunRiskPolicy,
+  context: RiskEvaluationContext = {},
 ): OrderIntent {
-  const intent = createOrderIntent(signal, requestedNotionalUsd, policy)
+  const intent = createOrderIntent(signal, requestedNotionalUsd, policy, context)
   const executableLegCount = executableLegs(intent).length
   const aggregateReferencePrice =
     typeof referencePrices === 'number'

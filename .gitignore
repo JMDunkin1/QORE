@@ -17,6 +17,7 @@ output/
 
 # Keep generated research reports/notes out of the repo narrative.
 data/qore/**/*.md
+data/qore/research/strategy-agent-runs/prediction-time-decay/historical-observations.csv
 
 # Editor directories and files
 .vscode/*

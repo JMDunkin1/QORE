@@ -120,7 +120,7 @@ npm run optimize:ngas-all-year-beta
 
 The selected beta artifact made `877.16%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-15.86%` max drawdown. Train return was `186.29%`, validation was `70.74%`, and holdout was `99.9%`; holdout edge versus the index basket was `69.74%`. Its direct all-year centered circular block bootstrap p-value is `0.00005`, replacing the old Fisher-combined component p-value. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
 
-The active prediction-market checked-in artifacts are `prediction-time-ladder-alpha` and `prediction-cross-market-rv-alpha`. The cross-market strategy remains a separate cross-venue model with a reproducible collector and checked-in quote-overlap history; stale current rows are reported separately from the historical support rows.
+The prediction-market checked-in artifacts include active `prediction-time-ladder-alpha` and `prediction-cross-market-rv-alpha` lanes plus a failed diagnostic `prediction-time-decay-alpha` research artifact. The cross-market and time-decay models remain separate collectors; time-decay keeps its raw `historical-observations.csv` quote/proxy dump local-only, while only its summary, candidate, current-market, and selected-trade artifacts are checked in. Stale current rows are reported separately from historical support rows.
 
 `prediction-time-ladder-alpha` scans Kalshi and Polymarket date-threshold markets for nested deadline packages where buying NO on the earlier deadline plus YES on the later deadline shows positive quote edge after fees.
 
@@ -128,7 +128,7 @@ The active prediction-market checked-in artifacts are `prediction-time-ladder-al
 npm run collect:prediction-time-ladder
 ```
 
-The checked-in artifact scanned `63,849` Kalshi markets and `2,100` Polymarket markets, parsed `10,709` date-threshold markets, found `3,386` same-venue ladder pairs, and selected `981` historical paper rows. Candidate selection ranks gross-edge and pair-spacing gates on train/validation only across `181` unique observed days, then reports a hidden holdout starting `2026-05-22`. The selected `edge-1c-spacing-1h` lane made `32.14%` modeled total return, with `6.83%` train, `12.82%` validation, and `12.49%` hidden holdout. It reports no inferential p-value because selected rows are mechanically positive after quote-edge gating. It is a research and paper-candidate artifact, not live routing, and every package still needs contract-language, liquidity, fee, and settlement review.
+The checked-in artifact scanned `63,278` Kalshi markets and `2,100` Polymarket markets, parsed `10,922` date-threshold markets, found `3,473` same-venue ladder pairs, and selected `39` historical paper rows. Candidate selection ranks gross-edge, pair-spacing, and maximum-lockup gates on train/validation only across `181` unique observed days, then reports the final three calendar months as hidden holdout starting `2026-03-27`. The selected `edge-3c-spacing-1h-maxhold-365d` lane made `3.54%` modeled total return, with `0.48%` train, `0.11%` validation, and `2.94%` hidden holdout. It reports no inferential p-value because selected rows are mechanically positive after quote-edge gating. It is a research and paper-candidate artifact, not live routing, and every package still needs contract-language, liquidity, fee, and settlement review.
 
 `prediction-cross-market-rv-alpha` is the separate cross-venue relative-value model. It compares economically similar Kalshi and Polymarket contracts using fixed comparable-market parsers, currently exact election-winner and outright-winner propositions, then paper-trades the cheap YES side against the rich NO side.
 
@@ -136,7 +136,15 @@ The checked-in artifact scanned `63,849` Kalshi markets and `2,100` Polymarket m
 npm run collect:prediction-cross-market-rv
 ```
 
-The checked-in cross-market artifact scanned `60,496` Kalshi markets and `2,100` Polymarket markets, found `153` comparable pairs, wrote `20,090` overlapping hourly quote observations from `2026-05-28` through `2026-06-27`, and selected `5,529` paper rows. Candidate selection ranks gross-edge and pair-spacing gates on train/validation only, then reports a hidden holdout. The selected `cross-edge-1c-spacing-1h` lane made `126.85%` modeled quote-screen return, with `65.20%` train, `31.75%` validation, and `29.91%` hidden holdout. History collection fails closed on per-pair fetch errors; `npm run collect:prediction-cross-market-rv -- --allow-partial-history` writes a partial artifact only when explicitly requested and records failed pair IDs in `run-summary.json`. This is quote-overlap evidence, not settlement-confirmed fills; every pair still needs rule-text, depth, fee, restriction, and venue-basis review before paper or live execution.
+The checked-in cross-market artifact scanned `59,740` Kalshi markets and `2,100` Polymarket markets, found `153` comparable pairs, wrote `303,783` overlapping hourly quote observations from `2025-07-02` through `2026-06-28`, and selected `278` marked quote-exit rows. Candidate selection ranks gross-edge, pair-spacing, and hold-time gates on train/validation only after requiring at least `75` train rows, `20` validation rows, `1%` validation return, and no more than `50%` max concurrent canary exposure; the final `90` calendar days are hidden holdout starting `2026-03-31`. The selected `cross-edge-8c-spacing-48h-hold-336h` lane made `32.20%` modeled total return, with `23.93%` train, `1.61%` validation, and `6.66%` hidden holdout while staying at `46%` max concurrent canary exposure. Its selection-adjusted sign-flip/block-bootstrap p-value is `0.001`, but this is still marked quote-overlap evidence rather than settlement-confirmed fills. History collection chunks Kalshi candle requests and fails closed on per-pair fetch errors; `npm run collect:prediction-cross-market-rv -- --allow-partial-history` writes a partial artifact only when explicitly requested and records failed pair IDs in `run-summary.json`. Every pair still needs rule-text, depth, fee, restriction, deadline-metadata, and venue-basis review before paper or live execution.
+
+`prediction-time-decay-alpha` tests the short-horizon idea that YES odds in time-bound markets should usually decay as time passes unless new information offsets the clock. It models a buy-NO/fade-YES paper entry and marks the exit after a selected short hold.
+
+```bash
+npm run collect:prediction-time-decay
+```
+
+The checked-in time-decay artifact scanned `59,550` Kalshi markets and `2,100` Polymarket markets, parsed `8,023` time-bound markets, wrote `804,478` hourly Kalshi quote / Polymarket price-history observations from `2025-06-28` through `2026-06-28`, and selected `0` marked quote-exit rows because no train/validation candidate passed. Candidate selection ranks venue, YES-price band, days-to-deadline band, recent-upmove filter, spacing, and hold-time variants on train/validation only; the final two calendar months are hidden holdout starting `2026-04-28`. There were `0` eligible candidates: the best diagnostic fallback, `decay-polymarket-yes-25-95c-days-2-730-rise-any-spacing-24h-hold-24h`, made `+0.64%` train, `-7.26%` validation, and `-10.55%` hidden holdout, with a selection-adjusted sign-flip/block-bootstrap p-value of `1.0000`. Treat this as a failed research lane, not a promotable strategy; every current candidate still needs rule-text, depth, fee, shorting/buy-NO mechanics, and event-news review before paper or live execution.
 
 ## Deprecated Component Lanes
 
@@ -161,6 +169,8 @@ The current boundary is deliberate:
 - Risk code can approve or reject dry-run order intents.
 - The paper gateway can produce simulated fills.
 - No broker client, account credential, or live order route is instantiated.
+
+The stricter `ngas-weather-guardrail-risk-v1` policy is the intended pre-trade guard for autonomous experimental NGAS weather-model paper/live-equivalent testing. It keeps live routing disabled, requires fresh weather, storage, market, account, and operator-state context, preserves the strategy's full notional request and index/gas/cash weights, and blocks only on emergency daily-loss, trailing-drawdown, loss-streak, spread, stale-data, missing-price, venue-closed, and kill-switch conditions.
 
 ## Integration Seams
 

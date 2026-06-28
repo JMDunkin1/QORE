@@ -46,7 +46,7 @@ import { defaultSettings, joinMarketWeather } from './backtesting/engine'
 import { SmoothZoomChart, type SmoothChartSeries } from './components/SmoothZoomChart'
 import { realDataCatalog, totalLocationRows, totalSignalReturns, totalSignalScores } from './data/realDataCatalog'
 import { sharedWeatherMetrics } from './data/weatherAccuracy'
-import { defaultDryRunRiskPolicy, dryRunGatewayProfile, paperExecutionReadinessGates } from './execution'
+import { defaultDryRunRiskPolicy, dryRunGatewayProfile, paperExecutionReadinessGates, weatherModelGuardrailRiskPolicy } from './execution'
 import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
 import { executionVenues, integrationConnectors } from './integrations/connectors'
 import { evaluateWeatherModel } from './ml/evaluation'
@@ -79,7 +79,7 @@ const millisecondsPerYear = 365.25 * 24 * 60 * 60 * 1000
 const benchmarkLabel = 'UNG buy/hold'
 const indexBenchmarkLabel = 'VOO/QQQM index basket'
 const researchRankReturnPct = (result: (typeof researchBacktestResults)[number]) =>
-  isPredictionCrossMarketStrategy(result.strategy) ? result.metrics.totalReturnPct : result.metrics.cagrPct
+  isMarkedQuoteReturnStrategy(result.strategy) ? result.metrics.totalReturnPct : result.metrics.cagrPct
 const researchRankScore = (result: (typeof researchBacktestResults)[number]) => {
   const samplePenalty = result.metrics.tradeCount >= primaryRankMinTrades ? 0 : -10000
   const tradeCountCredit = Math.min(result.metrics.tradeCount, 100) * 0.03
@@ -91,6 +91,43 @@ const sortResearchResults = (a: (typeof researchBacktestResults)[number], b: (ty
   b.metrics.sharpe - a.metrics.sharpe ||
   b.metrics.calmar - a.metrics.calmar ||
   b.metrics.totalReturnPct - a.metrics.totalReturnPct
+const weatherGuardrailRiskControls = [
+  {
+    label: 'Strategy sizing',
+    value: 'Full-size',
+    detail: 'No notional, gas-leg, account-allocation, or cash-buffer sizing cap.',
+  },
+  {
+    label: 'Weight policy',
+    value: 'Preserve',
+    detail: 'Approved trades keep the strategy index, gas, and cash weights unchanged.',
+  },
+  {
+    label: 'Circuit breakers',
+    value: `${formatNumber(weatherModelGuardrailRiskPolicy.maxTrailingDrawdownPct ?? 0, 1)}% DD`,
+    detail: `${formatNumber(weatherModelGuardrailRiskPolicy.maxDailyLossPct ?? 0, 1)}% daily stop and ${weatherModelGuardrailRiskPolicy.maxConsecutiveLosses} loss-streak emergency stop.`,
+  },
+  {
+    label: 'Freshness',
+    value: `${weatherModelGuardrailRiskPolicy.maxWeatherIssueAgeHours}h wx`,
+    detail: `${weatherModelGuardrailRiskPolicy.maxMarketDataAgeMinutes}m market and ${weatherModelGuardrailRiskPolicy.maxStorageDataAgeDays}d storage caps.`,
+  },
+  {
+    label: 'Weather quorum',
+    value: `${weatherModelGuardrailRiskPolicy.minWeatherSourceCount}+ sources`,
+    detail: `${formatNumber(weatherModelGuardrailRiskPolicy.minWeatherCoveragePct ?? 0, 0)}% coverage and directional accuracy caution line.`,
+  },
+  {
+    label: 'Operator gate',
+    value: 'Autonomous',
+    detail: `${weatherModelGuardrailRiskPolicy.maxAllowedSpreadBps} bps spread cap, venue-open check, kill switch honored.`,
+  },
+]
+const historicalSizingInitialCapitalUsd = 100000
+const historicalSizingScenarios = [
+  { id: 'research-full', label: 'Research full-size', allocationPct: 100 },
+  { id: 'guardrails-only', label: 'Guardrails only', allocationPct: 100 },
+]
 const activeStrategyLabel = (count = researchStrategyRegistry.length) => `${count} active research ${count === 1 ? 'strategy' : 'strategies'} loaded`
 const defaultSelectedBacktest = [...researchBacktestResults].sort(sortResearchResults)[0] ?? null
 const defaultSelectedStrategyId = defaultSelectedBacktest?.strategy.id ?? ''
@@ -325,6 +362,12 @@ const validationParameterDefinitions: readonly CandidateParameterDefinition[] = 
   },
   { label: 'Freshness gate', keys: ['followFreshnessPolicy'], order: ['fresh-follow-5d', 'fresh-follow-3d', 'none'] },
   { label: 'Demand gate', keys: ['heatingDemandPolicy'], order: ['none', 'hdd-follow-gate-6f', 'hdd-follow-tiered'] },
+  { label: 'Venue set', keys: ['venueSet'], nominal: true },
+  { label: 'YES band low', keys: ['minYesPriceCents'] },
+  { label: 'YES band high', keys: ['maxYesPriceCents'] },
+  { label: 'Min deadline', keys: ['minDaysToDeadline'] },
+  { label: 'Max deadline', keys: ['maxDaysToDeadline'] },
+  { label: 'Max 24h rise', keys: ['maxRecentRiseCents'] },
   { label: 'Long fade scale', keys: ['reversionLongScale'] },
   { label: 'Standalone fade', keys: ['standaloneReversionScale'] },
   { label: 'Overlay cap', keys: ['overlayCap'] },
@@ -336,7 +379,10 @@ const validationParameterDefinitions: readonly CandidateParameterDefinition[] = 
   { label: 'Fresh heat', keys: ['freshHeatLookbackDays'] },
   { label: 'Storage heat tilt', keys: ['storageDeficitHeatMultiplier'] },
   { label: 'Min edge', keys: ['minGrossEdgeCents'] },
+  { label: 'Max lockup', keys: ['maxHoldDays'] },
   { label: 'Spacing', keys: ['minSpacingHours'] },
+  { label: 'Hold hours', keys: ['holdHours'] },
+  { label: 'Max exposure', keys: ['maxConcurrentExposurePct'] },
   { label: 'Fee haircut', keys: ['feeHaircutCents'] },
   { label: 'Capital canary', keys: ['capitalAllocationPct'] },
 ]
@@ -365,6 +411,7 @@ const monteCarloPalette = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#0891b2'
 const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
   { id: 'time-ladder-package', label: 'Time-ladder package', seasons: ['prediction'], thesisKinds: ['time-ladder-package'] },
   { id: 'cross-venue-rv', label: 'Cross-venue RV', seasons: ['prediction'], thesisKinds: ['cross-venue-rv'] },
+  { id: 'time-decay-fade', label: 'Time-decay fade', seasons: ['prediction'], thesisKinds: ['time-decay-fade'] },
   { id: 'cold-long', label: 'Cold-long', seasons: ['winter', 'all-year'], thesisKinds: ['cold-long'] },
   { id: 'warm-short', label: 'Warm-short', seasons: ['winter', 'all-year'], thesisKinds: ['warm-short'] },
   { id: 'summer-cold-short', label: 'Summer cold-short', seasons: ['summer', 'all-year'], thesisKinds: ['summer-cold-short'] },
@@ -974,22 +1021,112 @@ function annualizedReturnPct(totalReturnPct: number, startDate: string | undefin
   return ((1 + totalReturnPct / 100) ** (1 / years) - 1) * 100
 }
 
+function clampUnit(value: number) {
+  return Math.max(0, Math.min(1, value))
+}
+
+function historicalSizingReturnPct(
+  trade: ResearchTrade,
+  equityUsd: number,
+  scenario: (typeof historicalSizingScenarios)[number],
+) {
+  const weatherTrade = trade as ResearchTrade & {
+    ungPosition?: number
+  }
+  const netReturnPct = numberOrNull(trade.netReturnPct) ?? 0
+  const accountWeight = clampUnit(scenario.allocationPct / 100)
+  return {
+    returnPct: netReturnPct * accountWeight,
+    deployedNotionalUsd: equityUsd * accountWeight,
+    gasNotionalUsd: Math.abs(numberOrNull(weatherTrade.ungPosition) ?? 0) * equityUsd * accountWeight,
+  }
+}
+
+function historicalSizingImpactRows(backtest: ResearchBacktestResult | null) {
+  if (!backtest || !backtest.strategy.family.startsWith('weather')) return []
+  const trades = [...backtest.trades].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
+  if (!trades.length) return []
+  const startDate = trades[0].entryTradeDate
+  const endDate = trades.at(-1)?.targetTradeDate ?? trades.at(-1)?.entryTradeDate ?? startDate
+
+  return historicalSizingScenarios.map((scenario) => {
+    let equityUsd = historicalSizingInitialCapitalUsd
+    let peakEquityUsd = equityUsd
+    let maxDrawdownPct = 0
+    let deployedPctSum = 0
+    let gasDeployedSumUsd = 0
+    let activeRows = 0
+
+    trades.forEach((trade) => {
+      const impact = historicalSizingReturnPct(trade, equityUsd, scenario)
+      deployedPctSum += equityUsd > 0 ? (impact.deployedNotionalUsd / equityUsd) * 100 : 0
+      gasDeployedSumUsd += impact.gasNotionalUsd
+      if (Math.abs(impact.gasNotionalUsd) > 0.01) activeRows += 1
+      equityUsd = Math.max(1, equityUsd * (1 + impact.returnPct / 100))
+      peakEquityUsd = Math.max(peakEquityUsd, equityUsd)
+      maxDrawdownPct = Math.min(maxDrawdownPct, ((equityUsd - peakEquityUsd) / peakEquityUsd) * 100)
+    })
+
+    const totalReturnPct = (equityUsd / historicalSizingInitialCapitalUsd - 1) * 100
+    const cagrPct = annualizedReturnPct(totalReturnPct, startDate, endDate)
+    return {
+      id: scenario.id,
+      label: scenario.label,
+      totalReturnPct,
+      cagrPct,
+      maxDrawdownPct,
+      finalEquityUsd: equityUsd,
+      averageDeployedPct: deployedPctSum / trades.length,
+      averageGasNotionalUsd: gasDeployedSumUsd / Math.max(activeRows, 1),
+      activeRows,
+      changedComposition: false,
+    }
+  })
+}
+
 function isPredictionMarketStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  return strategy?.family === 'prediction-time-ladder' || strategy?.family === 'prediction-cross-market'
+  return strategy?.family === 'prediction-time-ladder' || strategy?.family === 'prediction-cross-market' || strategy?.family === 'prediction-time-decay'
 }
 
 function isPredictionCrossMarketStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
   return strategy?.family === 'prediction-cross-market' || strategy?.params.variant === 'cross-venue-rv'
 }
 
-function predictionMarketObservationWindowForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  if (!isPredictionMarketStrategy(strategy)) return null
-  const dataAudit = strategy?.params.dataAudit
-  if (!dataAudit || typeof dataAudit !== 'object') return null
-  const audit = dataAudit as Record<string, unknown>
-  const startDate = audit.historicalStartDate
-  const endDate = audit.historicalEndDate
-  return typeof startDate === 'string' && typeof endDate === 'string' && startDate && endDate ? { startDate, endDate } : null
+function isPredictionTimeDecayStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
+  return strategy?.family === 'prediction-time-decay' || strategy?.params.variant === 'time-decay-fade'
+}
+
+function isMarkedQuoteReturnStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
+  return isPredictionCrossMarketStrategy(strategy) || isPredictionTimeDecayStrategy(strategy)
+}
+
+function recordString(value: unknown, key: string) {
+  if (!value || typeof value !== 'object') return null
+  const field = (value as Record<string, unknown>)[key]
+  return typeof field === 'string' && field ? field : null
+}
+
+function recordNumber(value: unknown, key: string) {
+  if (!value || typeof value !== 'object') return null
+  const parsed = Number((value as Record<string, unknown>)[key])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function isoDatePart(value: string | null) {
+  return value?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? value
+}
+
+function tradeObservationDate(trade: ResearchTrade) {
+  return recordString(trade, 'entryTradeDate') ?? recordString(trade, 'signalDate') ?? isoDatePart(recordString(trade, 'observedAt'))
+}
+
+function tradePackageExpiryDate(trade: ResearchTrade) {
+  return recordString(trade, 'exitTradeDate') ?? recordString(trade, 'targetTradeDate') ?? recordString(trade, 'targetDate')
+}
+
+function dateWindowForValues(values: Array<string | null>) {
+  const dates = values.filter((value): value is string => !!value).sort()
+  return dates.length ? { startDate: dates[0], endDate: dates.at(-1)! } : null
 }
 
 function weatherSideSeasonForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): WeatherSideSeason {
@@ -1082,6 +1219,7 @@ function strategyPerformanceChartSeries(
   options: { isPredictionMarket?: boolean; showBenchmarks?: boolean } = {},
 ): SmoothChartSeries<DashboardChartPoint>[] {
   const showBenchmarks = options.showBenchmarks ?? true
+  const showAuxiliaryLines = showDetailLines && !options.isPredictionMarket
   const benchmarkSeries: SmoothChartSeries<DashboardChartPoint>[] = showBenchmarks
     ? [
         {
@@ -1114,7 +1252,7 @@ function strategyPerformanceChartSeries(
       dataKey: 'activeTradeReturnPct',
       fillOpacity: 0.2,
       id: 'activeTradeReturnPct',
-      label: options.isPredictionMarket ? 'Package row return %' : 'Active leg return %',
+      label: options.isPredictionMarket ? 'Modeled row P&L %' : 'Active leg return %',
       mode: 'bar',
       strokeOpacity: 0.3,
       valueFormatter: (value) => signedPercent(roundNumber(value)),
@@ -1126,7 +1264,7 @@ function strategyPerformanceChartSeries(
       fill: '#dbeafe',
       fillOpacity: 0.62,
       id: 'equityPct',
-      label: 'Equity %',
+      label: options.isPredictionMarket ? 'Cumulative modeled P&L %' : 'Equity %',
       mode: 'area',
       strokeWidth: 2.4,
       valueFormatter: (value) => signedPercent(roundNumber(value)),
@@ -1136,7 +1274,7 @@ function strategyPerformanceChartSeries(
       color: '#e11d48',
       dataKey: 'drawdownPct',
       id: 'drawdownPct',
-      label: 'Drawdown %',
+      label: options.isPredictionMarket ? 'Modeled drawdown %' : 'Drawdown %',
       strokeWidth: 2,
       valueFormatter: (value) => signedPercent(roundNumber(value)),
     },
@@ -1150,7 +1288,7 @@ function strategyPerformanceChartSeries(
       mode: 'step',
       strokeWidth: 2,
       valueFormatter: (value) => formatNumber(value),
-      visible: showDetailLines,
+      visible: showAuxiliaryLines,
     },
     {
       axis: 'right',
@@ -1162,7 +1300,7 @@ function strategyPerformanceChartSeries(
       mode: 'step',
       strokeWidth: 2,
       valueFormatter: (value) => formatNumber(value),
-      visible: showDetailLines,
+      visible: showAuxiliaryLines,
     },
   ]
 }
@@ -1928,9 +2066,15 @@ function OverfitValidationBand({ selectedBacktest }: { selectedBacktest: Researc
   const diagnostics = useMemo(() => strategyCandidateDiagnostics(selectedBacktest?.strategy), [selectedBacktest])
   const candidates = useMemo(() => candidateMetricRows(diagnostics), [diagnostics])
   const heatmapPlot = useMemo(() => buildParameterHeatmapPlot(candidates), [candidates])
+  const monteCarloTrades = useMemo(() => {
+    const trades = selectedBacktest?.trades ?? []
+    if (!isPredictionMarketStrategy(selectedBacktest?.strategy)) return trades
+    const holdoutTrades = trades.filter((trade) => (trade as { split?: string }).split === 'holdout')
+    return holdoutTrades.length ? holdoutTrades : trades
+  }, [selectedBacktest])
   const monteCarloPlot = useMemo(
-    () => buildMonteCarloStressPlot(isPredictionMarketStrategy(selectedBacktest?.strategy) ? [] : (selectedBacktest?.trades ?? [])),
-    [selectedBacktest],
+    () => buildMonteCarloStressPlot(monteCarloTrades),
+    [monteCarloTrades],
   )
   const chartResetKey = selectedBacktest?.strategy.id ?? 'no-strategy'
 
@@ -2007,12 +2151,14 @@ function isFullChartRange(range: ChartRange, total: number) {
 
 function formatShortDate(value: string | undefined) {
   if (!value) return '-'
-  const date = new Date(`${value}T00:00:00`)
+  const hasTime = /T\d{2}:\d{2}/.test(value)
+  const date = new Date(hasTime ? value : `${value}T00:00:00`)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
     year: '2-digit',
+    ...(hasTime ? { hour: 'numeric' as const } : {}),
   }).format(date)
 }
 
@@ -2092,7 +2238,8 @@ function OverviewPerformancePanel({
   const clampedRange = useMemo(() => clampChartRange(range, chartData.length), [chartData.length, range])
   const visibleBounds = chartRangeDataBounds(clampedRange, chartData.length)
   const visibleChartData = chartData.slice(visibleBounds.startIndex, visibleBounds.endIndex + 1)
-  const showDetailLines = visibleChartData.length <= strategyDetailLineMaxPoints
+  const selectedIsPredictionMarket = selectedBacktest ? isPredictionMarketStrategy(selectedBacktest.strategy) : false
+  const showDetailLines = !selectedIsPredictionMarket && visibleChartData.length <= strategyDetailLineMaxPoints
   const series = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
     () =>
       selectedBacktest
@@ -2142,13 +2289,14 @@ function OverviewPerformancePanel({
       />
       <div className="chart-frame tall">
         <SmoothZoomChart
-          breakLinesAfterDays={selectedBacktest ? sparseStrategyGapBreakDays : undefined}
+          breakLinesAfterDays={selectedBacktest && !selectedIsPredictionMarket ? sparseStrategyGapBreakDays : undefined}
           data={chartData}
           formatDate={formatShortDate}
           minWindow={minZoomWindow}
           onRangeChange={setRange}
           range={clampedRange}
           series={series}
+          xAxisMode={selectedIsPredictionMarket ? 'event' : 'time'}
         />
         {!chartData.length && (
           <ChartEmptyOverlay
@@ -2235,6 +2383,11 @@ function App() {
     () => leaderboard.find((result) => result.strategy.id === selectedStrategyId) ?? leaderboard[0] ?? null,
     [leaderboard, selectedStrategyId],
   )
+  const weatherTradingBacktest = useMemo(
+    () => researchBacktestResults.find((result) => result.strategy.id === 'ngas-all-year-beta') ?? null,
+    [],
+  )
+  const weatherSizingImpactRows = useMemo(() => historicalSizingImpactRows(weatherTradingBacktest), [weatherTradingBacktest])
   const selectedSampleStatus = useMemo(() => sampleStatusFor(selectedBacktest), [selectedBacktest])
   const selectedWeatherSideSeason = useMemo(() => weatherSideSeasonForStrategy(selectedBacktest?.strategy), [selectedBacktest])
   const selectedSideStats = useMemo(
@@ -2382,46 +2535,66 @@ function App() {
   const selectedCurrentPaperScanDate = currentPaperScanDateLabel(selectedCurrentPaperScanFreshness)
   const selectedIsPredictionMarket = isPredictionMarketStrategy(selectedBacktest?.strategy)
   const selectedIsPredictionCrossMarket = isPredictionCrossMarketStrategy(selectedBacktest?.strategy)
+  const selectedIsPredictionTimeDecay = isPredictionTimeDecayStrategy(selectedBacktest?.strategy)
+  const selectedUsesMarkedQuoteReturns = isMarkedQuoteReturnStrategy(selectedBacktest?.strategy)
   const selectedHoldoutTotalEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
   const selectedHoldoutAnnualEdgePct = splitAnnualEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
-  const selectedHoldoutTotalReturnPct = selectedIsPredictionCrossMarket
+  const selectedHoldoutTotalReturnPct = selectedUsesMarkedQuoteReturns
     ? splitTotalReturnForStrategy(selectedBacktest?.strategy, 'holdout')
     : selectedHoldoutTotalEdgePct
   const selectedCurrentScanEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'current')
-  const selectedCurrentScanTotalReturnPct = selectedIsPredictionCrossMarket
+  const selectedCurrentScanTotalReturnPct = selectedUsesMarkedQuoteReturns
     ? splitTotalReturnForStrategy(selectedBacktest?.strategy, 'current')
     : selectedCurrentScanEdgePct
-  const selectedUsesAbsoluteSplitReturns = selectedIsPredictionMarket
-  const selectedPredictionObservationWindow = predictionMarketObservationWindowForStrategy(selectedBacktest?.strategy)
-  const selectedPredictionLatestDateLabel = selectedIsPredictionCrossMarket ? 'latest observation' : 'latest settlement'
-  const selectedPredictionReturnDetailLabel = selectedIsPredictionCrossMarket ? 'quote-screen total' : 'modeled package return'
-  const selectedPerformanceCardLabel = selectedIsPredictionCrossMarket
-    ? 'Quote-screen total return'
+  const selectedPredictionObservationWindow = selectedIsPredictionMarket
+    ? dateWindowForValues((selectedBacktest?.trades ?? []).map(tradeObservationDate))
+    : null
+  const selectedPredictionPackageExpiryWindow = selectedIsPredictionMarket && !selectedUsesMarkedQuoteReturns
+    ? dateWindowForValues((selectedBacktest?.trades ?? []).map(tradePackageExpiryDate))
+    : null
+  const selectedPredictionDataAudit = selectedIsPredictionMarket ? selectedBacktest?.strategy.params.dataAudit : null
+  const selectedPredictionHistoricalObservations = recordNumber(selectedPredictionDataAudit, 'historicalObservations')
+  const selectedPredictionPairsSucceeded = recordNumber(selectedPredictionDataAudit, 'historicalPairsSucceeded')
+  const selectedPredictionPairsRequested = recordNumber(selectedPredictionDataAudit, 'historicalPairsRequested')
+  const selectedPredictionReturnDetailLabel = selectedUsesMarkedQuoteReturns ? 'marked quote return' : 'modeled package return'
+  const selectedPerformanceCardLabel = selectedUsesMarkedQuoteReturns
+    ? 'Marked quote total return'
     : selectedIsPredictionMarket
-      ? 'Settlement yearly return'
+      ? 'Modeled package return'
       : 'Average yearly return'
   const selectedPerformanceCardValuePct = selectedBacktest
-    ? selectedIsPredictionCrossMarket
+    ? selectedIsPredictionMarket
       ? selectedBacktest.metrics.totalReturnPct
       : selectedBacktest.metrics.cagrPct
     : topResearchStrategy
-      ? isPredictionCrossMarketStrategy(topResearchStrategy)
+      ? isMarkedQuoteReturnStrategy(topResearchStrategy)
         ? topResearchStrategy.metrics.totalReturnPct
         : topResearchStrategy.metrics.cagrPct
       : null
+  const selectedPredictionExpiryDetail = selectedPredictionPackageExpiryWindow
+    ? `; last package expiry ${formatShortDate(selectedPredictionPackageExpiryWindow.endDate)}`
+    : ''
   const selectedPerformanceCardDetail = selectedBacktest
     ? selectedIsPredictionMarket
       ? selectedPredictionObservationWindow
-        ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} ${selectedPredictionReturnDetailLabel}; observed ${formatShortDate(selectedPredictionObservationWindow.startDate)} to ${formatShortDate(selectedPredictionObservationWindow.endDate)}; ${selectedPredictionLatestDateLabel} ${formatShortDate(selectedBacktest.researchMetrics.lastExit)}`
-        : `${signedPercent(selectedBacktest.metrics.totalReturnPct)} ${selectedPredictionReturnDetailLabel}; ${selectedPredictionLatestDateLabel} ${formatShortDate(selectedBacktest.researchMetrics.lastExit)}`
+        ? `${formatNumber(selectedBacktest.metrics.tradeCount, 0)} rows observed ${formatShortDate(selectedPredictionObservationWindow.startDate)} to ${formatShortDate(selectedPredictionObservationWindow.endDate)}${selectedPredictionExpiryDetail}`
+        : `${signedPercent(selectedBacktest.metrics.totalReturnPct)} ${selectedPredictionReturnDetailLabel}; rows remain unsettled`
       : `${signedPercent(selectedBacktest.metrics.totalReturnPct)} total from ${formatShortDate(selectedBacktest.researchMetrics.firstEntry)} to ${formatShortDate(selectedBacktest.researchMetrics.lastExit)}`
     : topResearchStrategy
       ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} total research baseline`
       : 'No research strategies loaded'
-  const selectedValidationCardLabel = selectedIsCurrentPaperScan ? 'Paper scan' : selectedIsPredictionCrossMarket ? 'Quote holdout' : 'Annual holdout'
+  const selectedValidationCardLabel = selectedIsCurrentPaperScan
+    ? 'Paper scan'
+    : selectedIsPredictionCrossMarket
+      ? 'Three-month quote holdout'
+      : selectedIsPredictionTimeDecay
+        ? 'Two-month quote holdout'
+      : selectedIsPredictionMarket
+        ? 'Holdout package return'
+        : 'Annual holdout'
   const selectedValidationCardValuePct = selectedIsCurrentPaperScan
     ? selectedCurrentScanTotalReturnPct
-    : selectedIsPredictionCrossMarket
+    : selectedIsPredictionMarket
       ? selectedHoldoutTotalReturnPct
       : selectedHoldoutAnnualEdgePct
   const selectedValidationCardDetail = selectedIsCurrentPaperScan
@@ -2431,22 +2604,20 @@ function App() {
         : 'Stale paper scan; refresh before treating as current'
       : selectedCurrentScanTotalReturnPct === null
       ? 'Current scan has no selected paper rows'
-      : selectedIsPredictionCrossMarket
-        ? 'Current top-of-book total; no historical holdout split'
-        : `Current top-of-book scan; no historical holdout split`
-    : selectedIsPredictionCrossMarket
+        : selectedIsPredictionCrossMarket
+          ? 'Current top-of-book total; no historical holdout split'
+          : `Current top-of-book scan; no historical holdout split`
+    : selectedIsPredictionMarket
       ? selectedHoldoutTotalReturnPct === null
         ? 'No holdout split for selected strategy'
         : selectedHoldoutAnnualEdgePct === null
-          ? 'Report-only quote-screen total return'
-          : `Report-only quote-screen total; ${signedPercent(selectedHoldoutAnnualEdgePct)} annualized`
+          ? 'Report-only holdout split'
+          : `Report-only split; ${signedPercent(selectedHoldoutAnnualEdgePct)} annualized`
     : selectedHoldoutAnnualEdgePct === null
       ? 'No holdout split for selected strategy'
       : selectedHoldoutTotalEdgePct === null
         ? 'Report-only annual split return'
-        : selectedUsesAbsoluteSplitReturns
-          ? `Report-only absolute return; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
-          : `Report-only vs index basket; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
+        : `Report-only vs index basket; ${signedPercent(selectedHoldoutTotalEdgePct)} cumulative`
   const selectedRealityCheck = realityCheckForStrategy(selectedBacktest?.strategy)
   const emptyStats = [
     ['Win rate', '-', 'Positive return rows'],
@@ -2707,16 +2878,18 @@ function App() {
           />
           <MetricCard
             icon={LineChartIcon}
-            label="Annualized alpha"
-            value={selectedIndexBenchmarkAnnualEdgePct === null ? '-' : signedPercent(selectedIndexBenchmarkAnnualEdgePct)}
+            label={selectedIsPredictionMarket ? 'Benchmark edge' : 'Annualized alpha'}
+            value={selectedIsPredictionMarket || selectedIndexBenchmarkAnnualEdgePct === null ? '-' : signedPercent(selectedIndexBenchmarkAnnualEdgePct)}
             detail={
-              !selectedBacktest
+              selectedIsPredictionMarket
+                ? 'No index benchmark for unsettled prediction quote rows'
+                : !selectedBacktest
                 ? 'Needs a selected strategy window'
                 : selectedIndexBenchmarkAnnualReturnPct === null
                   ? 'No benchmark edge modeled for this strategy'
                   : `${indexBenchmarkLabel} ${signedPercent(selectedIndexBenchmarkAnnualReturnPct)} yearly over same window`
             }
-            tone={selectedIndexBenchmarkAnnualEdgePct === null ? 'warning' : classForSigned(selectedIndexBenchmarkAnnualEdgePct)}
+            tone={selectedIsPredictionMarket || selectedIndexBenchmarkAnnualEdgePct === null ? 'warning' : classForSigned(selectedIndexBenchmarkAnnualEdgePct)}
           />
           <MetricCard
             icon={Gauge}
@@ -2727,40 +2900,72 @@ function App() {
           />
           <MetricCard
             icon={Activity}
-            label="Sharpe / Sortino"
+            label={selectedIsPredictionMarket ? 'Quote-edge status' : 'Sharpe / Sortino'}
             value={
-              selectedBacktest
+              selectedIsPredictionMarket
+                ? 'Unsettled'
+                : selectedBacktest
                 ? `${formatNumber(selectedBacktest.metrics.sharpe)} / ${formatNumber(selectedBacktest.metrics.sortino)}`
                 : topResearchStrategy
                   ? `${formatNumber(topResearchStrategy.metrics.sharpe)} / ${formatNumber(topResearchStrategy.metrics.sortino)}`
                   : '- / -'
             }
             detail={
-              selectedBacktest
+              selectedIsPredictionMarket && selectedBacktest
+                ? `${formatNumber(selectedBacktest.metrics.tradeCount, 0)} ${selectedUsesMarkedQuoteReturns ? 'marked quote rows' : 'modeled package entries'}; realized win/loss waits for settlement`
+                : selectedBacktest
                 ? selectedIsPredictionCrossMarket
-                  ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} quote-screen total, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% annual vol`
+                  ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} marked quote total, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% annual vol`
                   : `${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% annual vol`
                 : topResearchStrategy
                   ? isPredictionCrossMarketStrategy(topResearchStrategy)
-                    ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} quote-screen total in research baseline`
+                    ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} marked quote total in research baseline`
                     : `${signedPercent(topResearchStrategy.metrics.cagrPct)} CAGR in research baseline`
                   : 'Ready for real strategy metrics'
             }
-            tone={(selectedBacktest?.metrics.sharpe ?? topResearchStrategy?.metrics.sharpe ?? 0) > 1 ? 'positive' : 'neutral'}
+            tone={selectedIsPredictionMarket ? 'warning' : (selectedBacktest?.metrics.sharpe ?? topResearchStrategy?.metrics.sharpe ?? 0) > 1 ? 'positive' : 'neutral'}
           />
           <MetricCard
             icon={ShieldCheck}
-            label="Max drawdown"
-            value={selectedBacktest ? signedPercent(selectedBacktest.metrics.maxDrawdownPct) : topResearchStrategy ? signedPercent(topResearchStrategy.metrics.maxDrawdownPct) : '-'}
-            detail={selectedBacktest ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% return-row VaR 95` : topResearchStrategy ? `${topResearchStrategy.metrics.tradeCount} optimized return rows` : 'No risk path until a strategy runs'}
-            tone={(selectedBacktest?.metrics.maxDrawdownPct ?? topResearchStrategy?.metrics.maxDrawdownPct ?? 0) < -15 ? 'negative' : 'positive'}
+            label={selectedIsPredictionMarket ? 'Capital lockup' : 'Max drawdown'}
+            value={
+              selectedIsPredictionMarket && selectedBacktest
+                ? `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`
+                : selectedBacktest
+                  ? signedPercent(selectedBacktest.metrics.maxDrawdownPct)
+                  : topResearchStrategy
+                    ? signedPercent(topResearchStrategy.metrics.maxDrawdownPct)
+                    : '-'
+            }
+            detail={
+              selectedIsPredictionMarket && selectedBacktest
+                ? `${formatNumber(selectedBacktest.researchMetrics.averageHoldDays, 0)}d avg modeled lockup; no settled drawdown yet`
+                : selectedBacktest
+                  ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% return-row VaR 95`
+                  : topResearchStrategy
+                    ? `${topResearchStrategy.metrics.tradeCount} optimized return rows`
+                    : 'No risk path until a strategy runs'
+            }
+            tone={selectedIsPredictionMarket ? 'warning' : (selectedBacktest?.metrics.maxDrawdownPct ?? topResearchStrategy?.metrics.maxDrawdownPct ?? 0) < -15 ? 'negative' : 'positive'}
           />
           <MetricCard
             icon={CloudSun}
-            label="Weather accuracy"
-            value={`${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%`}
-            detail={`${weatherMetrics.metricLabel} MAE ${formatNumber(weatherMetrics.mae)}${weatherMetrics.unitLabel} | ${formatCompact(weatherMetrics.rowCount)} scored rows`}
-            tone={weatherMetrics && weatherMetrics.directionalAccuracyPct > 60 ? 'positive' : 'warning'}
+            label={selectedIsPredictionMarket ? 'Data coverage' : 'Weather accuracy'}
+            value={
+              selectedIsPredictionMarket
+                ? selectedPredictionHistoricalObservations === null
+                  ? '-'
+                  : formatCompact(selectedPredictionHistoricalObservations)
+                : `${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%`
+            }
+            detail={
+              selectedIsPredictionMarket
+                ? selectedPredictionPairsRequested === null
+                  ? 'Quote-observation artifact loaded; settlement outcomes pending'
+                  : `${formatNumber(selectedPredictionPairsSucceeded ?? selectedPredictionPairsRequested, 0)} of ${formatNumber(selectedPredictionPairsRequested, 0)} historical pairs loaded`
+                : `${weatherMetrics.metricLabel} MAE ${formatNumber(weatherMetrics.mae)}${weatherMetrics.unitLabel} | ${formatCompact(weatherMetrics.rowCount)} scored rows`
+            }
+            tone={selectedIsPredictionMarket ? 'positive' : weatherMetrics && weatherMetrics.directionalAccuracyPct > 60 ? 'positive' : 'warning'}
           />
         </section>
 
@@ -2800,10 +3005,11 @@ function App() {
                         const indexBenchmarkSummary = indexBenchmarkSummaryByStrategyId.get(result.strategy.id)
                         const indexBenchmarkReturnPct = indexBenchmarkSummary?.returnPct
                         const isCurrentPaperScan = isCurrentPaperScanStrategy(result.strategy)
-                        const isPredictionCrossMarket = isPredictionCrossMarketStrategy(result.strategy)
+                        const isPredictionMarket = isPredictionMarketStrategy(result.strategy)
+                        const usesMarkedQuoteReturns = isMarkedQuoteReturnStrategy(result.strategy)
                         const validationEdgePct = isCurrentPaperScan
                           ? splitTotalReturnForStrategy(result.strategy, 'current')
-                          : isPredictionCrossMarket
+                          : usesMarkedQuoteReturns
                             ? splitTotalReturnForStrategy(result.strategy, 'holdout')
                             : splitAnnualEdgeForStrategy(result.strategy, 'holdout')
                         return (
@@ -2823,9 +3029,11 @@ function App() {
                             <td className={validationEdgePct === null ? undefined : classForSigned(validationEdgePct)}>
                               {validationEdgePct === null ? '-' : signedPercent(validationEdgePct)}
                             </td>
-                            <td>{formatNumber(result.metrics.sharpe)}</td>
-                            <td className="negative">{signedPercent(result.metrics.maxDrawdownPct)}</td>
-                            <td>{formatNumber(result.metrics.winRatePct, 1)}%</td>
+                            <td>{isPredictionMarket ? 'N/A' : formatNumber(result.metrics.sharpe)}</td>
+                            <td className={isPredictionMarket ? undefined : 'negative'}>
+                              {isPredictionMarket ? 'Unsettled' : signedPercent(result.metrics.maxDrawdownPct)}
+                            </td>
+                            <td>{isPredictionMarket ? 'N/A' : `${formatNumber(result.metrics.winRatePct, 1)}%`}</td>
                             <td>{result.metrics.tradeCount}</td>
                             <td>
                               <span className={`table-pill ${sampleStatus.tone}`}>{sampleStatus.label}</span>
@@ -2873,9 +3081,64 @@ function App() {
                 />
               </div>
               <OverfitValidationBand selectedBacktest={selectedBacktest} />
+
+              <article className="capital-impact-panel">
+                <SectionHeading
+                  eyebrow="Historical execution sizing"
+                  title="NGAS account return with guardrails preserving full size"
+                  action={<span className="repo-pill warning">Account-level</span>}
+                />
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Scenario</th>
+                        <th>Total return</th>
+                        <th>CAGR</th>
+                        <th>Max DD</th>
+                        <th>Final equity</th>
+                        <th>Avg deployed</th>
+                        <th>Avg gas leg</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weatherSizingImpactRows.map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            <strong>{row.label}</strong>
+                            <span>{row.id === 'guardrails-only' ? 'No sizing or weight changes' : 'Original checked-in strategy sizing'}</span>
+                          </td>
+                          <td className={classForSigned(row.totalReturnPct)}>{signedPercent(row.totalReturnPct)}</td>
+                          <td className={classForSigned(row.cagrPct)}>{signedPercent(row.cagrPct)}</td>
+                          <td className={classForSigned(row.maxDrawdownPct)}>{signedPercent(row.maxDrawdownPct)}</td>
+                          <td>{formatCurrency(row.finalEquityUsd)}</td>
+                          <td>{formatNumber(row.averageDeployedPct, 1)}%</td>
+                          <td>{row.activeRows ? formatCurrency(row.averageGasNotionalUsd) : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+
               <div className="stat-grid backtest-stat-grid">
                 {(selectedBacktest
-                  ? [
+                  ? selectedIsPredictionMarket
+                    ? [
+                        ['Modeled rows', formatNumber(selectedBacktest.metrics.tradeCount, 0), 'One open package per pair'],
+                        ['Settled win rate', 'N/A', 'No settled outcome rows yet'],
+                        [
+                          'P-value',
+                          selectedRealityCheck
+                            ? formatPValue(selectedRealityCheck.pValue, selectedRealityCheck.minimumResolvablePValue)
+                            : '-',
+                          primaryPValueDetail(selectedRealityCheck),
+                        ],
+                        ['Capital lockup', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Average modeled exposure'],
+                        ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Modeled entry count'],
+                        ['CVaR 95', 'N/A', 'Needs settlement outcomes'],
+                      ]
+                    : [
                       ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive return rows'],
                       ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
                       [
@@ -3197,6 +3460,29 @@ function App() {
               </div>
             </article>
 
+            <article className="panel risk-policy-panel wide">
+              <SectionHeading
+                eyebrow="Weather model guardrails"
+                title="NGAS autonomous guardrail policy"
+                action={<span className="repo-pill warning">Paper only</span>}
+              />
+              <div className="risk-control-grid">
+                {weatherGuardrailRiskControls.map((control) => (
+                  <article key={control.label} className="risk-control-card">
+                    <ShieldCheck size={18} aria-hidden="true" />
+                    <span>{control.label}</span>
+                    <strong>{control.value}</strong>
+                    <p>{control.detail}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="risk-note-list">
+                {(weatherModelGuardrailRiskPolicy.notes ?? []).map((note) => (
+                  <p key={note}>{note}</p>
+                ))}
+              </div>
+            </article>
+
             <div className="split-layout">
               <article className="panel readiness-panel wide">
                 <SectionHeading eyebrow="Controls" title="Dry-run paper gate" />
@@ -3219,7 +3505,7 @@ function App() {
                   <RadioTower size={36} aria-hidden="true" />
                   <strong>Live routing disabled</strong>
                   <span>{dryRunGatewayProfile.purpose}</span>
-                  <code>{defaultDryRunRiskPolicy.id}: max ${formatCompact(defaultDryRunRiskPolicy.maxNotionalUsd)} notional, {defaultDryRunRiskPolicy.maxHoldingDays}d hold cap</code>
+                  <code>{defaultDryRunRiskPolicy.id}: max ${formatCompact(defaultDryRunRiskPolicy.maxNotionalUsd ?? 0)} notional, {defaultDryRunRiskPolicy.maxHoldingDays ?? '-'}d hold cap</code>
                 </div>
                 <button type="button" className="primary-button" onClick={() => setActiveView('data')}>
                   <SlidersHorizontal size={17} aria-hidden="true" />

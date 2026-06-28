@@ -175,6 +175,11 @@ export const realDataCatalog = {
       path: 'research/strategy-agent-runs/prediction-cross-market-rv',
       detail: 'Kalshi/Polymarket cross-venue relative-value paper scan, including SPX/SPY threshold-curve comparisons and targeted comparable-market rows.',
     },
+    {
+      label: 'Prediction time-decay',
+      path: 'research/strategy-agent-runs/prediction-time-decay',
+      detail: 'Kalshi and Polymarket time-bound market scans, hourly quote/proxy history, two-month hidden holdout diagnostics, and short-horizon YES-fade paper rows.',
+    },
   ] satisfies SupportDatasetSummary[],
 }
 

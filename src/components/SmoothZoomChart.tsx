@@ -6,6 +6,7 @@ export type SmoothChartRange = {
 }
 
 type SmoothChartAxisId = 'left' | 'right'
+type SmoothChartXAxisMode = 'time' | 'event'
 
 export type SmoothChartPoint = {
   chartIndex: number
@@ -37,6 +38,7 @@ type SmoothZoomChartProps<TPoint extends SmoothChartPoint> = {
   range: SmoothChartRange
   series: Array<SmoothChartSeries<TPoint>>
   onRangeChange: (range: SmoothChartRange) => void
+  xAxisMode?: SmoothChartXAxisMode
 }
 
 type Dimensions = {
@@ -258,6 +260,36 @@ function calendarTicksForDomain(startTime: number, endTime: number, maxTicks = 6
   return spacedTicks
 }
 
+function niceIndexStep(span: number, maxTicks: number) {
+  const rawStep = Math.max(1, Math.ceil(span / Math.max(maxTicks - 1, 1)))
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep))
+  const normalized = rawStep / magnitude
+  const multiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
+  return multiplier * magnitude
+}
+
+function eventTicksForDomain<TPoint extends SmoothChartPoint>(startValue: number, endValue: number, data: TPoint[], maxTicks = 6) {
+  if (!data.length || !Number.isFinite(startValue) || !Number.isFinite(endValue)) return []
+  const minIndex = Math.max(0, Math.min(data.length - 1, Math.ceil(Math.min(startValue, endValue))))
+  const maxIndex = Math.max(minIndex, Math.min(data.length - 1, Math.floor(Math.max(startValue, endValue))))
+  const step = niceIndexStep(Math.max(1, maxIndex - minIndex), maxTicks)
+  const ticks = new Set<number>([minIndex, maxIndex])
+  let tickIndex = Math.ceil(minIndex / step) * step
+
+  while (tickIndex <= maxIndex && ticks.size < maxTicks) {
+    ticks.add(tickIndex)
+    tickIndex += step
+  }
+
+  return [...ticks]
+    .sort((first, second) => first - second)
+    .map((index) => ({
+      key: `event-${index}`,
+      value: index,
+      date: data[index]?.date ?? '',
+    }))
+}
+
 function shouldBreakLine(previousPoint: SmoothChartPoint | null, point: SmoothChartPoint, breakLinesAfterDays: number | undefined) {
   if (!previousPoint || !breakLinesAfterDays || breakLinesAfterDays <= 0) return false
   const previousTime = calendarTimeMs(previousPoint.date)
@@ -376,6 +408,7 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
   onRangeChange,
   range,
   series,
+  xAxisMode = 'time',
 }: SmoothZoomChartProps<TPoint>) {
   const frameRef = useRef<HTMLDivElement | null>(null)
   const pendingRangeRef = useRef(range)
@@ -391,9 +424,9 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
   const clampedRange = useMemo(() => clampRange(range, data.length, minWindow), [data.length, minWindow, range])
   const bounds = useMemo(() => rangeDataBounds(clampedRange, data.length, minWindow), [clampedRange, data.length, minWindow])
   const visibleData = useMemo(() => data.slice(bounds.startIndex, bounds.endIndex + 1), [bounds.endIndex, bounds.startIndex, data])
-  const pointTimes = useMemo(
-    () => data.map((point, index) => calendarTimeMs(point.date) ?? index * dayMs),
-    [data],
+  const pointXValues = useMemo(
+    () => data.map((point, index) => (xAxisMode === 'event' ? index : (calendarTimeMs(point.date) ?? index * dayMs))),
+    [data, xAxisMode],
   )
   const svgWidth = Math.max(dimensions.width, 1)
   const svgHeight = Math.max(dimensions.height, 1)
@@ -424,20 +457,22 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
     return expandDomain(values)
   }, [activeSeries, visibleData])
   const xDomain = useMemo(() => {
-    const times = pointTimes.slice(bounds.startIndex, bounds.endIndex + 1).filter((time) => Number.isFinite(time))
-    if (!times.length) return [0, dayMs] as const
-    const min = Math.min(...times)
-    const max = Math.max(...times)
-    return min === max ? ([min - dayMs / 2, max + dayMs / 2] as const) : ([min, max] as const)
-  }, [bounds.endIndex, bounds.startIndex, pointTimes])
-  const xTimeSpan = Math.max(xDomain[1] - xDomain[0], 1)
-  const xScaleTime = useCallback(
-    (value: number) => plot.left + ((value - xDomain[0]) / xTimeSpan) * plot.width,
-    [plot.left, plot.width, xDomain, xTimeSpan],
+    const values = pointXValues.slice(bounds.startIndex, bounds.endIndex + 1).filter((value) => Number.isFinite(value))
+    if (!values.length) return xAxisMode === 'event' ? ([0, 1] as const) : ([0, dayMs] as const)
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    if (min !== max) return [min, max] as const
+    const pad = xAxisMode === 'event' ? 0.5 : dayMs / 2
+    return [min - pad, max + pad] as const
+  }, [bounds.endIndex, bounds.startIndex, pointXValues, xAxisMode])
+  const xValueSpan = Math.max(xDomain[1] - xDomain[0], 1)
+  const xScaleValue = useCallback(
+    (value: number) => plot.left + ((value - xDomain[0]) / xValueSpan) * plot.width,
+    [plot.left, plot.width, xDomain, xValueSpan],
   )
   const xScalePoint = useCallback(
-    (point: TPoint) => xScaleTime(pointTimes[point.chartIndex] ?? calendarTimeMs(point.date) ?? point.chartIndex * dayMs),
-    [pointTimes, xScaleTime],
+    (point: TPoint) => xScaleValue(pointXValues[point.chartIndex] ?? (xAxisMode === 'event' ? point.chartIndex : (calendarTimeMs(point.date) ?? point.chartIndex * dayMs))),
+    [pointXValues, xAxisMode, xScaleValue],
   )
   const yScale = useCallback(
     (value: number, axis: SmoothChartAxisId) => {
@@ -446,7 +481,17 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
     },
     [leftDomain, plot.bottom, plot.height, rightDomain],
   )
-  const xTicks = useMemo(() => calendarTicksForDomain(xDomain[0], xDomain[1]), [xDomain])
+  const xTicks = useMemo(
+    () =>
+      xAxisMode === 'event'
+        ? eventTicksForDomain(xDomain[0], xDomain[1], data)
+        : calendarTicksForDomain(xDomain[0], xDomain[1]).map((tick) => ({
+            key: tick.key,
+            value: tick.time,
+            date: tick.date,
+          })),
+    [data, xAxisMode, xDomain],
+  )
   const leftTicks = useMemo(() => ticksForDomain(leftDomain[0], leftDomain[1]), [leftDomain])
   const rightTicks = useMemo(() => ticksForDomain(rightDomain[0], rightDomain[1]), [rightDomain])
   const reactId = useId()
@@ -581,11 +626,11 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
       return
     }
     const ratio = (localX - plot.left) / Math.max(plot.width, 1)
-    const targetTime = xDomain[0] + ratio * xTimeSpan
+    const targetValue = xDomain[0] + ratio * xValueSpan
     const nearestPoint = visibleData.reduce<TPoint | null>((nearest, point) => {
       if (!nearest) return point
-      const pointDistance = Math.abs((pointTimes[point.chartIndex] ?? point.chartIndex * dayMs) - targetTime)
-      const nearestDistance = Math.abs((pointTimes[nearest.chartIndex] ?? nearest.chartIndex * dayMs) - targetTime)
+      const pointDistance = Math.abs((pointXValues[point.chartIndex] ?? point.chartIndex) - targetValue)
+      const nearestDistance = Math.abs((pointXValues[nearest.chartIndex] ?? nearest.chartIndex) - targetValue)
       return pointDistance < nearestDistance ? point : nearest
     }, null)
     setHoverIndex(nearestPoint?.chartIndex ?? null)
@@ -627,8 +672,8 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
         <line className="smooth-chart-axis-line" x1={plot.left} x2={plot.right} y1={plot.bottom} y2={plot.bottom} />
         {xTicks.map((tick) => (
           <g key={`x-${tick.key}`} className="smooth-chart-x-tick">
-            <line x1={xScaleTime(tick.time)} x2={xScaleTime(tick.time)} y1={plot.bottom} y2={plot.bottom + 5} />
-            <text x={xScaleTime(tick.time)} y={plot.bottom + 20} textAnchor="middle">
+            <line x1={xScaleValue(tick.value)} x2={xScaleValue(tick.value)} y1={plot.bottom} y2={plot.bottom + 5} />
+            <text x={xScaleValue(tick.value)} y={plot.bottom + 20} textAnchor="middle">
               {formatDate(tick.date)}
             </text>
           </g>

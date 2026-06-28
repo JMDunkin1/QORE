@@ -23,6 +23,8 @@ const config = {
   candleIntervalMinutes: numberEnv('QORE_TIME_LADDER_CANDLE_INTERVAL_MINUTES', 60),
   feeHaircutCents: numberEnv('QORE_TIME_LADDER_FEE_HAIRCUT_CENTS', 1),
   capitalAllocationPct: numberEnv('QORE_TIME_LADDER_CAPITAL_ALLOCATION_PCT', 1),
+  holdoutMonths: numberEnv('QORE_TIME_LADDER_HOLDOUT_MONTHS', 3),
+  minSelectionRowsPerPreHoldoutSplit: numberEnv('QORE_TIME_LADDER_MIN_SELECTION_ROWS_PER_PRE_HOLDOUT_SPLIT', 4),
   allowPartialHistory: process.argv.includes('--allow-partial-history') || booleanEnv('QORE_TIME_LADDER_ALLOW_PARTIAL_HISTORY'),
 }
 
@@ -148,7 +150,14 @@ async function requestJson(url, { params, retryStatuses = new Set([429, 500, 502
     try {
       const response = await fetch(target)
       if (retryStatuses.has(response.status) && attempt < 3) {
-        await sleep(350 * (attempt + 1))
+        const retryAfterSeconds = Number(response.headers.get('retry-after'))
+        const retryDelayMs =
+          Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? retryAfterSeconds * 1000
+            : response.status === 429
+              ? 2500 * (attempt + 1)
+              : 350 * (attempt + 1)
+        await sleep(retryDelayMs)
         continue
       }
       if (!response.ok) {
@@ -658,6 +667,20 @@ function daysBetween(startDate, endDate) {
   return Math.max(1, (Date.parse(endDate) - Date.parse(startDate)) / 86400000)
 }
 
+function shiftIsoDateMonths(dateString, months) {
+  const parsed = Date.parse(`${dateString}T00:00:00Z`)
+  if (!Number.isFinite(parsed)) return dateString
+  const date = new Date(parsed)
+  const day = date.getUTCDate()
+  date.setUTCDate(1)
+  date.setUTCMonth(date.getUTCMonth() + months)
+  const month = date.getUTCMonth()
+  const year = date.getUTCFullYear()
+  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  date.setUTCDate(Math.min(day, lastDayOfMonth))
+  return isoDate(date)
+}
+
 function splitForDate(date, splitDates) {
   if (date >= splitDates.holdoutStart) return 'holdout'
   if (date > splitDates.trainEnd && date <= splitDates.validationEnd) return 'validation'
@@ -672,16 +695,20 @@ function splitDatesFromObservations(observations) {
   const dates = [...new Set(observations.map((observation) => observation.observedDate).filter(Boolean))].sort()
   const minDate = dates[0] ?? isoDate(now)
   const maxDate = dates.at(-1) ?? isoDate(now)
-  const validationStartIndex = Math.floor(dates.length * 0.55)
-  const holdoutStartIndex = Math.floor(dates.length * 0.82)
+  const holdoutTarget = shiftIsoDateMonths(maxDate, -config.holdoutMonths)
+  const holdoutStart = dates.find((date) => date >= holdoutTarget) ?? maxDate
+  const preHoldoutDates = dates.filter((date) => date < holdoutStart)
+  const validationStartIndex = Math.floor(preHoldoutDates.length * 0.7)
+  const trainEnd = preHoldoutDates[validationStartIndex] ?? preHoldoutDates.at(-1) ?? minDate
+  const validationEnd = preHoldoutDates.at(-1) ?? trainEnd
   return {
     dates,
     minDate,
     maxDate,
     splitDates: {
-      trainEnd: dates[validationStartIndex] ?? minDate,
-      validationEnd: dates[holdoutStartIndex] ?? maxDate,
-      holdoutStart: dates[holdoutStartIndex] ?? maxDate,
+      trainEnd,
+      validationEnd,
+      holdoutStart,
     },
   }
 }
@@ -794,16 +821,23 @@ function portfolioReturnPct(packageReturnPct) {
 
 function selectTradesForCandidate(observations, candidate, splitDates) {
   const selected = []
-  const lastByPair = new Map()
+  const lastEntryHourByPair = new Map()
+  const openUntilByPair = new Map()
   for (const observation of observations) {
     if (observation.edge * 100 < candidate.minGrossEdgeCents) continue
+    const holdDays = holdDaysForRow(observation)
+    if (candidate.maxHoldDays && holdDays > candidate.maxHoldDays) continue
     const packageReturnPct = tradeReturnPct(observation)
     if (packageReturnPct <= 0) continue
-    const previousTs = lastByPair.get(observation.pairId)
+    const openUntil = openUntilByPair.get(observation.pairId)
+    if (openUntil && observation.observedDate < openUntil) continue
+    const previousTs = lastEntryHourByPair.get(observation.pairId)
     if (previousTs && (observation.ts - previousTs) / 3600 < candidate.minSpacingHours) continue
-    lastByPair.set(observation.pairId, observation.ts)
+    lastEntryHourByPair.set(observation.pairId, observation.ts)
+    openUntilByPair.set(observation.pairId, rowExitDate(observation))
     selected.push({
       ...observation,
+      holdDays,
       packageReturnPct,
       netReturnPct: portfolioReturnPct(packageReturnPct),
       grossReturnPct: observation.edge * 100,
@@ -870,11 +904,14 @@ function buildCandidates(observations, splitDates) {
   const minGrossEdgeCentsValues = uniqueSortedValues([config.feeHaircutCents, 1.5, 2, 3, 4, 5])
   for (const minGrossEdgeCents of minGrossEdgeCentsValues) {
     for (const minSpacingHours of [1, 6, 24]) {
-      configs.push({ minGrossEdgeCents, minSpacingHours })
+      for (const maxHoldDays of [90, 180, 365, 730, null]) {
+        configs.push({ minGrossEdgeCents, minSpacingHours, maxHoldDays })
+      }
     }
   }
   for (const candidate of configs) {
-    const candidateId = `edge-${String(candidate.minGrossEdgeCents).replace('.', 'p')}c-spacing-${candidate.minSpacingHours}h`
+    const holdLabel = candidate.maxHoldDays ? `${candidate.maxHoldDays}d` : 'open'
+    const candidateId = `edge-${String(candidate.minGrossEdgeCents).replace('.', 'p')}c-spacing-${candidate.minSpacingHours}h-maxhold-${holdLabel}`
     const trades = selectTradesForCandidate(observations, candidate, splitDates)
     const splitEdges = splitEdgesForTrades(trades)
     const splitMetrics = splitMetricsForTrades(trades)
@@ -882,18 +919,22 @@ function buildCandidates(observations, splitDates) {
     const validationTradeCount = trades.filter((trade) => trade.split === 'validation').length
     const holdoutTradeCount = trades.filter((trade) => trade.split === 'holdout').length
     const selectionEligible =
-      trainTradeCount >= 8 &&
-      validationTradeCount >= 8 &&
-      splitEdges.train > 0 &&
-      splitEdges.validation > 0
+      trainTradeCount >= config.minSelectionRowsPerPreHoldoutSplit &&
+      validationTradeCount >= config.minSelectionRowsPerPreHoldoutSplit &&
+      splitMetrics.train.cagrPct > 0 &&
+      splitMetrics.validation.cagrPct > 0
     candidates.push({
       candidateId,
       minGrossEdgeCents: candidate.minGrossEdgeCents,
       feeHaircutCents: config.feeHaircutCents,
       minSpacingHours: candidate.minSpacingHours,
-      eligible: selectionEligible && holdoutTradeCount >= 8,
+      maxHoldDays: candidate.maxHoldDays ?? '',
+      eligible: selectionEligible && holdoutTradeCount >= 5 && splitMetrics.holdout.cagrPct > 0,
       selectionEligible,
       trainValidationRank: 0,
+      trainValidationAnnualScorePct: round(splitMetrics.train.cagrPct + splitMetrics.validation.cagrPct, 2),
+      trainTradeCount,
+      validationTradeCount,
       trainEdgePct: splitEdges.train,
       validationEdgePct: splitEdges.validation,
       holdoutEdgePct: splitEdges.holdout,
@@ -901,6 +942,11 @@ function buildCandidates(observations, splitDates) {
       trainReturnPct: splitMetrics.train.totalReturnPct,
       validationReturnPct: splitMetrics.validation.totalReturnPct,
       holdoutReturnPct: splitMetrics.holdout.totalReturnPct,
+      allReturnPct: splitMetrics.all.totalReturnPct,
+      trainAnnualReturnPct: splitMetrics.train.cagrPct,
+      validationAnnualReturnPct: splitMetrics.validation.cagrPct,
+      holdoutAnnualReturnPct: splitMetrics.holdout.cagrPct,
+      allAnnualReturnPct: splitMetrics.all.cagrPct,
       trainSharpe: splitMetrics.train.sharpe,
       validationSharpe: splitMetrics.validation.sharpe,
       holdoutSharpe: splitMetrics.holdout.sharpe,
@@ -914,7 +960,13 @@ function buildCandidates(observations, splitDates) {
     })
   }
   candidates
-    .sort((a, b) => b.trainEdgePct + b.validationEdgePct - (a.trainEdgePct + a.validationEdgePct) || b.tradeCount - a.tradeCount)
+    .sort(
+      (a, b) =>
+        b.trainValidationAnnualScorePct - a.trainValidationAnnualScorePct ||
+        b.validationAnnualReturnPct - a.validationAnnualReturnPct ||
+        (a.maxHoldDays || Number.MAX_SAFE_INTEGER) - (b.maxHoldDays || Number.MAX_SAFE_INTEGER) ||
+        b.tradeCount - a.tradeCount,
+    )
     .forEach((candidate, index) => {
       candidate.trainValidationRank = index + 1
     })
@@ -1069,7 +1121,11 @@ async function main() {
   const selected = selectedCandidate(candidates)
   const selectedTrades = selectTradesForCandidate(
     observations,
-    { minGrossEdgeCents: selected.minGrossEdgeCents, minSpacingHours: selected.minSpacingHours },
+    {
+      minGrossEdgeCents: selected.minGrossEdgeCents,
+      minSpacingHours: selected.minSpacingHours,
+      maxHoldDays: selected.maxHoldDays ? Number(selected.maxHoldDays) : null,
+    },
     splitDates,
   )
   const selectedMetrics = metricsFromReturns(selectedTrades)
@@ -1152,9 +1208,13 @@ async function main() {
     'minGrossEdgeCents',
     'feeHaircutCents',
     'minSpacingHours',
+    'maxHoldDays',
     'eligible',
     'selectionEligible',
     'trainValidationRank',
+    'trainValidationAnnualScorePct',
+    'trainTradeCount',
+    'validationTradeCount',
     'trainEdgePct',
     'validationEdgePct',
     'holdoutEdgePct',
@@ -1162,6 +1222,11 @@ async function main() {
     'trainReturnPct',
     'validationReturnPct',
     'holdoutReturnPct',
+    'allReturnPct',
+    'trainAnnualReturnPct',
+    'validationAnnualReturnPct',
+    'holdoutAnnualReturnPct',
+    'allAnnualReturnPct',
     'trainSharpe',
     'validationSharpe',
     'holdoutSharpe',
@@ -1238,8 +1303,11 @@ async function main() {
       historicalStartDate: minDate,
       historicalEndDate: maxDate,
       historyDaysRequested: config.historyDays,
+      holdoutMonths: config.holdoutMonths,
+      minSelectionRowsPerPreHoldoutSplit: config.minSelectionRowsPerPreHoldoutSplit,
       candleIntervalMinutes: config.candleIntervalMinutes,
       portfolioAllocationPct: config.capitalAllocationPct,
+      selectedRows: timeLadderQoreRows.length,
     },
     contract: {
       trainEnd: splitDates.trainEnd,
@@ -1247,13 +1315,14 @@ async function main() {
       holdoutStart: splitDates.holdoutStart,
       feeHaircutCents: config.feeHaircutCents,
       capitalAllocationPct: config.capitalAllocationPct,
-      fallback: 'No idle capital allocation is modeled; rows represent detected package entries only.',
+      fallback:
+        'No idle capital allocation is modeled; rows represent the first qualifying package entry per unresolved pair, then capital stays locked until the later deadline.',
       selectionPolicy:
-        'Candidate threshold and spacing variants are ranked on train/validation diagnostics across unique observation days; holdout is report-only and is not used for selection. The checked-in selected lane uses the selected gross-edge and pair-spacing gates.',
+        'Candidate threshold, pair-spacing, and maximum-lockup variants are ranked on train/validation annualized return across unique observation days; the final three calendar months are report-only holdout and are not used for selection. The checked-in selected lane uses the selected gross-edge, pair-spacing, and max-hold gates.',
       signalTiming:
-        'Use venue top-of-book quotes only. The executable package is buy NO on the earlier deadline plus buy YES on the later deadline.',
+        'Use venue top-of-book quotes only. The executable package is buy NO on the earlier deadline plus buy YES on the later deadline, with one open package per pair until the later deadline settles.',
       overfitControl:
-        `No contract wording is auto-promoted and no inferential p-value is reported for quote-edge-selected rows. The split uses ${dates.length.toLocaleString()} unique observed days with a hidden holdout starting ${splitDates.holdoutStart}. Every positive package remains subject to same-underlier, same-resolution-source, fee, liquidity, and settlement review before paper execution.`,
+        `No contract wording is auto-promoted and no inferential p-value is reported for quote-edge-selected rows. The split uses ${dates.length.toLocaleString()} unique observed days with the final ${config.holdoutMonths} calendar months hidden from selection starting ${splitDates.holdoutStart}. Every positive package remains subject to same-underlier, same-resolution-source, fee, liquidity, and settlement review before paper execution.`,
     },
     selected: {
       candidateId: selected.candidateId,
@@ -1263,6 +1332,7 @@ async function main() {
       minGrossEdgeCents: selected.minGrossEdgeCents,
       feeHaircutCents: config.feeHaircutCents,
       minSpacingHours: selected.minSpacingHours,
+      maxHoldDays: selected.maxHoldDays || null,
       capitalAllocationPct: config.capitalAllocationPct,
       allMetrics: selectedMetrics,
       trainMetrics: selectedSplitMetrics.train,
@@ -1281,6 +1351,7 @@ async function main() {
         holdout: selectedSplitMetrics.holdout.cagrPct,
         all: selectedSplitMetrics.all.cagrPct,
       },
+      splitTotalReturns: selectedSplitEdges,
       sourceUniverse: [...new Set(timeLadderQoreRows.map((row) => row.sourceId))].sort(),
       currentTopOpportunities: currentStrongOpportunities.slice(0, 20),
     },
@@ -1288,6 +1359,7 @@ async function main() {
       candidateCount: candidates.length,
       eligibleCandidateCount: candidates.filter((candidate) => candidate.selectionEligible).length,
       selectionUsedHoldout: false,
+      validationScope: 'historical-holdout',
     },
     validation: {
       realityCheck: timeLadderRealityCheck,

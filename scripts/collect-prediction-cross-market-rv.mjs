@@ -1,4 +1,4 @@
-import { closeSync, createWriteStream, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, createWriteStream, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,7 +14,7 @@ const calendarDaysPerYear = 365.25
 const generatedAt = new Date()
 
 const config = {
-  historyDays: numberEnv('QORE_CROSS_MARKET_HISTORY_DAYS', 30),
+  historyDays: numberEnv('QORE_CROSS_MARKET_HISTORY_DAYS', 365),
   maxHistoricalPairs: numberEnv('QORE_CROSS_MARKET_MAX_HISTORICAL_PAIRS', 80),
   kalshiPages: optionalNumberEnv('QORE_CROSS_MARKET_KALSHI_PAGES'),
   polymarketPages: optionalNumberEnv('QORE_CROSS_MARKET_POLYMARKET_PAGES'),
@@ -22,6 +22,13 @@ const config = {
   feeHaircutCents: numberEnv('QORE_CROSS_MARKET_FEE_HAIRCUT_CENTS', 1),
   basisHaircutCents: numberEnv('QORE_CROSS_MARKET_BASIS_HAIRCUT_CENTS', 0.5),
   capitalAllocationPct: numberEnv('QORE_CROSS_MARKET_CAPITAL_ALLOCATION_PCT', 1),
+  holdoutDays: numberEnv('QORE_CROSS_MARKET_HOLDOUT_DAYS', 90),
+  validationDays: numberEnv('QORE_CROSS_MARKET_VALIDATION_DAYS', 60),
+  monteCarloIterations: numberEnv('QORE_CROSS_MARKET_MONTE_CARLO_ITERATIONS', 1000),
+  maxConcurrentExposurePct: numberEnv('QORE_CROSS_MARKET_MAX_CONCURRENT_EXPOSURE_PCT', 50),
+  minTrainTrades: numberEnv('QORE_CROSS_MARKET_MIN_TRAIN_TRADES', 75),
+  minValidationTrades: numberEnv('QORE_CROSS_MARKET_MIN_VALIDATION_TRADES', 20),
+  minValidationReturnPct: numberEnv('QORE_CROSS_MARKET_MIN_VALIDATION_RETURN_PCT', 1),
   allowPartialHistory: process.argv.includes('--allow-partial-history') || booleanEnv('QORE_CROSS_MARKET_ALLOW_PARTIAL_HISTORY'),
 }
 
@@ -230,11 +237,15 @@ async function requestJson(url, { params, retryStatuses = new Set([429, 500, 502
     if (value !== undefined && value !== null) target.searchParams.set(key, String(value))
   })
   let lastError = null
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  const maxAttempts = 7
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const response = await fetch(target)
-      if (retryStatuses.has(response.status) && attempt < 3) {
-        await sleep(350 * (attempt + 1))
+      if (retryStatuses.has(response.status) && attempt < maxAttempts - 1) {
+        const retryAfterSeconds = Number(response.headers.get('retry-after'))
+        const retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds * 1000 : null
+        const backoffMs = response.status === 429 ? 2500 * (attempt + 1) : 500 * (attempt + 1)
+        await sleep(retryAfterMs ?? backoffMs)
         continue
       }
       if (!response.ok) {
@@ -245,8 +256,8 @@ async function requestJson(url, { params, retryStatuses = new Set([429, 500, 502
       return await response.json()
     } catch (error) {
       lastError = error
-      if (attempt === 3) break
-      await sleep(350 * (attempt + 1))
+      if (attempt === maxAttempts - 1) break
+      await sleep(500 * (attempt + 1))
     }
   }
   throw lastError
@@ -296,6 +307,14 @@ function isoDate(date) {
 function isoDateFromTimestamp(value) {
   const parsed = Date.parse(value || '')
   return Number.isFinite(parsed) ? isoDate(new Date(parsed)) : ''
+}
+
+function addCalendarDays(dateString, days) {
+  const parsed = Date.parse(`${dateString}T00:00:00.000Z`)
+  if (!Number.isFinite(parsed)) return dateString
+  const date = new Date(parsed)
+  date.setUTCDate(date.getUTCDate() + days)
+  return isoDate(date)
 }
 
 function daysBetween(startDate, endDate) {
@@ -681,19 +700,30 @@ function buildComparablePairs(kalshiMarkets, polymarketMarkets) {
 }
 
 async function kalshiCandles(pair, startTs, endTs) {
-  const payload = await requestJson(`${kalshiBaseUrl}/series/${pair.kalshi.eventKey}/markets/${pair.kalshi.id}/candlesticks`, {
-    params: {
-      start_ts: startTs,
-      end_ts: endTs,
-      period_interval: config.candleIntervalMinutes,
-    },
-  })
   const byTs = new Map()
-  for (const candle of payload.candlesticks ?? []) {
-    byTs.set(Number(candle.end_period_ts), {
-      yesBid: numberFrom(candle.yes_bid?.close_dollars),
-      yesAsk: numberFrom(candle.yes_ask?.close_dollars),
-    })
+  const maxWindowSeconds = 30 * 86400
+  for (let chunkStart = startTs; chunkStart < endTs; chunkStart += maxWindowSeconds) {
+    const chunkEnd = Math.min(endTs, chunkStart + maxWindowSeconds)
+    let payload = null
+    try {
+      payload = await requestJson(`${kalshiBaseUrl}/series/${pair.kalshi.eventKey}/markets/${pair.kalshi.id}/candlesticks`, {
+        params: {
+          start_ts: chunkStart,
+          end_ts: chunkEnd,
+          period_interval: config.candleIntervalMinutes,
+        },
+      })
+    } catch (error) {
+      if (error.status !== 400) throw error
+      continue
+    }
+    for (const candle of payload.candlesticks ?? []) {
+      byTs.set(Number(candle.end_period_ts), {
+        yesBid: numberFrom(candle.yes_bid?.close_dollars),
+        yesAsk: numberFrom(candle.yes_ask?.close_dollars),
+      })
+    }
+    await sleep(120)
   }
   return byTs
 }
@@ -732,7 +762,7 @@ async function polymarketHistory(pair, startTs, endTs) {
 function observationFromEdge(pair, observedAt, observedDate, edge, split = null) {
   const grossEdgeCents = round(edge.grossEdge * 100, 4)
   const totalHaircutCents = round(config.feeHaircutCents + config.basisHaircutCents, 4)
-  const netEdgeCents = Math.max(0, round(grossEdgeCents - totalHaircutCents, 4))
+  const netEdgeCents = round(grossEdgeCents - totalHaircutCents, 4)
   const netEdge = netEdgeCents / 100
   const packageReturnPct = edge.packageCost > 0 ? (netEdge / edge.packageCost) * 100 : 0
   return {
@@ -779,9 +809,15 @@ async function buildHistoricalObservations(pairs) {
         const polyPrice = polyByTs.get(ts)
         if (polyPrice === undefined) continue
         const edge = currentEdgeForPair(pair, kalshiQuote, polyPrice)
-        if (!edge || edge.grossEdge <= 0 || edge.packageCost <= 0) continue
+        if (!edge || edge.packageCost <= 0) continue
         const observedAt = new Date(ts * 1000).toISOString()
-        observations.push(observationFromEdge(pair, observedAt, observedAt.slice(0, 10), edge))
+        observations.push({
+          ...observationFromEdge(pair, observedAt, observedAt.slice(0, 10), edge),
+          ts,
+          kalshiYesBid: kalshiQuote.yesBid,
+          kalshiYesAsk: kalshiQuote.yesAsk,
+          polymarketYesPrice: polyPrice,
+        })
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -812,15 +848,25 @@ function splitDatesFromObservations(observations) {
   const dates = [...new Set(observations.map((observation) => observation.observedDate).filter(Boolean))].sort()
   const minDate = dates[0] ?? isoDate(generatedAt)
   const maxDate = dates.at(-1) ?? isoDate(generatedAt)
-  const validationStartIndex = Math.floor(dates.length * 0.55)
-  const holdoutStartIndex = Math.floor(dates.length * 0.82)
+  const requestedHoldoutStart = addCalendarDays(maxDate, -(config.holdoutDays - 1))
+  const requestedHoldoutStartIndex = dates.findIndex((date) => date >= requestedHoldoutStart)
+  const fallbackHoldoutStartIndex = Math.floor(dates.length * 0.75)
+  const minimumPreHoldoutDays = Math.min(60, Math.max(20, config.validationDays))
+  const holdoutStartIndex =
+    requestedHoldoutStartIndex >= minimumPreHoldoutDays
+      ? requestedHoldoutStartIndex
+      : Math.max(1, Math.min(fallbackHoldoutStartIndex, dates.length - 1))
+  const validationSize = Math.max(1, Math.min(config.validationDays, Math.floor(holdoutStartIndex * 0.35), holdoutStartIndex - 1))
+  const validationStartIndex = Math.max(1, holdoutStartIndex - validationSize)
   return {
     dates,
     minDate,
     maxDate,
+    requestedHoldoutStart,
+    actualHoldoutDays: Math.max(0, dates.length - holdoutStartIndex),
     splitDates: {
-      trainEnd: dates[validationStartIndex] ?? minDate,
-      validationEnd: dates[holdoutStartIndex] ?? maxDate,
+      trainEnd: dates[validationStartIndex - 1] ?? minDate,
+      validationEnd: dates[holdoutStartIndex - 1] ?? dates[validationStartIndex] ?? maxDate,
       holdoutStart: dates[holdoutStartIndex] ?? maxDate,
     },
   }
@@ -832,20 +878,99 @@ function splitForDate(date, splitDates) {
   return 'train'
 }
 
-function selectTradesForCandidate(observations, candidate, splitDates) {
+function observationsByPair(observations) {
+  const byPair = new Map()
+  for (const observation of observations) {
+    const rows = byPair.get(observation.pairId) ?? []
+    rows.push(observation)
+    byPair.set(observation.pairId, rows)
+  }
+  for (const rows of byPair.values()) rows.sort((left, right) => left.ts - right.ts)
+  return byPair
+}
+
+function exitObservationFor(entry, rows, holdHours) {
+  const targetTs = entry.ts + holdHours * 3600
+  let left = 0
+  let right = rows.length - 1
+  let match = null
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2)
+    if (rows[mid].ts >= targetTs) {
+      match = rows[mid]
+      right = mid - 1
+    } else {
+      left = mid + 1
+    }
+  }
+  return match
+}
+
+function packageValueForDirection(direction, exit) {
+  if (direction === 'buy_yes_kalshi_buy_no_polymarket') {
+    return exit.kalshiYesBid + (1 - exit.polymarketYesPrice)
+  }
+  return exit.polymarketYesPrice + (1 - exit.kalshiYesAsk)
+}
+
+function markedTradeFromObservation(entry, exit, candidate) {
+  const exitPackageValue = packageValueForDirection(entry.direction, exit)
+  if (!Number.isFinite(exitPackageValue) || entry.packageCost <= 0) return null
+  const grossPackageReturnPct = ((exitPackageValue - entry.packageCost) / entry.packageCost) * 100
+  const haircutReturnPct = ((config.feeHaircutCents + config.basisHaircutCents) / 100 / entry.packageCost) * 100
+  const packageReturnPct = grossPackageReturnPct - haircutReturnPct
+  return {
+    ...entry,
+    exitObservedAt: exit.observedAt,
+    exitObservedDate: exit.observedDate,
+    exitPackageValue,
+    holdHours: candidate.holdHours,
+    entryGrossEdgeCents: entry.grossEdgeCents,
+    entryNetEdgeCents: entry.netEdgeCents,
+    grossPackageReturnPct,
+    haircutReturnPct,
+    packageReturnPct,
+    netReturnPct: packageReturnPct * (config.capitalAllocationPct / 100),
+  }
+}
+
+function passesCandidateEntryRules(observation, candidate) {
+  if (observation.grossEdgeCents < candidate.minGrossEdgeCents) return false
+  if (observation.netEdgeCents <= 0) return false
+  return true
+}
+
+function selectTradesForCandidate(observations, byPair, candidate, splitDates) {
   const selected = []
   const lastByPair = new Map()
   for (const observation of observations) {
-    if (observation.grossEdgeCents < candidate.minGrossEdgeCents) continue
-    if (observation.netEdgeCents <= 0) continue
+    if (!passesCandidateEntryRules(observation, candidate)) continue
     const ts = Date.parse(observation.observedAt) / 1000
     const previousTs = lastByPair.get(observation.pairId)
     if (previousTs && (ts - previousTs) / 3600 < candidate.minSpacingHours) continue
+    const exit = exitObservationFor(observation, byPair.get(observation.pairId) ?? [], candidate.holdHours)
+    if (!exit) continue
+    const markedTrade = markedTradeFromObservation(observation, exit, candidate)
+    if (!markedTrade) continue
     lastByPair.set(observation.pairId, ts)
     selected.push({
-      ...observation,
+      ...markedTrade,
       split: splitForDate(observation.observedDate, splitDates),
     })
+  }
+  return selected
+}
+
+function selectCurrentSignalsForCandidate(signals, candidate) {
+  const selected = []
+  const lastByPair = new Map()
+  for (const signal of signals) {
+    if (!passesCandidateEntryRules(signal, candidate)) continue
+    const ts = Date.parse(signal.observedAt) / 1000
+    const previousTs = lastByPair.get(signal.pairId)
+    if (previousTs && (ts - previousTs) / 3600 < candidate.minSpacingHours) continue
+    lastByPair.set(signal.pairId, ts)
+    selected.push(signal)
   }
   return selected
 }
@@ -868,6 +993,15 @@ function rowAllocationPct(row) {
 
 function holdDaysForRow(row) {
   return daysBetween(rowEntryDate(row), rowExitDate(row))
+}
+
+function metricRowsForTrades(trades) {
+  return trades.map((trade) => ({
+    ...trade,
+    entryTradeDate: trade.observedDate,
+    exitTradeDate: trade.exitObservedDate ?? trade.observedDate,
+    portfolioAllocationPct: config.capitalAllocationPct,
+  }))
 }
 
 function rowDateBounds(rows) {
@@ -961,12 +1095,7 @@ function splitEdgesForTrades(trades) {
 }
 
 function splitMetricsForTrades(trades) {
-  const toQoreRows = trades.map((trade) => ({
-    ...trade,
-    entryTradeDate: trade.observedDate,
-    exitTradeDate: trade.observedDate,
-    portfolioAllocationPct: config.capitalAllocationPct,
-  }))
+  const toQoreRows = metricRowsForTrades(trades)
   return {
     train: additiveMetricsFromRows(toQoreRows.filter((trade) => trade.split === 'train')),
     validation: additiveMetricsFromRows(toQoreRows.filter((trade) => trade.split === 'validation')),
@@ -975,36 +1104,88 @@ function splitMetricsForTrades(trades) {
   }
 }
 
-function buildCandidates(observations, splitDates) {
+function maxConcurrentExposurePctForTrades(trades) {
+  const events = []
+  for (const trade of trades) {
+    const entryTs = Date.parse(trade.observedAt)
+    const exitTs = Date.parse(trade.exitObservedAt)
+    if (!Number.isFinite(entryTs) || !Number.isFinite(exitTs)) continue
+    events.push([entryTs, 1])
+    events.push([exitTs, -1])
+  }
+  events.sort((left, right) => left[0] - right[0] || right[1] - left[1])
+
+  let concurrent = 0
+  let maxConcurrent = 0
+  for (const [, delta] of events) {
+    concurrent += delta
+    maxConcurrent = Math.max(maxConcurrent, concurrent)
+  }
+  return round(maxConcurrent * config.capitalAllocationPct, 4)
+}
+
+function splitMaxConcurrentExposureForTrades(trades) {
+  return {
+    train: maxConcurrentExposurePctForTrades(trades.filter((trade) => trade.split === 'train')),
+    validation: maxConcurrentExposurePctForTrades(trades.filter((trade) => trade.split === 'validation')),
+    holdout: maxConcurrentExposurePctForTrades(trades.filter((trade) => trade.split === 'holdout')),
+    all: maxConcurrentExposurePctForTrades(trades),
+  }
+}
+
+function buildCandidates(observations, byPair, splitDates) {
   const candidates = []
   const configs = []
-  const minGrossEdgeCentsValues = uniqueSortedValues([1, 1.5, 2, 3, 5, config.feeHaircutCents + config.basisHaircutCents])
+  const minGrossEdgeCentsValues = uniqueSortedValues([1, 1.5, 2, 3, 5, 8, 10, 15, 20, 30, config.feeHaircutCents + config.basisHaircutCents])
   for (const minGrossEdgeCents of minGrossEdgeCentsValues) {
-    for (const minSpacingHours of [1, 6, 24]) {
-      configs.push({ minGrossEdgeCents, minSpacingHours })
+    for (const minSpacingHours of [1, 6, 12, 24, 48, 72, 168]) {
+      for (const holdHours of [1, 6, 24, 72, 168, 336, 720]) {
+        configs.push({ minGrossEdgeCents, minSpacingHours, holdHours })
+      }
     }
   }
   for (const candidate of configs) {
-    const candidateId = `cross-edge-${String(candidate.minGrossEdgeCents).replace('.', 'p')}c-spacing-${candidate.minSpacingHours}h`
-    const trades = selectTradesForCandidate(observations, candidate, splitDates)
+    const candidateId = `cross-edge-${String(candidate.minGrossEdgeCents).replace('.', 'p')}c-spacing-${candidate.minSpacingHours}h-hold-${candidate.holdHours}h`
+    const trades = selectTradesForCandidate(observations, byPair, candidate, splitDates)
     const splitEdges = splitEdgesForTrades(trades)
     const splitMetrics = splitMetricsForTrades(trades)
+    const maxConcurrentExposure = splitMaxConcurrentExposureForTrades(trades)
     const trainTradeCount = trades.filter((trade) => trade.split === 'train').length
     const validationTradeCount = trades.filter((trade) => trade.split === 'validation').length
     const holdoutTradeCount = trades.filter((trade) => trade.split === 'holdout').length
+    const trainValidationReturnPct = round(splitMetrics.train.totalReturnPct + splitMetrics.validation.totalReturnPct, 4)
+    const trainValidationScore = round(
+      trainValidationReturnPct +
+        Math.min(splitMetrics.train.sharpe, 5) * 0.35 +
+        Math.min(splitMetrics.validation.sharpe, 5) * 0.65 +
+        Math.max(splitMetrics.train.maxDrawdownPct, -25) * 0.08 +
+        Math.max(splitMetrics.validation.maxDrawdownPct, -25) * 0.12,
+      4,
+    )
     const selectionEligible =
-      trainTradeCount >= 8 &&
-      validationTradeCount >= 8 &&
-      splitEdges.train > 0 &&
-      splitEdges.validation > 0
+      trainTradeCount >= config.minTrainTrades &&
+      validationTradeCount >= config.minValidationTrades &&
+      splitMetrics.train.totalReturnPct > 0 &&
+      splitMetrics.validation.totalReturnPct >= config.minValidationReturnPct &&
+      splitMetrics.train.maxDrawdownPct > -25 &&
+      splitMetrics.validation.maxDrawdownPct > -25 &&
+      maxConcurrentExposure.all <= config.maxConcurrentExposurePct &&
+      maxConcurrentExposure.train <= config.maxConcurrentExposurePct &&
+      maxConcurrentExposure.validation <= config.maxConcurrentExposurePct
     candidates.push({
       candidateId,
       minGrossEdgeCents: candidate.minGrossEdgeCents,
       feeHaircutCents: config.feeHaircutCents + config.basisHaircutCents,
       minSpacingHours: candidate.minSpacingHours,
-      eligible: selectionEligible && holdoutTradeCount >= 8,
+      holdHours: candidate.holdHours,
+      eligible: selectionEligible && holdoutTradeCount >= 25 && splitMetrics.holdout.totalReturnPct > 0,
       selectionEligible,
       trainValidationRank: 0,
+      trainValidationScore,
+      maxConcurrentExposurePct: maxConcurrentExposure.all,
+      trainMaxConcurrentExposurePct: maxConcurrentExposure.train,
+      validationMaxConcurrentExposurePct: maxConcurrentExposure.validation,
+      holdoutMaxConcurrentExposurePct: maxConcurrentExposure.holdout,
       trainEdgePct: splitEdges.train,
       validationEdgePct: splitEdges.validation,
       holdoutEdgePct: splitEdges.holdout,
@@ -1027,10 +1208,17 @@ function buildCandidates(observations, splitDates) {
       currentTradeCount: null,
       averageNetReturnPct: round(mean(trades.map((trade) => trade.netReturnPct)), 4),
       averagePackageReturnPct: round(mean(trades.map((trade) => trade.packageReturnPct)), 4),
+      dailyReturnsPct: additiveDailyReturns(metricRowsForTrades(trades)).map((value) => value * 100),
     })
   }
   candidates
-    .sort((left, right) => right.trainEdgePct + right.validationEdgePct - (left.trainEdgePct + left.validationEdgePct) || right.tradeCount - left.tradeCount)
+    .sort(
+      (left, right) =>
+        Number(right.selectionEligible) - Number(left.selectionEligible) ||
+        right.trainValidationScore - left.trainValidationScore ||
+        right.validationReturnPct - left.validationReturnPct ||
+        right.tradeCount - left.tradeCount,
+    )
     .forEach((candidate, index) => {
       candidate.trainValidationRank = index + 1
     })
@@ -1046,27 +1234,111 @@ function selectedCandidate(candidates) {
   )
 }
 
-function selectedScreenRealityCheck(trades, observations, candidate, dates) {
-  const thresholdRows = observations.filter((observation) => observation.grossEdgeCents >= candidate.minGrossEdgeCents)
-  const thresholdReturns = thresholdRows.map((observation) => observation.netReturnPct)
-  const selectedReturns = trades.map((trade) => trade.netReturnPct)
+function hashString(value) {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function seededUnit(value) {
+  let state = hashString(value) || 1
+  state = Math.imul(state, 1664525) + 1013904223
+  return (state >>> 0) / 4294967296
+}
+
+function meanFromSignFlip(values, iteration, key) {
+  if (!values.length) return 0
+  return mean(values.map((value, index) => value * (seededUnit(`${key}|${iteration}|${index}`) < 0.5 ? -1 : 1)))
+}
+
+function blockBootstrapMean(values, iteration, blockLength, key) {
+  if (!values.length) return 0
+  const sampled = []
+  while (sampled.length < values.length) {
+    const startIndex = Math.floor(seededUnit(`${key}|${iteration}|${sampled.length}`) * values.length)
+    for (let offset = 0; offset < blockLength && sampled.length < values.length; offset += 1) {
+      sampled.push(values[(startIndex + offset) % values.length] ?? 0)
+    }
+  }
+  return mean(sampled)
+}
+
+function percentileSummary(values) {
   return {
-    method: 'cross-venue-historical-quote-overlap-screen',
-    comparison: 'threshold-qualified Kalshi/Polymarket quote-overlap rows after fee and basis haircuts',
-    alternative: 'not-applicable',
-    pValue: null,
-    singleCandidatePValue: null,
-    selectionAdjustedPValue: null,
-    observedAverageDailyEdgePct: round(mean(thresholdReturns), 4),
-    observedAnnualizedEdgePct: round(mean(thresholdReturns) * 252, 2),
-    dailyActiveVolPct: round(std(thresholdReturns), 4),
+    p05: round(percentile(values, 0.05), 4),
+    p50: round(percentile(values, 0.5), 4),
+    p95: round(percentile(values, 0.95), 4),
+  }
+}
+
+function selectedScreenRealityCheck(trades, observations, candidate, dates, candidates) {
+  const thresholdRows = observations.filter((observation) => observation.grossEdgeCents >= candidate.minGrossEdgeCents)
+  const selectedReturns = trades.map((trade) => trade.netReturnPct)
+  const selectedDailyReturnsPct = additiveDailyReturns(metricRowsForTrades(trades)).map((value) => value * 100)
+  const candidateSeries = candidates
+    .filter((entry) => entry.selectionEligible && entry.dailyReturnsPct?.length)
+    .map((entry) => ({
+      candidateId: entry.candidateId,
+      observedMeanDailyEdgePct: mean(entry.dailyReturnsPct),
+      values: entry.dailyReturnsPct,
+    }))
+  const candidateFamily = candidateSeries.length ? candidateSeries : [{ candidateId: candidate.candidateId, observedMeanDailyEdgePct: mean(selectedDailyReturnsPct), values: selectedDailyReturnsPct }]
+  const iterations = config.monteCarloIterations
+  const blockLength = Math.max(1, Math.min(10, Math.round(Math.sqrt(Math.max(selectedDailyReturnsPct.length, 1)))))
+  const observedAverageDailyEdgePct = mean(selectedDailyReturnsPct)
+  const observedBootstrapMeans = []
+  const nullSelectedMeans = []
+  const nullMaxMeans = []
+  let singleCandidateExtreme = 1
+  let selectionAdjustedExtreme = 1
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const bootstrapMean = blockBootstrapMean(selectedDailyReturnsPct, iteration, blockLength, `${candidate.candidateId}|bootstrap`)
+    const nullSelectedMean = meanFromSignFlip(selectedDailyReturnsPct, iteration, `${candidate.candidateId}|null`)
+    const nullMaxMean = Math.max(
+      ...candidateFamily.map((entry) => meanFromSignFlip(entry.values, iteration, `${entry.candidateId}|family-null`)),
+    )
+    observedBootstrapMeans.push(bootstrapMean)
+    nullSelectedMeans.push(nullSelectedMean)
+    nullMaxMeans.push(nullMaxMean)
+    if (nullSelectedMean >= observedAverageDailyEdgePct) singleCandidateExtreme += 1
+    if (nullMaxMean >= observedAverageDailyEdgePct) selectionAdjustedExtreme += 1
+  }
+
+  const bestObservedCandidate = candidateFamily
+    .slice()
+    .sort((left, right) => right.observedMeanDailyEdgePct - left.observedMeanDailyEdgePct)[0]
+
+  return {
+    method: 'cross-venue-marked-quote-exit-block-bootstrap',
+    comparison: 'selected marked quote-exit rows versus sign-flipped candidate-family null',
+    alternative: 'positive mean daily marked edge after fixed train/validation selection',
+    pValue: round(selectionAdjustedExtreme / (iterations + 1), 4),
+    singleCandidatePValue: round(singleCandidateExtreme / (iterations + 1), 4),
+    selectionAdjustedPValue: round(selectionAdjustedExtreme / (iterations + 1), 4),
+    observedAverageDailyEdgePct: round(observedAverageDailyEdgePct, 4),
+    observedAnnualizedEdgePct: round(observedAverageDailyEdgePct * calendarDaysPerYear, 2),
+    dailyActiveVolPct: round(std(selectedDailyReturnsPct), 4),
+    standardErrorDailyEdgePct: round(std(selectedDailyReturnsPct) / Math.sqrt(Math.max(selectedDailyReturnsPct.length, 1)), 4),
+    meanConfidenceIntervalDailyEdgePct: percentileSummary(observedBootstrapMeans),
+    nullConfidenceIntervalDailyEdgePct: percentileSummary(nullSelectedMeans),
+    nullMaxMeanDailyEdgePct: percentileSummary(nullMaxMeans),
+    candidateFamilySize: candidateFamily.length,
+    bestObservedCandidateId: bestObservedCandidate?.candidateId ?? null,
+    bestObservedAverageDailyEdgePct: bestObservedCandidate ? round(bestObservedCandidate.observedMeanDailyEdgePct, 4) : null,
     sampleCount: thresholdRows.length,
     selectedSampleCount: trades.length,
     activeOverlayDays: new Set(thresholdRows.map((observation) => observation.observedDate)).size,
-    minimumResolvablePValue: null,
+    minimumResolvablePValue: round(1 / (iterations + 1), 4),
+    iterations,
+    blockLength,
     positiveSelectedReturnRows: selectedReturns.filter((value) => value > 0).length,
+    negativeSelectedReturnRows: selectedReturns.filter((value) => value < 0).length,
     limitation:
-      `Historical support uses overlapping hourly Kalshi bid/ask candles and Polymarket price-history rows across ${dates.length.toLocaleString()} observed days. It is quote-screen evidence, not settlement-confirmed fills.`,
+      `Historical support uses overlapping hourly Kalshi bid/ask candles and Polymarket price-history rows across ${dates.length.toLocaleString()} observed days. Returns are marked to later available quotes, not settlement-confirmed fills.`,
   }
 }
 
@@ -1084,22 +1356,22 @@ function qoreTradeRows(trades) {
       observedAt: trade.observedAt,
       signalDate: trade.observedDate,
       issueDate: trade.observedDate,
-      targetDate: trade.observedDate,
+      targetDate: trade.exitObservedDate ?? trade.observedDate,
       entryTradeDate: trade.observedDate,
-      exitTradeDate: trade.observedDate,
-      targetTradeDate: trade.observedDate,
+      exitTradeDate: trade.exitObservedDate ?? trade.observedDate,
+      targetTradeDate: trade.exitObservedDate ?? trade.observedDate,
       direction: 'long',
       sourceId: trade.sourceId,
       windowId: 'cross-venue-rv',
       thesisKind: 'cross-venue-rv',
-      leadDays: 1,
+      leadDays: round((trade.holdHours ?? config.candleIntervalMinutes / 60) / 24, 4),
       confidence: round(trade.confidence, 4),
       weightedAnomalyF: round(trade.grossEdgeCents, 4),
       coveragePct: round(trade.matchScore * 100, 2),
       coldCoveragePct: 0,
       warmCoveragePct: 0,
       extremeCount: 0,
-      grossReturnPct: round(trade.grossEdgeCents, 4),
+      grossReturnPct: round(trade.grossPackageReturnPct, 4),
       tradingCostPct: config.feeHaircutCents + config.basisHaircutCents,
       netReturnPct,
       indexReturnPct: 0,
@@ -1153,21 +1425,61 @@ function waitForWritable(stream, eventName) {
 
 async function writeCsv(path, rows, fields) {
   mkdirSync(dirname(path), { recursive: true })
-  const stream = createWriteStream(path)
+  const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`
+  const stream = createWriteStream(tmpPath)
   const writeLine = async (line) => {
     if (!stream.write(line)) await waitForWritable(stream, 'drain')
   }
-  await writeLine(`${fields.join(',')}\n`)
-  for (const row of rows) {
-    await writeLine(`${fields.map((field) => csvEscape(row[field])).join(',')}\n`)
+  try {
+    await writeLine(`${fields.join(',')}\n`)
+    for (const row of rows) {
+      await writeLine(`${fields.map((field) => csvEscape(row[field])).join(',')}\n`)
+    }
+    stream.end()
+    await waitForWritable(stream, 'finish')
+    const writtenRows = countCsvDataRows(tmpPath)
+    if (writtenRows !== rows.length) {
+      throw new Error(`wrote ${writtenRows} CSV rows to ${path}, expected ${rows.length}`)
+    }
+    renameSync(tmpPath, path)
+    return writtenRows
+  } catch (error) {
+    stream.destroy()
+    try {
+      unlinkSync(tmpPath)
+    } catch {
+      // Best effort cleanup only.
+    }
+    throw error
   }
-  stream.end()
-  await waitForWritable(stream, 'finish')
 }
 
 function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+  const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`
+  writeFileSync(tmpPath, `${JSON.stringify(value, null, 2)}\n`)
+  renameSync(tmpPath, path)
+}
+
+function countCsvDataRows(path) {
+  const text = readFileSync(path, 'utf8')
+  if (!text.length) return 0
+  let rows = 0
+  let quoted = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (char === '"') {
+      if (quoted && text[index + 1] === '"') {
+        index += 1
+      } else {
+        quoted = !quoted
+      }
+    } else if (char === '\n' && !quoted) {
+      rows += 1
+    }
+  }
+  if (!text.endsWith('\n')) rows += 1
+  return Math.max(0, rows - 1)
 }
 
 async function main() {
@@ -1183,7 +1495,6 @@ async function main() {
   const currentSignals = comparablePairs
     .filter((pair) => pair.currentEdge && pair.currentEdge.grossEdge > 0)
     .map((pair) => observationFromEdge(pair, generatedAt.toISOString(), isoDate(generatedAt), pair.currentEdge, 'current'))
-  const currentSelectedSignals = currentSignals.filter((signal) => signal.grossEdgeCents >= config.feeHaircutCents + config.basisHaircutCents && signal.netEdgeCents > 0)
   const historicalResult = await buildHistoricalObservations(comparablePairs)
   if (historicalResult.failures.length && !config.allowPartialHistory) {
     const failedIds = historicalResult.failures.map((failure) => failure.pairId).join(', ')
@@ -1193,19 +1504,22 @@ async function main() {
     )
   }
   const { observations } = historicalResult
-  const { dates, minDate, maxDate, splitDates } = splitDatesFromObservations(observations)
-  const candidates = buildCandidates(observations, splitDates)
+  const byPair = observationsByPair(observations)
+  const { dates, minDate, maxDate, requestedHoldoutStart, actualHoldoutDays, splitDates } = splitDatesFromObservations(observations)
+  const candidates = buildCandidates(observations, byPair, splitDates)
   const selected = selectedCandidate(candidates)
+  const currentSelectedSignals = selectCurrentSignalsForCandidate(currentSignals, selected)
   const selectedTrades = selectTradesForCandidate(
     observations,
-    { minGrossEdgeCents: selected.minGrossEdgeCents, minSpacingHours: selected.minSpacingHours },
+    byPair,
+    { minGrossEdgeCents: selected.minGrossEdgeCents, minSpacingHours: selected.minSpacingHours, holdHours: selected.holdHours },
     splitDates,
   )
   const selectedMetrics = additiveMetricsFromRows(qoreTradeRows(selectedTrades))
   const selectedSplitMetrics = splitMetricsForTrades(selectedTrades)
   const selectedSplitEdges = splitEdgesForTrades(selectedTrades)
   const qoreRows = qoreTradeRows(selectedTrades)
-  const realityCheck = selectedScreenRealityCheck(selectedTrades, observations, selected, dates)
+  const realityCheck = selectedScreenRealityCheck(selectedTrades, observations, selected, dates, candidates)
 
   await writeCsv(resolve(outputDir, 'comparable-pairs.csv'), comparablePairs, [
     'pairId',
@@ -1215,7 +1529,7 @@ async function main() {
     'liquidityMin',
     'volume24hMin',
   ])
-  await writeCsv(resolve(outputDir, 'historical-observations.csv'), observations, [
+  const historicalObservationCsvRows = await writeCsv(resolve(outputDir, 'historical-observations.csv'), observations, [
     'observedAt',
     'observedDate',
     'pairId',
@@ -1230,6 +1544,9 @@ async function main() {
     'packageCost',
     'packageReturnPct',
     'netReturnPct',
+    'kalshiYesBid',
+    'kalshiYesAsk',
+    'polymarketYesPrice',
   ])
   await writeCsv(resolve(outputDir, 'cross-venue-signals.csv'), currentSignals, [
     'observedAt',
@@ -1251,9 +1568,15 @@ async function main() {
     'minGrossEdgeCents',
     'feeHaircutCents',
     'minSpacingHours',
+    'holdHours',
     'eligible',
     'selectionEligible',
     'trainValidationRank',
+    'trainValidationScore',
+    'maxConcurrentExposurePct',
+    'trainMaxConcurrentExposurePct',
+    'validationMaxConcurrentExposurePct',
+    'holdoutMaxConcurrentExposurePct',
     'trainEdgePct',
     'validationEdgePct',
     'holdoutEdgePct',
@@ -1341,12 +1664,18 @@ async function main() {
       historicalPairsFailed: historicalResult.failures.length,
       historicalFailedPairIds: historicalResult.failures.map((failure) => failure.pairId),
       historicalAllowPartial: config.allowPartialHistory,
-      historicalObservations: observations.length,
+      historicalObservations: historicalObservationCsvRows,
       historicalStartDate: minDate,
       historicalEndDate: maxDate,
       historyDaysRequested: config.historyDays,
+      holdoutDaysRequested: config.holdoutDays,
+      actualHoldoutDays,
       candleIntervalMinutes: config.candleIntervalMinutes,
       portfolioAllocationPct: config.capitalAllocationPct,
+      maxConcurrentExposurePct: config.maxConcurrentExposurePct,
+      minSelectionTrainTrades: config.minTrainTrades,
+      minSelectionValidationTrades: config.minValidationTrades,
+      minSelectionValidationReturnPct: config.minValidationReturnPct,
       feeHaircutCents: config.feeHaircutCents,
       basisHaircutCents: config.basisHaircutCents,
     },
@@ -1354,15 +1683,16 @@ async function main() {
       trainEnd: splitDates.trainEnd,
       validationEnd: splitDates.validationEnd,
       holdoutStart: splitDates.holdoutStart,
+      requestedHoldoutStart,
       feeHaircutCents: config.feeHaircutCents + config.basisHaircutCents,
       capitalAllocationPct: config.capitalAllocationPct,
       fallback: 'No idle capital allocation is modeled; rows represent detected cross-venue paper entries only.',
       selectionPolicy:
-        'Comparable-market parsers are fixed before ranking: exact election-winner keys and same-candidate outright-winner keys with same year, category, and geography checks. Candidate threshold and spacing variants are ranked on train/validation quote-overlap diagnostics only; holdout is report-only.',
+        `Comparable-market parsers are fixed before ranking: exact election-winner keys and same-candidate outright-winner keys with same year, category, and geography checks. Candidate edge, spacing, and hold-time variants are ranked on train/validation marked quote-exit diagnostics only after requiring at least ${config.minTrainTrades} train rows, ${config.minValidationTrades} validation rows, ${config.minValidationReturnPct}% validation return, and no more than ${config.maxConcurrentExposurePct}% max concurrent canary exposure; holdout is report-only.`,
       signalTiming:
-        'Use overlapping hourly Kalshi bid/ask candles and Polymarket price-history rows for historical support. The paper pair buys the cheap YES side and the rich NO side, then assumes convergence to close the quote gap.',
+        'Use overlapping hourly Kalshi bid/ask candles and Polymarket price-history rows for historical support. The paper pair buys the cheap YES side and the rich NO side, then marks the package to a later available quote in the same convergence direction.',
       overfitControl:
-        `No loose fuzzy text match is auto-promoted. The selected split uses ${dates.length.toLocaleString()} unique observed days with hidden holdout starting ${splitDates.holdoutStart}; every pair remains subject to rule-text, settlement-source, fee, liquidity, restriction, and venue-basis review before paper or live execution.`,
+        `No loose fuzzy text match is auto-promoted. The selected split uses ${dates.length.toLocaleString()} unique observed days with the requested last-${config.holdoutDays}-day hidden holdout starting ${splitDates.holdoutStart}; the search includes the failed 1/6/24-hour low-edge exits plus stricter high-edge/longer-hold convergence variants, and every pair remains subject to rule-text, settlement-source, fee, liquidity, restriction, and venue-basis review before paper or live execution.`,
     },
     selected: {
       candidateId: selected.candidateId,
@@ -1372,7 +1702,9 @@ async function main() {
       minGrossEdgeCents: selected.minGrossEdgeCents,
       feeHaircutCents: config.feeHaircutCents + config.basisHaircutCents,
       minSpacingHours: selected.minSpacingHours,
+      holdHours: selected.holdHours,
       capitalAllocationPct: config.capitalAllocationPct,
+      maxConcurrentExposurePct: selected.maxConcurrentExposurePct,
       allMetrics: selectedMetrics,
       trainMetrics: selectedSplitMetrics.train,
       validationMetrics: selectedSplitMetrics.validation,
