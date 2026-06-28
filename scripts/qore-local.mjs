@@ -9,9 +9,11 @@ import { readOrCreateServiceToken } from './qore-git-auth.mjs'
 const launchAgentLabel = 'com.qore.github-service'
 const repoDir = path.resolve(process.cwd())
 const host = process.env.QORE_GIT_SERVICE_HOST ?? '127.0.0.1'
-const servicePort = Number(process.env.QORE_GIT_SERVICE_PORT ?? 4774)
-const serviceBaseUrl = `http://${host}:${servicePort}`
-const serviceUrl = `${serviceBaseUrl}/api/github/status`
+const preferredServicePort = normalizePort(process.env.QORE_GIT_SERVICE_PORT) ?? 4774
+const serviceFallbackLimit = normalizePositiveInteger(process.env.QORE_GIT_SERVICE_PORT_FALLBACK_LIMIT) ?? 50
+let servicePort = preferredServicePort
+let serviceBaseUrl = serviceBaseUrlForPort(servicePort)
+let serviceUrl = serviceStatusUrlForPort(servicePort)
 const viteBin = path.join(repoDir, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite')
 const serviceToken = await readOrCreateServiceToken(repoDir)
 const viteArgs = process.argv.slice(2)
@@ -19,13 +21,6 @@ if (!viteArgs.some((arg) => arg === '--host' || arg.startsWith('--host='))) {
   viteArgs.unshift('--host', '127.0.0.1')
 }
 const dashboardPort = await ensureVitePort()
-const childEnv = {
-  ...process.env,
-  QORE_GIT_SERVICE_TOKEN: serviceToken,
-  QORE_GIT_SERVICE_ALLOWED_ORIGINS: process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ?? dashboardAllowedOrigins(),
-  VITE_QORE_GIT_SERVICE_URL: serviceBaseUrl,
-  VITE_QORE_GIT_SERVICE_TOKEN: serviceToken,
-}
 
 function headerListIncludes(value, expected) {
   return String(value ?? '')
@@ -50,6 +45,25 @@ function normalizePort(value) {
   return Number.isInteger(candidate) && candidate > 0 && candidate < 65536 ? candidate : null
 }
 
+function normalizePositiveInteger(value) {
+  const candidate = Number(value)
+  return Number.isInteger(candidate) && candidate > 0 ? candidate : null
+}
+
+function serviceBaseUrlForPort(portToUse) {
+  return `http://${host}:${portToUse}`
+}
+
+function serviceStatusUrlForPort(portToUse) {
+  return `${serviceBaseUrlForPort(portToUse)}/api/github/status`
+}
+
+function setServicePort(portToUse) {
+  servicePort = portToUse
+  serviceBaseUrl = serviceBaseUrlForPort(portToUse)
+  serviceUrl = serviceStatusUrlForPort(portToUse)
+}
+
 function portIsAvailable(portToCheck, hostToCheck) {
   return new Promise((resolve) => {
     const server = createNetServer()
@@ -61,13 +75,13 @@ function portIsAvailable(portToCheck, hostToCheck) {
   })
 }
 
-async function firstAvailablePort(hostToCheck, preferredPort) {
-  for (let offset = 0; offset < 50; offset += 1) {
+async function firstAvailablePort(hostToCheck, preferredPort, fallbackLimit, label) {
+  for (let offset = 0; offset < fallbackLimit; offset += 1) {
     const candidate = preferredPort + offset
     if (candidate >= 65536) break
     if (await portIsAvailable(candidate, hostToCheck)) return candidate
   }
-  throw new Error(`No open QORE dashboard port found starting at ${preferredPort}.`)
+  throw new Error(`No open ${label} found starting at ${preferredPort}.`)
 }
 
 async function ensureVitePort() {
@@ -78,7 +92,8 @@ async function ensureVitePort() {
 
   const preferredPort = normalizePort(process.env.QORE_PORT) ?? 5173
   const dashboardHost = argValue(viteArgs, '--host') || '127.0.0.1'
-  const selectedPort = await firstAvailablePort(dashboardHost, preferredPort)
+  const fallbackLimit = normalizePositiveInteger(process.env.QORE_PORT_FALLBACK_LIMIT) ?? 50
+  const selectedPort = await firstAvailablePort(dashboardHost, preferredPort, fallbackLimit, 'QORE dashboard port')
   viteArgs.unshift('--port', String(selectedPort))
   if (!hasArg(viteArgs, '--strictPort')) viteArgs.unshift('--strictPort')
   if (selectedPort !== preferredPort) {
@@ -97,6 +112,19 @@ function dashboardOrigin() {
 
 function dashboardAllowedOrigins() {
   return [dashboardOrigin(), `http://localhost:${vitePort()}`].join(',')
+}
+
+async function chooseServicePort() {
+  const runningState = await serviceIsRunning()
+  const canFallbackFromRunningState =
+    runningState === 'down' || runningState === 'unauthorized' || runningState === 'wrong-repo'
+  if (runningState && !canFallbackFromRunningState) return runningState
+  if (await portIsAvailable(servicePort, host)) return false
+
+  const selectedPort = await firstAvailablePort(host, preferredServicePort + 1, serviceFallbackLimit, 'QORE Git service port')
+  setServicePort(selectedPort)
+  console.log(`QORE Git service port ${preferredServicePort} is busy; using ${serviceBaseUrl}`)
+  return false
 }
 
 function serviceBrowserAccess() {
@@ -194,7 +222,14 @@ function restartLaunchAgentService() {
 function spawnChild(command, args, options = {}) {
   return spawn(command, args, {
     cwd: repoDir,
-    env: childEnv,
+    env: {
+      ...process.env,
+      QORE_GIT_SERVICE_PORT: String(servicePort),
+      QORE_GIT_SERVICE_TOKEN: serviceToken,
+      QORE_GIT_SERVICE_ALLOWED_ORIGINS: process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ?? dashboardAllowedOrigins(),
+      VITE_QORE_GIT_SERVICE_URL: serviceBaseUrl,
+      VITE_QORE_GIT_SERVICE_TOKEN: serviceToken,
+    },
     stdio: 'inherit',
     ...options,
   })
@@ -206,7 +241,7 @@ if (!existsSync(viteBin)) {
 }
 
 let service = null
-let serviceState = await serviceIsRunning()
+let serviceState = await chooseServicePort()
 if (serviceState === 'down') serviceState = false
 if (serviceState === 'incompatible' || serviceState === 'origin-denied') {
   const restartReason =
