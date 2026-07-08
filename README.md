@@ -75,6 +75,31 @@ npm run collect:graphcast-calendar
 
 These build resume-friendly daily GFS, GEFS ensemble-mean, and GraphCastGFS forecast calendars under `data/qore/` for arctic-blast lead windows. The default end date rolls to the latest complete UTC day; set `QORE_GFS_CALENDAR_END` or `QORE_TEST_END` for a fixed snapshot. The GraphCastGFS script starts on the first raw NOAA 00z archive date verified for this collector, `2024-04-26`. Failed items make the command exit nonzero unless `QORE_GFS_ALLOW_PARTIAL=1` is set.
 
+VPS live weather loop:
+
+```bash
+npm run live:weather
+```
+
+This is the long-running weather reader intended for an always-on VPS. It polls current Open-Meteo model forecasts every five minutes by default, scores the Eastern CONUS demand basket, writes a live handoff under `.local/qore/live-weather/`, and refreshes the `ngas-live-weather-refresh` comparison artifact on a slower cadence. Use `npm run live:weather:once` for a one-cycle health check. Tune with `QORE_LIVE_WEATHER_INTERVAL_MS`, `QORE_LIVE_WEATHER_MODELS`, `QORE_LIVE_WEATHER_FORECAST_DAYS`, and `QORE_LIVE_WEATHER_STATE_DIR`.
+
+Polling profiles live in `config/qore-live-weather-settings.json`:
+
+```bash
+npm run live:weather:rapid
+npm run live:weather:fast
+npm run live:weather -- --profile=rapid-test
+npm run live:weather -- --profile=fast
+npm run live:weather -- --profile=balanced
+npm run live:weather -- --profile=conservative
+```
+
+`rapid-test` requests a one-second current-weather cadence with one batched GFS pull across all tracked locations. The two-model profiles keep ECMWF IFS plus GFS for stronger guardrail context. The status file reports `cycle.durationMs`, `cycle.sleepMs`, `cycle.cycleOverrunMs`, and `cycle.cadenceMet` so you can see whether the VPS/API round trip can actually keep up before leaving it there. Env vars still override the profile, so `QORE_LIVE_WEATHER_INTERVAL_MS=1000 npm run live:weather` remains valid for quick experiments.
+
+Set `QORE_LIVE_WEATHER_RUN_GFS_CALENDAR=1` when the VPS should also keep near-window NOAA GFS/GEFS archive calendars warm. That heavier path polls run hours `00,06,12,18` by default with resume and partial-output mode enabled. The live loop still does not instantiate a broker client; a future broker adapter should consume `.local/qore/live-weather/status.json` and keep its own order/fill logs.
+
+The other live lanes are market reference prices with spread-availability metadata, broker account and position state, risk/kill-switch state, current signal-intent reconciliation, and EIA storage polling around the weekly release window. Their intervals and slider bounds are recorded in `liveCadences` inside `config/qore-live-weather-settings.json`, and every lane writes its own status artifact under `.local/qore/live-weather/`.
+
 ## What It Does
 
 - Opens on the tracked `data/qore` research catalog without bundled starter rows.
@@ -119,6 +144,15 @@ npm run optimize:ngas-all-year-beta
 ```
 
 The selected beta artifact made `877.16%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-15.86%` max drawdown. Train return was `186.29%`, validation was `70.74%`, and holdout was `99.9%`; holdout edge versus the index basket was `69.74%`. Its direct all-year centered circular block bootstrap p-value is `0.00005`, replacing the old Fisher-combined component p-value. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+
+The live-weather-refresh replay compares that checked-in all-year ledger against a no-close-in-weather-refresh counterfactual:
+
+```bash
+npm run test:ngas-live-weather-refresh
+npm run optimize:ngas-live-weather-head-to-head
+```
+
+On the current artifact, the close-in weather-refresh version made `877.16%` full-sample versus `844.97%` without refresh, a `+32.19` point full-sample advantage. Hidden holdout was mixed: `99.9%` with refresh versus `102.57%` without refresh, a `-2.67` point holdout difference. The head-to-head optimizer tunes the live close-in Winter Alpha weather-resolution scaling on train/validation only, then reports the selected live variant against the non-live counterfactual on holdout. Its selected optimized-live variant made `917.47%` full-sample, but only `97.94%` holdout versus `102.57%` for non-live; `0` of `5,832` tuned live variants beat non-live on holdout. Verdict: keep the live reader for monitoring and paper evidence, but prefer the non-live close-in overlay for promotion until new out-of-sample paper/live rows prove otherwise.
 
 The prediction-market checked-in artifacts include active `prediction-time-ladder-alpha` and `prediction-cross-market-rv-alpha` lanes plus a failed diagnostic `prediction-time-decay-alpha` research artifact. The cross-market and time-decay models remain separate collectors; time-decay keeps its raw `historical-observations.csv` quote/proxy dump local-only, while only its summary, candidate, current-market, and selected-trade artifacts are checked in. Stale current rows are reported separately from historical support rows.
 

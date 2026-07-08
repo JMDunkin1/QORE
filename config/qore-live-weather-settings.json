@@ -1,0 +1,121 @@
+{
+  "defaultProfile": "balanced",
+  "profiles": {
+    "rapid-test": {
+      "description": "One-second requested weather polling for short VPS/API experiments. Watch cycleOverrunMs before using this continuously.",
+      "liveForecastIntervalMs": 1000,
+      "fetchConcurrency": 1,
+      "fetchBatchSize": 18,
+      "fetchTimeoutMs": 5000,
+      "forecastDays": 10,
+      "models": ["gfs_global"],
+      "cadences": {
+        "marketReferencePrices": { "intervalMs": 1000 },
+        "brokerAccountAndPositions": { "intervalMs": 1000 },
+        "riskAndKillSwitchState": { "intervalMs": 1000 },
+        "signalIntentReconcile": { "intervalMs": 5000 },
+        "eiaStorageReleaseWindow": { "intervalMs": 60000 }
+      },
+      "runPerformanceTest": true,
+      "performanceIntervalMs": 600000,
+      "runForecastCalendar": false,
+      "forecastCalendarIntervalMs": 3600000
+    },
+    "fast": {
+      "description": "Aggressive but calmer polling for active weather windows.",
+      "liveForecastIntervalMs": 15000,
+      "fetchConcurrency": 2,
+      "fetchBatchSize": 9,
+      "fetchTimeoutMs": 10000,
+      "forecastDays": 10,
+      "models": ["ecmwf_ifs025", "gfs_global"],
+      "cadences": {
+        "marketReferencePrices": { "intervalMs": 5000 },
+        "brokerAccountAndPositions": { "intervalMs": 5000 },
+        "riskAndKillSwitchState": { "intervalMs": 1000 },
+        "signalIntentReconcile": { "intervalMs": 30000 },
+        "eiaStorageReleaseWindow": { "intervalMs": 60000 }
+      },
+      "runPerformanceTest": true,
+      "performanceIntervalMs": 3600000,
+      "runForecastCalendar": false,
+      "forecastCalendarIntervalMs": 3600000
+    },
+    "balanced": {
+      "description": "Default VPS profile for ordinary unattended operation.",
+      "liveForecastIntervalMs": 300000,
+      "fetchConcurrency": 3,
+      "fetchBatchSize": 6,
+      "fetchTimeoutMs": 15000,
+      "forecastDays": 10,
+      "models": ["ecmwf_ifs025", "gfs_global"],
+      "cadences": {
+        "marketReferencePrices": { "intervalMs": 15000 },
+        "brokerAccountAndPositions": { "intervalMs": 5000 },
+        "riskAndKillSwitchState": { "intervalMs": 1000 },
+        "signalIntentReconcile": { "intervalMs": 60000 },
+        "eiaStorageReleaseWindow": { "intervalMs": 60000 }
+      },
+      "runPerformanceTest": true,
+      "performanceIntervalMs": 86400000,
+      "runForecastCalendar": false,
+      "forecastCalendarIntervalMs": 3600000
+    },
+    "conservative": {
+      "description": "Low-noise polling for quiet periods or limited API budgets.",
+      "liveForecastIntervalMs": 900000,
+      "fetchConcurrency": 2,
+      "fetchBatchSize": 6,
+      "fetchTimeoutMs": 20000,
+      "forecastDays": 10,
+      "models": ["ecmwf_ifs025", "gfs_global"],
+      "cadences": {
+        "marketReferencePrices": { "intervalMs": 60000 },
+        "brokerAccountAndPositions": { "intervalMs": 15000 },
+        "riskAndKillSwitchState": { "intervalMs": 5000 },
+        "signalIntentReconcile": { "intervalMs": 300000 },
+        "eiaStorageReleaseWindow": { "intervalMs": 300000 }
+      },
+      "runPerformanceTest": true,
+      "performanceIntervalMs": 86400000,
+      "runForecastCalendar": false,
+      "forecastCalendarIntervalMs": 21600000
+    }
+  },
+  "liveCadences": {
+    "marketReferencePrices": {
+      "enabled": true,
+      "intervalMs": 15000,
+      "slider": { "minMs": 1000, "maxMs": 300000, "stepMs": 1000 },
+      "symbols": ["UNG", "VOO", "QQQM", "NG=F"],
+      "reason": "Reference prices, spread availability, and venue-open checks should be fresher than daily if order intents are evaluated intraday."
+    },
+    "brokerAccountAndPositions": {
+      "enabled": true,
+      "intervalMs": 5000,
+      "slider": { "minMs": 1000, "maxMs": 300000, "stepMs": 1000 },
+      "snapshotFile": ".local/qore/broker/account-snapshot.json",
+      "reason": "Equity, cash, open orders, fills, and current positions should be near-live once a broker adapter exists."
+    },
+    "riskAndKillSwitchState": {
+      "enabled": true,
+      "intervalMs": 1000,
+      "slider": { "minMs": 1000, "maxMs": 60000, "stepMs": 1000 },
+      "operatorStateFile": ".local/qore/live-weather/operator-state.json",
+      "reason": "Kill switch, daily-loss, drawdown, and operator-state checks are cheap and should be read on every live cycle."
+    },
+    "signalIntentReconcile": {
+      "enabled": true,
+      "intervalMs": 60000,
+      "slider": { "minMs": 5000, "maxMs": 900000, "stepMs": 5000 },
+      "reason": "Generate or refresh the current paper/live-equivalent intent from the latest weather and market context more often than daily."
+    },
+    "eiaStorageReleaseWindow": {
+      "enabled": true,
+      "intervalMs": 60000,
+      "slider": { "minMs": 30000, "maxMs": 21600000, "stepMs": 30000 },
+      "fetchLive": true,
+      "reason": "Poll around the weekly EIA storage release window, then slow back down after the latest report is captured."
+    }
+  }
+}
