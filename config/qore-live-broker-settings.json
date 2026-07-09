@@ -1,0 +1,43 @@
+{
+  "recommendedBroker": {
+    "id": "alpaca-trading-api",
+    "accountType": "Alpaca Trading API individual taxable brokerage account",
+    "exactStrategyRequirement": "Margin/short capability is needed when the all-year strategy targets negative UNG exposure.",
+    "why": "QORE's current live-orderable contract is ETF-first: UNG for the gas overlay and VOO/QQQM for the index basket. The adapter deliberately refuses NG, MNG, and QG futures."
+  },
+  "alpaca": {
+    "paperBaseUrl": "https://paper-api.alpaca.markets",
+    "liveBaseUrl": "https://api.alpaca.markets",
+    "symbols": ["UNG", "VOO", "QQQM"],
+    "excludedSymbols": ["NG", "MNG", "QG"],
+    "orderDefaults": {
+      "type": "market",
+      "timeInForce": "day",
+      "fractionalOrders": true,
+      "fractionalShortSales": false,
+      "replaceOpenOrders": false,
+      "minOrderUsd": 10
+    }
+  },
+  "gates": {
+    "liveRequiredEnv": {
+      "QORE_BROKER_MODE": "live",
+      "QORE_LIVE_TRADING_ENABLED": "1",
+      "QORE_LIVE_ORDER_ROUTING_ENABLED": "1",
+      "QORE_CONFIRM_LIVE_TRADING": "I_UNDERSTAND_THIS_CAN_LOSE_MONEY"
+    },
+    "paperRequiredEnv": {
+      "QORE_BROKER_MODE": "paper",
+      "QORE_PAPER_ORDER_ROUTING_ENABLED": "1"
+    }
+  },
+  "stateFiles": {
+    "signalIntent": ".local/qore/live-weather/signal-intent-reconcile.json",
+    "marketReference": ".local/qore/live-weather/market-reference-prices.json",
+    "riskState": ".local/qore/live-weather/risk-and-kill-switch-state.json",
+    "brokerSnapshot": ".local/qore/broker/account-snapshot.json",
+    "brokerStatus": ".local/qore/broker/status.json",
+    "orderLog": ".local/qore/broker/orders.jsonl",
+    "supervisorStatus": ".local/qore/live-trading-supervisor/status.json"
+  }
+}

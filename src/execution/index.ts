@@ -6,6 +6,12 @@ export {
   paperExecutionReadinessGates,
 } from './risk'
 export {
+  recommendedLiveBroker,
+  alpacaLiveRiskPolicy,
+  alpacaLiveGatewayProfile,
+  liveExecutionReadinessGates,
+} from './alpaca'
+export {
   dryRunGatewayProfile,
   estimatePaperQuantity,
   createPaperOrderIntent,
@@ -22,6 +28,13 @@ export type {
   OrderLegIntent,
   OrderLegRole,
   OrderIntent,
+  LiveBrokerAccountSnapshot,
+  LiveBrokerCode,
+  LiveBrokerMode,
+  LiveBrokerOrderRequest,
+  LiveBrokerOrderResult,
+  LiveBrokerOrderStatus,
+  LiveBrokerReconcileResult,
   PaperFill,
   PaperLegFill,
   PaperReferencePrices,

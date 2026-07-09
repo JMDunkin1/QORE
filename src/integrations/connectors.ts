@@ -1,5 +1,5 @@
 import type { ExecutionVenue, IntegrationConnector } from '../types'
-import { dryRunGatewayProfile } from '../execution'
+import { alpacaLiveGatewayProfile, dryRunGatewayProfile } from '../execution'
 
 export const integrationConnectors: IntegrationConnector[] = [
   {
@@ -53,12 +53,12 @@ export const integrationConnectors: IntegrationConnector[] = [
     sourceUrl: 'local://execution/dry-run-paper-gateway',
   },
   {
-    name: 'Broker execution adapter',
+    name: alpacaLiveGatewayProfile.label,
     category: 'Execution',
-    status: 'Not connected',
-    purpose: 'Explicitly absent. A future trader-owned adapter must be built separately and approved before routing orders.',
-    envVar: 'BROKER_ADAPTER_DISABLED',
-    sourceUrl: 'local://execution/not-connected',
+    status: 'Credential gated',
+    purpose: alpacaLiveGatewayProfile.purpose,
+    envVar: 'APCA_API_KEY_ID',
+    sourceUrl: 'local://execution/alpaca-live-gateway',
   },
   {
     name: 'QORE Local Data',
@@ -79,6 +79,14 @@ export const integrationConnectors: IntegrationConnector[] = [
 ]
 
 export const executionVenues: ExecutionVenue[] = [
+  {
+    instrument: 'United States Natural Gas Fund',
+    code: 'UNG',
+    venue: 'NYSE Arca',
+    contractSize: 'ETF share',
+    settlement: 'T+1 equity',
+    role: 'Live-orderable natural-gas proxy overlay for the Alpaca ETF adapter.',
+  },
   {
     instrument: 'Vanguard S&P 500 ETF',
     code: 'VOO',
@@ -123,8 +131,8 @@ export const executionVenues: ExecutionVenue[] = [
 
 export const adapterChecklist = [
   'Normalize market bars and weather features before modeling.',
-  'Run every strategy in dry-run paper mode; live routing is intentionally absent.',
+  'Run every strategy in dry-run and Alpaca paper mode before live routing.',
   'Require max-loss, max-position, contract-expiry, and stale-data guards.',
   'Record every signal, model version, order intent, fill, and rejected trade.',
-  'Separate research code from any future trader-owned broker adapter.',
+  'Keep ETF broker routing separate from any future futures-grade broker adapter.',
 ]

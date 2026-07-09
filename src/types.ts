@@ -116,7 +116,7 @@ export type WeatherModelMetrics = {
 export type IntegrationConnector = {
   name: string
   category: 'Weather' | 'Market data' | 'Execution' | 'Storage' | 'ML'
-  status: 'Ready scaffold' | 'Free API key' | 'Free email token' | 'Needs key' | 'Dry run only' | 'Not connected' | 'Research'
+  status: 'Ready scaffold' | 'Free API key' | 'Free email token' | 'Needs key' | 'Dry run only' | 'Credential gated' | 'Not connected' | 'Research'
   purpose: string
   envVar: string
   sourceUrl: string
@@ -124,7 +124,7 @@ export type IntegrationConnector = {
 
 export type ExecutionVenue = {
   instrument: string
-  code: 'NG' | 'MNG' | 'QG' | 'VOO' | 'QQQM'
+  code: 'UNG' | 'NG' | 'MNG' | 'QG' | 'VOO' | 'QQQM'
   venue: string
   contractSize: string
   settlement: string

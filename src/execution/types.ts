@@ -1,4 +1,4 @@
-export type ExecutionMode = 'research' | 'paper' | 'live-disabled'
+export type ExecutionMode = 'research' | 'paper' | 'live-disabled' | 'live'
 
 export type TradeDirection = 'long' | 'short' | 'flat'
 
@@ -89,7 +89,7 @@ export type RiskPolicy = {
   requireManualApproval?: boolean
   allowShortGas?: boolean
   notes?: string[]
-  liveRoutingEnabled: false
+  liveRoutingEnabled: boolean
 }
 
 export type RiskDecision = {
@@ -197,4 +197,116 @@ export type PaperReferencePrices = Partial<Record<OrderLegIntent['instrument'], 
 export type ExecutionGateway = {
   mode: ExecutionMode
   submitOrderIntent: (intent: OrderIntent) => PaperFill
+}
+
+export type LiveBrokerCode = 'alpaca'
+
+export type LiveBrokerMode = 'dry-run' | 'paper' | 'live'
+
+export type LiveBrokerOrderStatus =
+  | 'planned'
+  | 'submitted'
+  | 'accepted'
+  | 'filled'
+  | 'partially_filled'
+  | 'canceled'
+  | 'expired'
+  | 'rejected'
+  | 'blocked'
+  | 'skipped'
+
+export type LiveBrokerExecutionStatus =
+  | 'blocked'
+  | 'planned'
+  | 'no-op'
+  | 'submitted'
+  | 'submit-failed'
+  | 'replace-failed'
+
+export type LiveBrokerOrderRequest = {
+  clientOrderId: string
+  symbol: ExecutionInstrumentCode
+  side: 'buy' | 'sell'
+  quantity: number
+  estimatedNotionalUsd: number
+  orderType: 'market' | 'limit'
+  timeInForce: 'day' | 'gtc' | 'ioc' | 'fok'
+  targetNotionalUsd: number
+  currentNotionalUsd: number
+  deltaNotionalUsd: number
+  reason: string
+}
+
+export type LiveBrokerOrderResult = {
+  request: LiveBrokerOrderRequest
+  status: LiveBrokerOrderStatus
+  brokerOrderId?: string
+  submittedAt?: string
+  message?: string
+  raw?: unknown
+}
+
+export type LiveBrokerAccountSnapshot = {
+  generatedAt: string
+  broker: LiveBrokerCode
+  brokerConnected: boolean
+  liveRoutingEnabled: boolean
+  mode: LiveBrokerMode
+  account: RiskAccountContext | null
+  positions: unknown[]
+  openOrders: unknown[]
+}
+
+export type LiveBrokerOpenOrderCancellationResult = {
+  symbol: string
+  brokerOrderId?: string | null
+  status: 'canceled' | 'cancel_failed'
+  canceledAt: string
+  message?: string
+  raw?: unknown
+}
+
+export type LiveBrokerOpenOrderReplacement = {
+  enabled: boolean
+  cancellationResults: LiveBrokerOpenOrderCancellationResult[]
+  verification: {
+    checkedAt: string
+    status: 'disabled' | 'not-needed' | 'clear' | 'open-orders-remain' | 'verify_failed'
+    remainingOpenOrders: Array<{
+      symbol: string
+      brokerOrderId?: string | null
+      status?: string | null
+    }>
+    message?: string
+  }
+  blockedSymbols: string[]
+}
+
+export type LiveBrokerRiskPolicyCheck = {
+  id: string
+  label: string
+  status: RiskCheckStatus
+  detail: string
+}
+
+export type LiveBrokerReconcileResult = {
+  generatedAt: string
+  broker: LiveBrokerCode
+  mode: LiveBrokerMode
+  dryRun: boolean
+  preflightApproved: boolean
+  approved: boolean
+  executionStatus: LiveBrokerExecutionStatus
+  executionOk: boolean
+  failedOrderCount: number
+  replacementBlockedOrderCount: number
+  skippedOrderCount: number
+  blockedReasons: string[]
+  warnings: string[]
+  riskPolicyChecks: LiveBrokerRiskPolicyCheck[]
+  targetNotionalUsd: Partial<Record<ExecutionInstrumentCode, number>>
+  currentNotionalUsd: Partial<Record<ExecutionInstrumentCode, number>>
+  plannedOrders: LiveBrokerOrderRequest[]
+  openOrderReplacement: LiveBrokerOpenOrderReplacement
+  orderResults: LiveBrokerOrderResult[]
 }

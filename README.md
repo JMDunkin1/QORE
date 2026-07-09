@@ -96,9 +96,21 @@ npm run live:weather -- --profile=conservative
 
 `rapid-test` requests a one-second current-weather cadence with one batched GFS pull across all tracked locations. The two-model profiles keep ECMWF IFS plus GFS for stronger guardrail context. The status file reports `cycle.durationMs`, `cycle.sleepMs`, `cycle.cycleOverrunMs`, and `cycle.cadenceMet` so you can see whether the VPS/API round trip can actually keep up before leaving it there. Env vars still override the profile, so `QORE_LIVE_WEATHER_INTERVAL_MS=1000 npm run live:weather` remains valid for quick experiments.
 
-Set `QORE_LIVE_WEATHER_RUN_GFS_CALENDAR=1` when the VPS should also keep near-window NOAA GFS/GEFS archive calendars warm. That heavier path polls run hours `00,06,12,18` by default with resume and partial-output mode enabled. The live loop still does not instantiate a broker client; a future broker adapter should consume `.local/qore/live-weather/status.json` and keep its own order/fill logs.
+Set `QORE_LIVE_WEATHER_RUN_GFS_CALENDAR=1` when the VPS should also keep near-window NOAA GFS/GEFS archive calendars warm. That heavier path polls run hours `00,06,12,18` by default with resume and partial-output mode enabled. The live loop writes broker handoff files under `.local/qore/live-weather/`; the Alpaca broker reconciler consumes those files and keeps its own account snapshot plus order logs under `.local/qore/broker/`.
 
 The other live lanes are market reference prices with spread-availability metadata, broker account and position state, risk/kill-switch state, current signal-intent reconciliation, and EIA storage polling around the weekly release window. Their intervals and slider bounds are recorded in `liveCadences` inside `config/qore-live-weather-settings.json`, and every lane writes its own status artifact under `.local/qore/live-weather/`.
+
+Alpaca broker bridge:
+
+```bash
+npm run broker:alpaca:status
+npm run broker:alpaca:dry-run
+npm run broker:alpaca:paper
+npm run broker:alpaca:live
+npm run live:trade
+```
+
+The recommended account for the current QORE live path is an Alpaca Trading API brokerage account. QORE routes only `UNG`, `VOO`, and `QQQM` through this adapter; `NG`, `MNG`, and `QG` futures are deliberately refused until a futures-grade router exists. Real-money orders require Alpaca keys in `.env.local` plus `QORE_LIVE_TRADING_ENABLED=1`, `QORE_LIVE_ORDER_ROUTING_ENABLED=1`, and `QORE_CONFIRM_LIVE_TRADING=I_UNDERSTAND_THIS_CAN_LOSE_MONEY`. See `docs/live-trading-broker-setup.md`.
 
 ## What It Does
 
@@ -193,16 +205,17 @@ npm run optimize:ngas-winter-alpha
 
 Summer Alpha keeps idle capital in `US-INDEX-BASKET`, then uses fresh multi-model day-7 summer heat forecasts to add NG futures exposure while skipping clustered heat-follow longs and fading same-direction gas rallies. Winter Alpha owns the frozen weather-follow, weather-reversion, and volatility-confirmation ledgers that supply the winter rows. Their standalone metrics remain research context, but the active surface is the all-year composite.
 
-## Non-Live Execution Architecture
+## Broker-Gated Execution Architecture
 
-QORE has strategy and execution architecture, but no live broker hookup. The active research strategy registry lives in `src/strategies/arcticBlast.ts`, dry-run risk and order-intent code lives in `src/execution/`, and the dashboard execution view exposes the dry-run paper gateway plus promotion gates.
+QORE has strategy and execution architecture plus an Alpaca ETF broker bridge. The active research strategy registry lives in `src/strategies/arcticBlast.ts`, risk and order-intent code lives in `src/execution/`, and the dashboard execution view exposes both the dry-run paper gateway and the live-gated Alpaca adapter.
 
 The current boundary is deliberate:
 
 - Strategy code can create auditable signal intents.
 - Risk code can approve or reject dry-run order intents.
 - The paper gateway can produce simulated fills.
-- No broker client, account credential, or live order route is instantiated.
+- The Alpaca gateway can reconcile target weights against broker positions and route ETF delta orders only after credential, freshness, kill-switch, market, account, and live-confirmation gates pass.
+- No futures broker client or futures order route is instantiated.
 
 The stricter `ngas-weather-guardrail-risk-v1` policy is the intended pre-trade guard for autonomous experimental NGAS weather-model paper/live-equivalent testing. It keeps live routing disabled, requires fresh weather, storage, market, account, and operator-state context, preserves the strategy's full notional request and index/gas/cash weights, and blocks only on emergency daily-loss, trailing-drawdown, loss-streak, spread, stale-data, missing-price, venue-closed, and kill-switch conditions.
 
@@ -214,4 +227,4 @@ The stricter `ngas-weather-guardrail-risk-v1` policy is the intended pre-trade g
 - `src/ml/evaluation.ts`: weather model scoring for imported rows.
 - `src/utils/importers.ts`: CSV parsers for dashboard ingestion.
 
-Live trading is deliberately not connected. The execution view is a paper-trading readiness layer for future broker adapters and risk controls.
+Live futures trading is deliberately not connected. The execution view is now an ETF-only readiness and routing layer for Alpaca paper/live accounts plus future broker adapters and risk controls.

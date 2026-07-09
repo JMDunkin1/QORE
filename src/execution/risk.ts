@@ -64,7 +64,7 @@ export const paperExecutionReadinessGates = [
     id: 'no-live-routing',
     label: 'Live routing disabled',
     status: 'locked',
-    detail: 'No broker client is instantiated and the risk policy type keeps liveRoutingEnabled false.',
+    detail: 'The dry-run policy keeps liveRoutingEnabled false; live routing uses the separate Alpaca policy and gateway.',
   },
   {
     id: 'signal-audit',
@@ -80,9 +80,9 @@ export const paperExecutionReadinessGates = [
   },
   {
     id: 'broker-adapter',
-    label: 'Broker adapter absent',
-    status: 'locked',
-    detail: 'Future broker work must implement a separate gateway and cannot reuse the dry-run gateway by accident.',
+    label: 'Broker adapter gated',
+    status: 'ready',
+    detail: 'Live broker routing now uses a separate adapter and cannot reuse the dry-run gateway by accident.',
   },
   {
     id: 'weather-guardrail-risk',
@@ -310,8 +310,10 @@ export function evaluateSignalRisk(
     }
   }
 
-  if (policy.liveRoutingEnabled) {
-    addCheck(checks, 'no-live-routing', 'Live routing', 'architecture', 'block', 'Live routing is not permitted in this architecture.')
+  if (policy.liveRoutingEnabled && policy.mode !== 'live') {
+    addCheck(checks, 'live-routing-mode', 'Live routing', 'architecture', 'block', 'Live routing requires a live-mode risk policy.')
+  } else if (policy.liveRoutingEnabled) {
+    addCheck(checks, 'live-routing-mode', 'Live routing', 'architecture', 'pass', 'Live routing is permitted by this policy when the broker gateway gates also pass.')
   } else {
     addCheck(checks, 'no-live-routing', 'Live routing', 'architecture', 'pass', 'Policy is paper/dry-run only.')
   }

@@ -46,7 +46,16 @@ import { defaultSettings, joinMarketWeather } from './backtesting/engine'
 import { SmoothZoomChart, type SmoothChartSeries } from './components/SmoothZoomChart'
 import { realDataCatalog, totalLocationRows, totalSignalReturns, totalSignalScores } from './data/realDataCatalog'
 import { sharedWeatherMetrics } from './data/weatherAccuracy'
-import { defaultDryRunRiskPolicy, dryRunGatewayProfile, paperExecutionReadinessGates, weatherModelGuardrailRiskPolicy } from './execution'
+import {
+  alpacaLiveGatewayProfile,
+  alpacaLiveRiskPolicy,
+  defaultDryRunRiskPolicy,
+  dryRunGatewayProfile,
+  liveExecutionReadinessGates,
+  paperExecutionReadinessGates,
+  recommendedLiveBroker,
+  weatherModelGuardrailRiskPolicy,
+} from './execution'
 import { fetchGithubStatus, pushToGithub, updateFromGithub, type GithubStatus } from './githubControl'
 import { executionVenues, integrationConnectors } from './integrations/connectors'
 import { evaluateWeatherModel } from './ml/evaluation'
@@ -3485,9 +3494,9 @@ function App() {
 
             <div className="split-layout">
               <article className="panel readiness-panel wide">
-                <SectionHeading eyebrow="Controls" title="Dry-run paper gate" />
+                <SectionHeading eyebrow="Controls" title="Dry-run and live gates" />
                 <div className="readiness-grid">
-                  {paperExecutionReadinessGates.map((gate, index) => (
+                  {[...paperExecutionReadinessGates, ...liveExecutionReadinessGates].map((gate, index) => (
                     <div key={gate.id} className="readiness-row">
                       <span>{index + 1}</span>
                       <p>
@@ -3506,6 +3515,20 @@ function App() {
                   <strong>Live routing disabled</strong>
                   <span>{dryRunGatewayProfile.purpose}</span>
                   <code>{defaultDryRunRiskPolicy.id}: max ${formatCompact(defaultDryRunRiskPolicy.maxNotionalUsd ?? 0)} notional, {defaultDryRunRiskPolicy.maxHoldingDays ?? '-'}d hold cap</code>
+                </div>
+                <button type="button" className="primary-button" onClick={() => setActiveView('data')}>
+                  <SlidersHorizontal size={17} aria-hidden="true" />
+                  Review adapters
+                </button>
+              </article>
+
+              <article className="panel execution-card">
+                <SectionHeading eyebrow="Live adapter" title={alpacaLiveGatewayProfile.label} />
+                <div className="execution-status">
+                  <RadioTower size={36} aria-hidden="true" />
+                  <strong>{recommendedLiveBroker.label}</strong>
+                  <span>{alpacaLiveGatewayProfile.purpose}</span>
+                  <code>{alpacaLiveRiskPolicy.id}: {recommendedLiveBroker.liveOrderableSymbols.join(', ')} only; excludes {recommendedLiveBroker.excludedSymbols.join(', ')}</code>
                 </div>
                 <button type="button" className="primary-button" onClick={() => setActiveView('data')}>
                   <SlidersHorizontal size={17} aria-hidden="true" />
