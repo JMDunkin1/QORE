@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { open, mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
@@ -14,10 +14,16 @@ const once = args.has('--once')
 const jsonOutput = args.has('--json')
 const supervisorDir = path.resolve(process.env.QORE_LIVE_SUPERVISOR_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-trading-supervisor'))
 const supervisorStatusPath = path.resolve(process.env.QORE_LIVE_SUPERVISOR_STATUS_FILE ?? path.join(supervisorDir, 'status.json'))
+const supervisorLockPath = path.resolve(process.env.QORE_LIVE_SUPERVISOR_LOCK_FILE ?? path.join(supervisorDir, 'supervisor.lock'))
 const schedulerTickMs = positiveNumber(process.env.QORE_LIVE_SUPERVISOR_TICK_MS, 5_000)
 const jobTimeoutMs = positiveNumber(process.env.QORE_LIVE_JOB_TIMEOUT_MS, 30 * 60 * 1000)
+const failedJobRetryMs = positiveNumber(process.env.QORE_LIVE_FAILED_JOB_RETRY_MS, 5 * 60 * 1000)
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const jobState = new Map()
+let activeChild = null
+let shuttingDown = false
+let wakeFromSleep = null
+let ownsLock = false
 
 function truthy(value, fallback = false) {
   if (value === undefined) return fallback
@@ -36,6 +42,68 @@ function relative(filePath) {
 async function writeJson(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true })
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+}
+
+function processIsRunning(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error?.code === 'EPERM'
+  }
+}
+
+async function acquireSupervisorLock() {
+  await mkdir(path.dirname(supervisorLockPath), { recursive: true })
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await open(supervisorLockPath, 'wx', 0o600)
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), repoDir })}\n`, 'utf8')
+      await handle.close()
+      ownsLock = true
+      return
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error
+      let owner = null
+      try {
+        owner = JSON.parse(await readFile(supervisorLockPath, 'utf8'))
+      } catch {
+        // Invalid lock contents are treated as stale.
+      }
+      if (processIsRunning(Number(owner?.pid))) {
+        throw new Error(`QORE live supervisor is already running as PID ${owner.pid}.`)
+      }
+      await unlink(supervisorLockPath).catch(() => {})
+    }
+  }
+  throw new Error(`Could not acquire QORE live supervisor lock at ${relative(supervisorLockPath)}.`)
+}
+
+async function releaseSupervisorLock() {
+  if (!ownsLock) return
+  ownsLock = false
+  await unlink(supervisorLockPath).catch(() => {})
+}
+
+function requestShutdown() {
+  shuttingDown = true
+  if (activeChild && !activeChild.killed) activeChild.kill('SIGTERM')
+  if (wakeFromSleep) wakeFromSleep()
+}
+
+async function sleep(ms) {
+  await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      wakeFromSleep = null
+      resolve()
+    }, ms)
+    wakeFromSleep = () => {
+      clearTimeout(timer)
+      wakeFromSleep = null
+      resolve()
+    }
+  })
 }
 
 function commandJob(id, label, script, intervalEnv, fallbackIntervalMs, enabledEnv, fallbackEnabled = true) {
@@ -66,7 +134,8 @@ function shouldRun(job, now) {
   if (once && jobState.has(job.id)) return false
   const state = jobState.get(job.id)
   if (!state?.lastStartedAt) return true
-  return now.getTime() - Date.parse(state.lastStartedAt) >= job.intervalMs
+  const intervalMs = state.ok === false ? failedJobRetryMs : job.intervalMs
+  return now.getTime() - Date.parse(state.lastStartedAt) >= intervalMs
 }
 
 function runJob(job) {
@@ -80,6 +149,7 @@ function runJob(job) {
       env: process.env,
       shell: process.platform === 'win32',
     })
+    activeChild = child
     const timeout = setTimeout(() => {
       timedOut = true
       child.kill('SIGTERM')
@@ -94,6 +164,7 @@ function runJob(job) {
     })
     child.on('error', (error) => {
       clearTimeout(timeout)
+      activeChild = null
       const finishedAt = new Date().toISOString()
       resolve({
         id: job.id,
@@ -111,6 +182,7 @@ function runJob(job) {
     })
     child.on('close', (code, signal) => {
       clearTimeout(timeout)
+      activeChild = null
       const finishedAt = new Date().toISOString()
       resolve({
         id: job.id,
@@ -165,7 +237,12 @@ async function schedulerPass() {
   const now = new Date()
   const results = []
   for (const job of jobs()) {
-    if (!shouldRun(job, now)) continue
+    if (shuttingDown) break
+    const priorState = jobState.get(job.id)
+    if (!shouldRun(job, now)) {
+      if (priorState?.ok === false) break
+      continue
+    }
     await writeSupervisorStatus({ id: job.id, label: job.label, startedAt: new Date().toISOString() })
     if (!jsonOutput) console.log(`QORE live supervisor: ${job.label}`)
     const result = await runJob(job)
@@ -180,17 +257,28 @@ async function schedulerPass() {
   return results
 }
 
-if (!jsonOutput) {
-  console.log(`QORE live supervisor writing ${relative(supervisorStatusPath)}.`)
-}
+process.on('SIGINT', requestShutdown)
+process.on('SIGTERM', requestShutdown)
 
-do {
-  const results = await schedulerPass()
-  const status = await writeSupervisorStatus()
-  if (jsonOutput) console.log(JSON.stringify(status, null, 2))
-  if (once) {
-    if (results.some((result) => !result.ok) || !status.ok) process.exitCode = 1
-    break
+try {
+  await acquireSupervisorLock()
+  if (!jsonOutput) {
+    console.log(`QORE live supervisor writing ${relative(supervisorStatusPath)}.`)
   }
-  await new Promise((resolve) => setTimeout(resolve, schedulerTickMs))
-} while (true)
+
+  do {
+    const results = await schedulerPass()
+    const status = await writeSupervisorStatus()
+    if (jsonOutput) console.log(JSON.stringify(status, null, 2))
+    if (once) {
+      if (results.some((result) => !result.ok) || !status.ok) process.exitCode = 1
+      break
+    }
+    if (!shuttingDown) await sleep(schedulerTickMs)
+  } while (!shuttingDown)
+} catch (error) {
+  console.error(`QORE live supervisor: ${error.message}`)
+  process.exitCode = 1
+} finally {
+  await releaseSupervisorLock()
+}

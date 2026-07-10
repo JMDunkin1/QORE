@@ -16,9 +16,11 @@ const brokerDir = path.resolve(process.env.QORE_BROKER_STATE_DIR ?? path.join(re
 const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(stateDir, 'signal-intent-reconcile.json'))
 const marketReferencePath = path.resolve(process.env.QORE_LIVE_MARKET_REFERENCE_FILE ?? path.join(stateDir, 'market-reference-prices.json'))
 const riskStatePath = path.resolve(process.env.QORE_LIVE_RISK_STATE_FILE ?? path.join(stateDir, 'risk-and-kill-switch-state.json'))
+const operatorStatePath = path.resolve(process.env.QORE_LIVE_OPERATOR_STATE_FILE ?? path.join(stateDir, 'operator-state.json'))
 const brokerSnapshotPath = path.resolve(process.env.QORE_BROKER_ACCOUNT_SNAPSHOT_FILE ?? path.join(brokerDir, 'account-snapshot.json'))
 const brokerStatusPath = path.resolve(process.env.QORE_BROKER_STATUS_FILE ?? path.join(brokerDir, 'status.json'))
 const brokerOrderLogPath = path.resolve(process.env.QORE_BROKER_ORDER_LOG_FILE ?? path.join(brokerDir, 'orders.jsonl'))
+const brokerRiskLedgerPath = path.resolve(process.env.QORE_BROKER_RISK_LEDGER_FILE ?? path.join(brokerDir, 'risk-ledger.json'))
 const indexBasketConfigPath = path.join(repoDir, 'data', 'qore', 'market', 'index-basket-config.json')
 
 const brokerMode = normalizeBrokerMode(argValue('--mode') ?? process.env.QORE_BROKER_MODE ?? (args.has('--live') ? 'live' : args.has('--paper') ? 'paper' : 'dry-run'))
@@ -39,6 +41,12 @@ const allowOutsideMarketQueue = truthy(process.env.QORE_ALLOW_OUTSIDE_MARKET_QUE
 const replaceOpenOrders = truthy(process.env.QORE_ALPACA_REPLACE_OPEN_ORDERS)
 const timeInForce = process.env.QORE_ALPACA_TIME_IN_FORCE ?? 'day'
 const orderType = process.env.QORE_ALPACA_ORDER_TYPE ?? 'market'
+const alpacaDataBaseUrl = (process.env.QORE_ALPACA_DATA_BASE_URL ?? 'https://data.alpaca.markets').replace(/\/$/, '')
+const alpacaMarketDataFeed = process.env.QORE_ALPACA_MARKET_DATA_FEED ?? 'iex'
+const maxQuoteAgeMinutes = positiveNumber(process.env.QORE_LIVE_MAX_QUOTE_AGE_MINUTES, 5)
+const maxDailyLossPct = positiveNumber(process.env.QORE_LIVE_MAX_DAILY_LOSS_PCT, 12)
+const maxTrailingDrawdownPct = positiveNumber(process.env.QORE_LIVE_MAX_TRAILING_DRAWDOWN_PCT, 25)
+const maxGrossExposurePct = positiveNumber(process.env.QORE_LIVE_MAX_GROSS_EXPOSURE_PCT, 100)
 
 const alpacaLiveRiskPolicy = {
   id: 'alpaca-live-etf-reconciler-v1',
@@ -50,6 +58,10 @@ const alpacaLiveRiskPolicy = {
   maxMarketDataAgeMinutes: 1440,
   maxStorageDataAgeDays: 10,
   maxAllowedSpreadBps: 75,
+  maxQuoteAgeMinutes,
+  maxDailyLossPct,
+  maxTrailingDrawdownPct,
+  maxGrossExposurePct,
   minReferencePriceUsd: 1,
   minWeatherSourceCount: 2,
   minWeatherCoveragePct: 70,
@@ -209,22 +221,94 @@ async function alpacaRequest(method, endpoint, body = null) {
   return payload
 }
 
+async function alpacaDataRequest(endpoint) {
+  requireCredentials()
+  const response = await fetch(`${alpacaDataBaseUrl}${endpoint}`, {
+    headers: {
+      'APCA-API-KEY-ID': alpacaConfig.apiKey,
+      'APCA-API-SECRET-KEY': alpacaConfig.secretKey,
+    },
+  })
+  const text = await response.text()
+  const payload = text ? JSON.parse(text) : null
+  if (!response.ok) {
+    const detail = payload?.message ?? payload?.code ?? text
+    throw new Error(`Alpaca market data GET ${endpoint} failed with ${response.status}: ${detail}`)
+  }
+  return payload
+}
+
+async function getAlpacaLatestQuotes(symbols) {
+  const uniqueSymbols = [...new Set(symbols)].filter((symbol) => alpacaLiveRiskPolicy.allowedInstruments.has(symbol))
+  if (!uniqueSymbols.length) {
+    return { generatedAt: new Date().toISOString(), feed: alpacaMarketDataFeed, rows: [], referencePrices: {}, spreadsBps: {} }
+  }
+  const params = new URLSearchParams({ symbols: uniqueSymbols.join(','), feed: alpacaMarketDataFeed })
+  const payload = await alpacaDataRequest(`/v2/stocks/quotes/latest?${params}`)
+  const rows = uniqueSymbols.map((symbol) => {
+    const quote = payload?.quotes?.[symbol] ?? null
+    const bidPrice = finiteNumber(quote?.bp)
+    const askPrice = finiteNumber(quote?.ap)
+    const valid = bidPrice !== null && askPrice !== null && bidPrice > 0 && askPrice >= bidPrice
+    const midpoint = valid ? (bidPrice + askPrice) / 2 : null
+    return {
+      symbol,
+      status: valid ? 'ok' : 'invalid',
+      bidPrice,
+      askPrice,
+      midpoint: midpoint === null ? null : round(midpoint, 6),
+      spreadBps: midpoint ? round(((askPrice - bidPrice) / midpoint) * 10_000, 4) : null,
+      quoteTimestamp: quote?.t ?? null,
+      tape: quote?.z ?? null,
+    }
+  })
+  return {
+    generatedAt: new Date().toISOString(),
+    source: 'Alpaca latest stock quotes',
+    feed: alpacaMarketDataFeed,
+    rows,
+    referencePrices: Object.fromEntries(rows.filter((row) => row.midpoint).map((row) => [row.symbol, row.midpoint])),
+    spreadsBps: Object.fromEntries(rows.filter((row) => row.spreadBps !== null).map((row) => [row.symbol, row.spreadBps])),
+  }
+}
+
 async function getAlpacaOpenOrders() {
   return alpacaRequest('GET', '/v2/orders?status=open&limit=100&nested=false')
 }
 
-function accountContextFrom(account) {
+async function accountContextFrom(account) {
   const equityUsd = Number(account?.equity)
   const cashUsd = Number(account?.cash)
   const dayPnlPct = Number(account?.equity) && Number(account?.last_equity)
     ? ((Number(account.equity) - Number(account.last_equity)) / Number(account.last_equity)) * 100
     : 0
+  const normalizedEquityUsd = Number.isFinite(equityUsd) ? equityUsd : 0
+  const accountKey = account?.id ? stableHash(String(account.id)) : 'unknown'
+  const priorLedger = readJsonFile(brokerRiskLedgerPath)
+  const sameAccount = priorLedger?.accountKey === accountKey && priorLedger?.mode === brokerMode
+  const configuredHighWatermark = optionalPositiveNumber(process.env.QORE_BROKER_EQUITY_HIGH_WATERMARK_USD)
+  const priorHighWatermark = sameAccount ? finiteNumber(priorLedger?.equityHighWatermarkUsd) : null
+  const equityHighWatermarkUsd = Math.max(normalizedEquityUsd, configuredHighWatermark ?? 0, priorHighWatermark ?? 0)
+  const trailingDrawdownPct = equityHighWatermarkUsd > 0
+    ? ((normalizedEquityUsd - equityHighWatermarkUsd) / equityHighWatermarkUsd) * 100
+    : 0
+  const riskLedger = {
+    generatedAt: new Date().toISOString(),
+    serviceId: 'qore-alpaca-risk-ledger',
+    broker: 'alpaca',
+    mode: brokerMode,
+    accountKey,
+    equityUsd: round(normalizedEquityUsd, 2),
+    equityHighWatermarkUsd: round(equityHighWatermarkUsd, 2),
+    trailingDrawdownPct: round(trailingDrawdownPct, 4),
+  }
+  await writeJson(brokerRiskLedgerPath, riskLedger)
   return {
-    equityUsd: Number.isFinite(equityUsd) ? equityUsd : 0,
+    equityUsd: normalizedEquityUsd,
     cashUsd: Number.isFinite(cashUsd) ? cashUsd : 0,
     openIntentCount: 0,
     dayPnlPct: round(dayPnlPct, 4),
-    trailingDrawdownPct: 0,
+    trailingDrawdownPct: riskLedger.trailingDrawdownPct,
     consecutiveLosses: 0,
   }
 }
@@ -275,7 +359,7 @@ async function getAlpacaBrokerSnapshot({ allowOffline = false } = {}) {
     brokerConnected: true,
     liveRoutingEnabled: brokerMode === 'live',
     mode: brokerMode === 'live' ? 'live' : 'paper',
-    account: accountContextFrom(account),
+    account: await accountContextFrom(account),
     positions,
     openOrders,
     rawAccount: {
@@ -284,12 +368,14 @@ async function getAlpacaBrokerSnapshot({ allowOffline = false } = {}) {
       tradingBlocked: account?.trading_blocked ?? null,
       transfersBlocked: account?.transfers_blocked ?? null,
       accountBlocked: account?.account_blocked ?? null,
+      tradeSuspendedByUser: account?.trade_suspended_by_user ?? null,
       shortingEnabled: account?.shorting_enabled ?? null,
       buyingPower: account?.buying_power ?? null,
     },
     files: {
       snapshot: relative(brokerSnapshotPath),
       orderLog: relative(brokerOrderLogPath),
+      riskLedger: relative(brokerRiskLedgerPath),
     },
   }
   snapshot.account.openIntentCount = openOrders.length
@@ -316,7 +402,17 @@ function readMarketReference() {
 }
 
 function readRiskState() {
-  return readJsonFile(riskStatePath, null)
+  const riskState = readJsonFile(riskStatePath, null)
+  const operatorState = readJsonFile(operatorStatePath, null)
+  if (!riskState || !operatorState) return riskState
+  return {
+    ...riskState,
+    operator: {
+      ...(riskState.operator ?? {}),
+      ...operatorState,
+      source: 'operator-state-file-direct-broker-read',
+    },
+  }
 }
 
 function signedPositionNotional(position) {
@@ -357,13 +453,14 @@ function buildTargets(signalIntent, accountEquityUsd) {
   return targets
 }
 
-function referencePricesFor(marketSnapshot, positions) {
+function referencePricesFor(marketSnapshot, positions, quoteSnapshot = null) {
   const prices = { ...(marketSnapshot.referencePrices ?? {}) }
   for (const position of positions ?? []) {
     const symbol = position?.symbol
     const price = Number(position?.current_price ?? position?.asset_current_price)
     if (symbol && Number.isFinite(price) && price > 0 && !prices[symbol]) prices[symbol] = price
   }
+  Object.assign(prices, quoteSnapshot?.referencePrices ?? {})
   return prices
 }
 
@@ -422,6 +519,7 @@ function buildPlannedOrders({ signalSnapshot, targets, current, prices, openOrde
     }
     planned.push(orderRequest)
   }
+  planned.sort((left, right) => Number(left.side === 'buy') - Number(right.side === 'buy'))
   return { plannedOrders: planned, skippedOrders: skipped }
 }
 
@@ -578,12 +676,13 @@ function paperConfirmationBlocks() {
     : ['Paper order submission requires QORE_PAPER_ORDER_ROUTING_ENABLED=1 or --execute.']
 }
 
-function spreadBpsBySymbol(marketSnapshot) {
+function spreadBpsBySymbol(marketSnapshot, quoteSnapshot = null) {
   const spreads = {}
   for (const row of marketSnapshot?.rows ?? []) {
     const spread = finiteNumber(row?.spreadBps)
     if (row?.symbol && spread !== null) spreads[row.symbol] = spread
   }
+  Object.assign(spreads, quoteSnapshot?.spreadsBps ?? {})
   return spreads
 }
 
@@ -597,7 +696,7 @@ function symbolsWithRequiredMarketChecks({ plannedOrders, skippedOrders, targets
   return [...symbols].filter((symbol) => alpacaLiveRiskPolicy.allowedInstruments.has(symbol))
 }
 
-function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, prices, targets, current, plannedOrders, skippedOrders }) {
+function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnapshot, brokerSnapshot, prices, targets, current, plannedOrders, skippedOrders }) {
   const blocks = []
   const warnings = []
   const checks = []
@@ -608,6 +707,48 @@ function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, pric
     if (status === 'warn') warnings.push(detail)
   }
   const intent = signalSnapshot.intent ?? {}
+
+  if (brokerMode !== 'dry-run') {
+    const rawAccount = brokerSnapshot?.rawAccount ?? {}
+    if (rawAccount.status !== 'ACTIVE') {
+      addCheck('account-active', 'Broker account active', 'block', `Alpaca account status is ${rawAccount.status ?? 'unknown'}; ACTIVE is required.`)
+    }
+    if (rawAccount.tradingBlocked === true) {
+      addCheck('account-trading-blocked', 'Broker trading permission', 'block', 'Alpaca reports trading_blocked=true.')
+    }
+    if (rawAccount.accountBlocked === true) {
+      addCheck('account-blocked', 'Broker account permission', 'block', 'Alpaca reports account_blocked=true.')
+    }
+    if (rawAccount.tradeSuspendedByUser === true) {
+      addCheck('account-user-suspended', 'Broker user suspension', 'block', 'Alpaca reports trade_suspended_by_user=true.')
+    }
+  }
+
+  const dayPnlPct = finiteNumber(brokerSnapshot?.account?.dayPnlPct)
+  if (dayPnlPct !== null && dayPnlPct <= -Math.abs(alpacaLiveRiskPolicy.maxDailyLossPct)) {
+    addCheck('daily-loss-stop', 'Daily loss stop', 'block', `Daily P&L ${dayPnlPct}% breaches the ${alpacaLiveRiskPolicy.maxDailyLossPct}% loss stop.`)
+  }
+  const trailingDrawdownPct = finiteNumber(brokerSnapshot?.account?.trailingDrawdownPct)
+  if (trailingDrawdownPct !== null && trailingDrawdownPct <= -Math.abs(alpacaLiveRiskPolicy.maxTrailingDrawdownPct)) {
+    addCheck(
+      'trailing-drawdown-stop',
+      'Trailing drawdown stop',
+      'block',
+      `Trailing drawdown ${trailingDrawdownPct}% breaches the ${alpacaLiveRiskPolicy.maxTrailingDrawdownPct}% stop.`,
+    )
+  }
+
+  const accountEquityUsd = finiteNumber(brokerSnapshot?.account?.equityUsd)
+  const grossTargetUsd = Object.values(targets).reduce((sum, value) => sum + Math.abs(Number(value ?? 0)), 0)
+  const grossExposurePct = accountEquityUsd && accountEquityUsd > 0 ? (grossTargetUsd / accountEquityUsd) * 100 : null
+  if (grossExposurePct !== null && grossExposurePct > alpacaLiveRiskPolicy.maxGrossExposurePct + 0.01) {
+    addCheck(
+      'gross-exposure-cap',
+      'Gross exposure cap',
+      'block',
+      `Target gross exposure ${grossExposurePct.toFixed(2)}% exceeds the ${alpacaLiveRiskPolicy.maxGrossExposurePct}% cap.`,
+    )
+  }
 
   for (const symbol of [intent.instrument, ...Object.keys(targets)].filter(Boolean)) {
     if (!alpacaLiveRiskPolicy.allowedInstruments.has(symbol)) {
@@ -696,7 +837,7 @@ function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, pric
   }
 
   const market = riskSnapshot?.market
-  const marketPriceUpdatedAt = market?.priceUpdatedAt ?? marketSnapshot?.freshness?.freshestPriceUpdatedAt
+  const marketPriceUpdatedAt = quoteSnapshot?.generatedAt ?? market?.priceUpdatedAt ?? marketSnapshot?.freshness?.freshestPriceUpdatedAt
   if (alpacaLiveRiskPolicy.requireMarketContext && !marketPriceUpdatedAt) {
     addCheck('market-context', 'Market context', 'block', 'Fresh market price context is required.')
   } else if (marketPriceUpdatedAt) {
@@ -713,8 +854,18 @@ function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, pric
     }
   }
 
-  const spreads = spreadBpsBySymbol(marketSnapshot)
+  const spreads = spreadBpsBySymbol(marketSnapshot, quoteSnapshot)
+  const quotesBySymbol = Object.fromEntries((quoteSnapshot?.rows ?? []).map((row) => [row.symbol, row]))
   for (const symbol of symbolsWithRequiredMarketChecks({ plannedOrders, skippedOrders, targets, current })) {
+    const quote = quotesBySymbol[symbol]
+    if (brokerMode !== 'dry-run' && quote?.status !== 'ok') {
+      addCheck(
+        `quote-validity-${symbol}`,
+        `${symbol} quote validity`,
+        'block',
+        `Alpaca returned a missing or invalid bid/ask quote for ${symbol}.`,
+      )
+    }
     const price = finiteNumber(prices[symbol] ?? market?.referencePrices?.[symbol] ?? marketSnapshot?.referencePrices?.[symbol])
     if (price === null || price <= 0) {
       addCheck(`reference-price-${symbol}`, `${symbol} reference price`, 'block', `Missing positive reference price for ${symbol}.`)
@@ -727,7 +878,7 @@ function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, pric
       )
     }
 
-    const spread = finiteNumber(market?.spreadsBps?.[symbol] ?? spreads[symbol])
+    const spread = finiteNumber(brokerMode === 'dry-run' ? market?.spreadsBps?.[symbol] ?? spreads[symbol] : quote?.spreadBps)
     if (spread === null || spread < 0) {
       addCheck(
         `spread-${symbol}`,
@@ -738,12 +889,24 @@ function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, pric
     } else if (spread > alpacaLiveRiskPolicy.maxAllowedSpreadBps) {
       addCheck(`spread-${symbol}`, `${symbol} spread`, 'block', `${symbol} spread ${spread} bps exceeds the ${alpacaLiveRiskPolicy.maxAllowedSpreadBps} bps cap.`)
     }
+
+    const quoteAgeMinutes = ageMinutes(asOf, quote?.quoteTimestamp)
+    if (brokerMode !== 'dry-run' && (quoteAgeMinutes === null || quoteAgeMinutes < 0 || quoteAgeMinutes > alpacaLiveRiskPolicy.maxQuoteAgeMinutes)) {
+      addCheck(
+        `quote-freshness-${symbol}`,
+        `${symbol} quote freshness`,
+        'block',
+        quoteAgeMinutes === null
+          ? `Missing valid Alpaca quote timestamp for ${symbol}.`
+          : `${symbol} quote is ${quoteAgeMinutes.toFixed(2)}m old; cap is ${alpacaLiveRiskPolicy.maxQuoteAgeMinutes}m.`,
+      )
+    }
   }
 
   return { blocks, warnings, checks }
 }
 
-function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, brokerSnapshot, prices, targets, current, plannedOrders, skippedOrders }) {
+function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnapshot, quoteError, brokerSnapshot, prices, targets, current, plannedOrders, skippedOrders }) {
   const blocks = []
   const warnings = []
   const staleBlock = signalAgeBlock(signalSnapshot)
@@ -771,6 +934,7 @@ function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, brokerSna
       if (!present) blocks.push(`Live risk context is incomplete: ${key} is false.`)
     }
   }
+  if (quoteError) blocks.push(`Alpaca latest quote check failed: ${quoteError}`)
 
   for (const symbol of Object.keys(targets)) {
     if (!Number.isFinite(Number(prices[symbol])) || Number(prices[symbol]) <= 0) {
@@ -784,7 +948,7 @@ function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, brokerSna
     )
   }
   if (!marketSnapshot?.freshness?.freshestPriceUpdatedAt) warnings.push('Market reference freshness timestamp is missing.')
-  const riskGate = liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, prices, targets, current, plannedOrders, skippedOrders })
+  const riskGate = liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnapshot, brokerSnapshot, prices, targets, current, plannedOrders, skippedOrders })
   return {
     blocks: [...blocks, ...riskGate.blocks],
     warnings: [...warnings, ...riskGate.warnings],
@@ -855,7 +1019,17 @@ async function reconcileOnce() {
   const accountEquityUsd = Number(brokerSnapshot?.account?.equityUsd ?? 0)
   const targets = buildTargets(signalSnapshot, accountEquityUsd)
   const current = currentNotionalsFromPositions(brokerSnapshot.positions)
-  const prices = referencePricesFor(marketSnapshot, brokerSnapshot.positions)
+  const quoteSymbols = [...new Set([...Object.keys(targets), ...Object.keys(current)])]
+  let quoteSnapshot = null
+  let quoteError = null
+  if (alpacaConfig.apiKey && alpacaConfig.secretKey) {
+    try {
+      quoteSnapshot = await getAlpacaLatestQuotes(quoteSymbols)
+    } catch (error) {
+      quoteError = error.message
+    }
+  }
+  const prices = referencePricesFor(marketSnapshot, brokerSnapshot.positions, quoteSnapshot)
   const { plannedOrders, skippedOrders } = buildPlannedOrders({
     signalSnapshot,
     targets,
@@ -867,6 +1041,8 @@ async function reconcileOnce() {
     signalSnapshot,
     riskSnapshot,
     marketSnapshot,
+    quoteSnapshot,
+    quoteError,
     brokerSnapshot,
     prices,
     targets,
@@ -908,7 +1084,17 @@ async function reconcileOnce() {
   }
 
   if (preflightApproved && !dryRun) {
+    let submissionHalted = false
     for (const order of plannedOrders) {
+      if (submissionHalted) {
+        orderResults.push({
+          request: order,
+          status: 'blocked',
+          submittedAt: new Date().toISOString(),
+          message: 'A prior order submission failed; remaining orders were halted to prevent unintended gross exposure.',
+        })
+        continue
+      }
       if (openOrderReplacement.blockedSymbols.has(order.symbol)) {
         orderResults.push({
           request: order,
@@ -919,7 +1105,9 @@ async function reconcileOnce() {
         continue
       }
       try {
-        orderResults.push(await submitOrder(order))
+        const submittedOrder = await submitOrder(order)
+        orderResults.push(submittedOrder)
+        if (orderResultFailed(submittedOrder)) submissionHalted = true
       } catch (error) {
         orderResults.push({
           request: order,
@@ -927,6 +1115,7 @@ async function reconcileOnce() {
           submittedAt: new Date().toISOString(),
           message: error.message,
         })
+        submissionHalted = true
       }
     }
   } else {
@@ -963,6 +1152,14 @@ async function reconcileOnce() {
     blockedReasons,
     warnings: gateResult.warnings,
     riskPolicyChecks: gateResult.riskPolicyChecks,
+    marketData: quoteSnapshot
+      ? {
+          source: quoteSnapshot.source,
+          feed: quoteSnapshot.feed,
+          generatedAt: quoteSnapshot.generatedAt,
+          rows: quoteSnapshot.rows,
+        }
+      : null,
     account: brokerSnapshot.account,
     signal: {
       strategyId: signalSnapshot.intent.strategyId,
@@ -986,6 +1183,7 @@ async function reconcileOnce() {
       status: relative(brokerStatusPath),
       accountSnapshot: relative(brokerSnapshotPath),
       orderLog: relative(brokerOrderLogPath),
+      riskLedger: relative(brokerRiskLedgerPath),
       signalIntent: relative(signalIntentPath),
       marketReference: relative(marketReferencePath),
       riskState: relative(riskStatePath),
@@ -998,6 +1196,9 @@ async function reconcileOnce() {
 
 async function statusOnce() {
   const snapshot = await getAlpacaBrokerSnapshot({ allowOffline: brokerMode === 'dry-run' })
+  const marketData = alpacaConfig.apiKey && alpacaConfig.secretKey
+    ? await getAlpacaLatestQuotes([...alpacaLiveRiskPolicy.allowedInstruments])
+    : null
   const status = {
     generatedAt: new Date().toISOString(),
     serviceId: 'qore-alpaca-broker-status',
@@ -1007,8 +1208,10 @@ async function statusOnce() {
     paper: alpacaConfig.paper,
     brokerConnected: Boolean(snapshot?.brokerConnected),
     account: snapshot?.account ?? null,
+    rawAccount: snapshot?.rawAccount ?? null,
     positions: snapshot?.positions ?? [],
     openOrders: snapshot?.openOrders ?? [],
+    marketData,
     files: {
       accountSnapshot: relative(brokerSnapshotPath),
       status: relative(brokerStatusPath),
@@ -1072,5 +1275,22 @@ if (loop) {
 }
 
 if (once || statusOnly) {
-  await runCommand()
+  try {
+    await runCommand()
+  } catch (error) {
+    const status = {
+      generatedAt: new Date().toISOString(),
+      serviceId: statusOnly ? 'qore-alpaca-broker-status' : 'qore-alpaca-target-weight-reconciler',
+      broker: 'alpaca',
+      mode: brokerMode,
+      approved: false,
+      executionOk: false,
+      executionStatus: 'blocked',
+      blockedReasons: [error.message],
+    }
+    await writeJson(brokerStatusPath, status)
+    if (jsonOutput) console.log(JSON.stringify(status, null, 2))
+    else console.error(`QORE Alpaca ${brokerMode}: ${error.message}`)
+    process.exitCode = 1
+  }
 }

@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "bin": {
     "qore": "./bin/qore"
   },
@@ -36,9 +39,15 @@
     "broker:alpaca:reconcile": "node scripts/qore-alpaca-broker.mjs --reconcile",
     "live:trade": "node scripts/qore-live-trading-supervisor.mjs",
     "live:trade:once": "node scripts/qore-live-trading-supervisor.mjs --once",
+    "live:readiness": "node scripts/qore-live-readiness.mjs",
+    "live:kill-switch:status": "node scripts/qore-live-kill-switch.mjs status",
+    "live:kill-switch:engage": "node scripts/qore-live-kill-switch.mjs engage",
+    "live:kill-switch:clear": "node scripts/qore-live-kill-switch.mjs clear",
+    "install:linux-service": "node scripts/install-linux-live-service.mjs",
     "install:command": "node scripts/install-command.mjs",
     "install:launch-agent": "node scripts/install-macos-launch-agent.mjs",
     "test:github-service": "node scripts/test-qore-git-service.mjs",
+    "test:live-trading": "node scripts/test-qore-live-trading.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

@@ -718,7 +718,7 @@ async function collectBrokerAccountAndPositions() {
     serviceId: 'qore-live-broker-account-and-positions',
     source: fileSnapshot ? 'adapter-snapshot-file' : envSnapshot ? 'environment' : 'not-connected',
     brokerConnected: Boolean(sourceSnapshot?.brokerConnected),
-    liveRoutingEnabled: false,
+    liveRoutingEnabled: Boolean(sourceSnapshot?.liveRoutingEnabled),
     inputFile: relative(inputPath),
     account: sourceSnapshot?.account ?? null,
     positions: sourceSnapshot?.positions ?? [],
@@ -728,8 +728,8 @@ async function collectBrokerAccountAndPositions() {
       openOrders: sourceSnapshot?.openOrders?.length ?? 0,
     },
     notes: sourceSnapshot
-      ? ['Broker/account state is being read as an external snapshot. This service still does not route orders.']
-      : ['No broker adapter snapshot is present yet. Add one at the configured snapshotFile to make this lane live.'],
+      ? ['Broker/account state is being read from the separate Alpaca reconciler snapshot. This weather service does not submit orders itself.']
+      : ['No Alpaca reconciler snapshot is present yet. Run npm run broker:alpaca:status to populate the configured snapshot file.'],
     files: {
       snapshot: relative(brokerAccountPath),
     },
@@ -755,7 +755,7 @@ async function collectRiskAndKillSwitchState() {
   const snapshot = {
     generatedAt,
     serviceId: 'qore-live-risk-and-kill-switch-state',
-    liveRoutingEnabled: false,
+    liveRoutingEnabled: Boolean(broker?.liveRoutingEnabled),
     operatorStateFile: relative(operatorStateFile),
     operator,
     account: broker?.account ?? null,
@@ -1250,8 +1250,10 @@ async function runCycle() {
       riskAndKillSwitchState: latestJobOutputs.riskAndKillSwitchState ? 'ready' : 'unavailable',
       signalIntentReconcile: latestJobOutputs.signalIntentReconcile ? 'ready' : 'unavailable',
       eiaStorageReleaseWindow: latestJobOutputs.eiaStorageReleaseWindow ? 'ready' : 'unavailable',
-      liveRoutingEnabled: false,
-      brokerAdapter: 'not connected; future broker adapter should consume the status/snapshot handoff and keep its own execution logs',
+      liveRoutingEnabled: Boolean(latestJobOutputs.brokerAccountAndPositions?.liveRoutingEnabled),
+      brokerAdapter: latestJobOutputs.brokerAccountAndPositions?.brokerConnected
+        ? 'Alpaca reconciler snapshot connected; order submission remains in the separate broker process'
+        : 'Alpaca reconciler available but no connected account snapshot is present',
       historicalComparison: latestComparison?.headline ? 'ready' : 'unavailable',
     },
     cycle: {

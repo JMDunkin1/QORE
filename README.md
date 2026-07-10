@@ -107,10 +107,11 @@ npm run broker:alpaca:status
 npm run broker:alpaca:dry-run
 npm run broker:alpaca:paper
 npm run broker:alpaca:live
+npm run live:readiness
 npm run live:trade
 ```
 
-The recommended account for the current QORE live path is an Alpaca Trading API brokerage account. QORE routes only `UNG`, `VOO`, and `QQQM` through this adapter; `NG`, `MNG`, and `QG` futures are deliberately refused until a futures-grade router exists. Real-money orders require Alpaca keys in `.env.local` plus `QORE_LIVE_TRADING_ENABLED=1`, `QORE_LIVE_ORDER_ROUTING_ENABLED=1`, and `QORE_CONFIRM_LIVE_TRADING=I_UNDERSTAND_THIS_CAN_LOSE_MONEY`. See `docs/live-trading-broker-setup.md`.
+The recommended account for the current QORE live path is an Alpaca Trading API brokerage account. QORE routes only `UNG`, `VOO`, and `QQQM` through this adapter; `NG`, `MNG`, and `QG` futures are deliberately refused until a futures-grade router exists. Executable midpoint/spread checks use authenticated Alpaca latest quotes, while account status, daily loss, trailing drawdown, gross exposure, stale inputs, and the operator kill switch all fail closed before submission. Real-money orders require Alpaca keys in a mode-`600` `.env.local` plus `QORE_LIVE_TRADING_ENABLED=1`, `QORE_LIVE_ORDER_ROUTING_ENABLED=1`, and `QORE_CONFIRM_LIVE_TRADING=I_UNDERSTAND_THIS_CAN_LOSE_MONEY`. Run `npm run live:readiness` before paper/live routing. The Linux user-service installer is `npm run install:linux-service`; emergency-stop commands are `npm run live:kill-switch:engage` and `npm run live:kill-switch:clear -- --confirm=RESUME_TRADING`. See `docs/live-trading-broker-setup.md`.
 
 ## What It Does
 
@@ -155,7 +156,7 @@ The active NGAS strategy is `ngas-all-year-beta`. It is its own checked-in artif
 npm run optimize:ngas-all-year-beta
 ```
 
-The selected beta artifact made `877.16%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-15.86%` max drawdown. Train return was `186.29%`, validation was `70.74%`, and holdout was `99.9%`; holdout edge versus the index basket was `69.74%`. Its direct all-year centered circular block bootstrap p-value is `0.00005`, replacing the old Fisher-combined component p-value. It is a research-baseline, not broker-ready, and still needs non-overlapping paper validation before any live route exists.
+The selected beta artifact made `877.16%` full-sample versus `119.17%` for the VOO/QQQM index basket, with `-15.86%` max drawdown. Train return was `186.29%`, validation was `70.74%`, and holdout was `99.9%`; holdout edge versus the index basket was `69.74%`. Its direct all-year centered circular block bootstrap p-value is `0.00005`, replacing the old Fisher-combined component p-value. It remains a research baseline and still needs non-overlapping Alpaca paper validation before real capital should be enabled, even though the separate broker bridge now exists.
 
 The live-weather-refresh replay compares that checked-in all-year ledger against a no-close-in-weather-refresh counterfactual:
 

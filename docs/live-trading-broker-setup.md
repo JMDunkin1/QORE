@@ -26,6 +26,7 @@ Put real values in `.env.local`; do not edit the example file with secrets. If `
 
 ```bash
 test -f .env.local || cp .env.live.example .env.local
+chmod 600 .env.local
 ```
 
 Paper mode:
@@ -61,6 +62,12 @@ Alpaca does not support fractional short-sale orders. QORE therefore forces whol
 By default, QORE skips symbols that already have open Alpaca orders. Set `QORE_ALPACA_REPLACE_OPEN_ORDERS=1` only when the reconciler should cancel matching open orders, verify no matching open order remains, and then submit the replacement delta. Cancel, verify, or submit failures make the reconcile command exit nonzero.
 
 ## Commands
+
+Run the fail-closed readiness audit. It checks the Node version, runtime files, secret-file permissions, Git state, routing confirmations, Alpaca account status, and Alpaca bid/ask access without placing an order:
+
+```bash
+npm run live:readiness
+```
 
 Refresh live handoff files once:
 
@@ -100,6 +107,57 @@ npm run live:trade
 
 The supervisor refreshes research data, regenerates Summer/Winter/All-Year artifacts, refreshes live weather/market/risk handoff files, and then runs the Alpaca reconciler on cadence.
 
+## Linux VPS Service
+
+Use a dedicated, unprivileged Linux user. From a clean clone of the reviewed commit:
+
+```bash
+npm ci
+test -f .env.local || cp .env.live.example .env.local
+chmod 600 .env.local
+```
+
+Keep `QORE_BROKER_MODE=paper` through the first deployment. Then run:
+
+```bash
+npm run live:readiness
+npm run live:weather:once
+npm run broker:alpaca:status
+npm run broker:alpaca:dry-run
+npm run broker:alpaca:paper
+```
+
+Install the user-level systemd service only after those checks pass:
+
+```bash
+npm run install:linux-service
+sudo loginctl enable-linger "$USER"
+systemctl --user start qore-live-trading.service
+systemctl --user status qore-live-trading.service
+journalctl --user -u qore-live-trading.service -f
+```
+
+The service restarts after failures, uses a single-process lock, terminates its active child on shutdown, retries failed upstream jobs before allowing downstream broker work, and writes runtime state under `.local/qore/` with a restrictive umask.
+
+Before changing from paper to live, stop the service, change the four live-mode values in `.env.local`, rerun `npm run live:readiness`, run one explicit `npm run broker:alpaca:live`, inspect the resulting broker status and Alpaca activity, and only then restart the service.
+
+## Emergency Stop
+
+Engage the QORE kill switch without stopping the VPS service:
+
+```bash
+npm run live:kill-switch:engage -- --reason="operator emergency stop"
+npm run live:kill-switch:status
+```
+
+The broker reads this operator file directly on every reconcile. It blocks new QORE submissions; it does not cancel already-open Alpaca orders or liquidate positions. Handle those in Alpaca if an immediate cancel/exit is required.
+
+Clearing the stop is deliberately explicit:
+
+```bash
+npm run live:kill-switch:clear -- --confirm=RESUME_TRADING --reason="review complete"
+```
+
 ## What QORE Checks Before Orders
 
 QORE blocks live orders when:
@@ -109,6 +167,9 @@ QORE blocks live orders when:
 - The venue is closed and outside-market queuing is not enabled.
 - Account, market, weather, or storage risk context is missing.
 - A required reference price is missing.
+- Alpaca's latest bid/ask is missing, crossed, stale, or wider than the spread cap.
+- The Alpaca account is not `ACTIVE`, or is blocked or user-suspended.
+- Daily loss, trailing drawdown, or target gross exposure breaches the configured cap.
 - The target would short `UNG` and shorting is not enabled.
 - Alpaca reports `UNG` is not shortable or is hard-to-borrow without explicit permission.
 - The live confirmation environment variables are absent.
@@ -118,6 +179,7 @@ The broker state and order logs are written under `.local/qore/`:
 - `.local/qore/broker/account-snapshot.json`
 - `.local/qore/broker/status.json`
 - `.local/qore/broker/orders.jsonl`
+- `.local/qore/broker/risk-ledger.json`
 - `.local/qore/live-trading-supervisor/status.json`
 
 ## External References
