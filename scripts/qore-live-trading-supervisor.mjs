@@ -18,7 +18,6 @@ const supervisorLockPath = path.resolve(process.env.QORE_LIVE_SUPERVISOR_LOCK_FI
 const schedulerTickMs = positiveNumber(process.env.QORE_LIVE_SUPERVISOR_TICK_MS, 5_000)
 const jobTimeoutMs = positiveNumber(process.env.QORE_LIVE_JOB_TIMEOUT_MS, 30 * 60 * 1000)
 const failedJobRetryMs = positiveNumber(process.env.QORE_LIVE_FAILED_JOB_RETRY_MS, 5 * 60 * 1000)
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const jobState = new Map()
 let activeChild = null
 let shuttingDown = false
@@ -106,12 +105,12 @@ async function sleep(ms) {
   })
 }
 
-function commandJob(id, label, script, intervalEnv, fallbackIntervalMs, enabledEnv, fallbackEnabled = true) {
+function nodeJob(id, label, scriptPath, intervalEnv, fallbackIntervalMs, enabledEnv, fallbackEnabled = true, scriptArgs = []) {
   return {
     id,
     label,
-    command: npmCommand,
-    args: ['run', script],
+    command: process.execPath,
+    args: [scriptPath, ...scriptArgs],
     intervalMs: positiveNumber(process.env[intervalEnv], fallbackIntervalMs),
     enabled: truthy(process.env[enabledEnv], fallbackEnabled),
   }
@@ -120,12 +119,12 @@ function commandJob(id, label, script, intervalEnv, fallbackIntervalMs, enabledE
 function jobs() {
   const researchRefreshEnabled = truthy(process.env.QORE_LIVE_REFRESH_RESEARCH, true)
   return [
-    commandJob('collectFreeData', 'Collect free market/weather/storage data', 'collect:free-data', 'QORE_LIVE_DATA_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_COLLECT_FREE_DATA_ENABLED', researchRefreshEnabled),
-    commandJob('optimizeSummerAlpha', 'Refresh NGAS Summer Alpha artifact', 'optimize:ngas-summer-alpha', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_SUMMER_ENABLED', researchRefreshEnabled),
-    commandJob('optimizeWinterAlpha', 'Refresh NGAS Winter Alpha artifact', 'optimize:ngas-winter-alpha', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_WINTER_ENABLED', researchRefreshEnabled),
-    commandJob('optimizeAllYearBeta', 'Refresh NGAS All-Year Beta artifact', 'optimize:ngas-all-year-beta', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_ALL_YEAR_ENABLED', researchRefreshEnabled),
-    commandJob('liveWeatherOnce', 'Refresh live weather, market, risk, and signal handoff', 'live:weather:once', 'QORE_LIVE_HANDOFF_REFRESH_INTERVAL_MS', 5 * 60 * 1000, 'QORE_LIVE_WEATHER_HANDOFF_ENABLED', true),
-    commandJob('brokerReconcile', 'Reconcile Alpaca target weights', 'broker:alpaca:reconcile', 'QORE_LIVE_BROKER_RECONCILE_INTERVAL_MS', 60 * 1000, 'QORE_LIVE_BROKER_RECONCILE_ENABLED', true),
+    nodeJob('collectFreeData', 'Collect free market/weather/storage data', 'scripts/collect-free-data.mjs', 'QORE_LIVE_DATA_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_COLLECT_FREE_DATA_ENABLED', researchRefreshEnabled),
+    nodeJob('optimizeSummerAlpha', 'Refresh NGAS Summer Alpha artifact', 'scripts/optimize-ngas-summer-alpha.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_SUMMER_ENABLED', researchRefreshEnabled),
+    nodeJob('optimizeWinterAlpha', 'Refresh NGAS Winter Alpha artifact', 'scripts/optimize-ngas-winter-alpha.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_WINTER_ENABLED', researchRefreshEnabled),
+    nodeJob('optimizeAllYearBeta', 'Refresh NGAS All-Year Beta artifact', 'scripts/optimize-ngas-all-year-beta.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_ALL_YEAR_ENABLED', researchRefreshEnabled),
+    nodeJob('liveWeatherOnce', 'Refresh live weather, market, risk, and signal handoff', 'scripts/qore-live-weather-service.mjs', 'QORE_LIVE_HANDOFF_REFRESH_INTERVAL_MS', 5 * 60 * 1000, 'QORE_LIVE_WEATHER_HANDOFF_ENABLED', true, ['--once']),
+    nodeJob('brokerReconcile', 'Reconcile Alpaca target weights', 'scripts/qore-alpaca-broker.mjs', 'QORE_LIVE_BROKER_RECONCILE_INTERVAL_MS', 60 * 1000, 'QORE_LIVE_BROKER_RECONCILE_ENABLED', true, ['--reconcile']),
   ]
 }
 

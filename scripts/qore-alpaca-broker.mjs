@@ -26,6 +26,7 @@ const indexBasketConfigPath = path.join(repoDir, 'data', 'qore', 'market', 'inde
 const brokerMode = normalizeBrokerMode(argValue('--mode') ?? process.env.QORE_BROKER_MODE ?? (args.has('--live') ? 'live' : args.has('--paper') ? 'paper' : 'dry-run'))
 const loop = args.has('--loop')
 const statusOnly = args.has('--status')
+const preflightOnly = args.has('--preflight-only')
 const jsonOutput = args.has('--json')
 const once = args.has('--once') || args.has('--reconcile') || (!loop && !statusOnly)
 const loopIntervalMs = positiveNumber(process.env.QORE_BROKER_RECONCILE_INTERVAL_MS, 60_000)
@@ -347,10 +348,11 @@ async function getAlpacaBrokerSnapshot({ allowOffline = false } = {}) {
     requireCredentials()
   }
 
-  const [account, positions, openOrders] = await Promise.all([
+  const [account, positions, openOrders, marketClock] = await Promise.all([
     alpacaRequest('GET', '/v2/account'),
     alpacaRequest('GET', '/v2/positions'),
     getAlpacaOpenOrders(),
+    alpacaRequest('GET', '/v2/clock'),
   ])
   const snapshot = {
     generatedAt: new Date().toISOString(),
@@ -371,6 +373,12 @@ async function getAlpacaBrokerSnapshot({ allowOffline = false } = {}) {
       tradeSuspendedByUser: account?.trade_suspended_by_user ?? null,
       shortingEnabled: account?.shorting_enabled ?? null,
       buyingPower: account?.buying_power ?? null,
+    },
+    marketClock: {
+      isOpen: marketClock?.is_open === true,
+      timestamp: marketClock?.timestamp ?? null,
+      nextOpen: marketClock?.next_open ?? null,
+      nextClose: marketClock?.next_close ?? null,
     },
     files: {
       snapshot: relative(brokerSnapshotPath),
@@ -916,7 +924,12 @@ function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnap
     blocks.push('Broker account equity is missing or zero.')
   }
   if (riskSnapshot?.operator?.killSwitchEngaged) blocks.push('QORE kill switch is engaged.')
-  if (riskSnapshot?.operator?.venueOpen === false && !allowOutsideMarketQueue) {
+  const venueOpen = brokerMode === 'dry-run'
+    ? riskSnapshot?.operator?.venueOpen
+    : brokerSnapshot?.marketClock?.isOpen
+  if (brokerMode !== 'dry-run' && typeof venueOpen !== 'boolean') {
+    blocks.push('Alpaca market clock is unavailable; venue-open status cannot be verified.')
+  } else if (venueOpen === false && !allowOutsideMarketQueue) {
     blocks.push('Execution venue is closed and QORE_ALLOW_OUTSIDE_MARKET_QUEUE is not enabled.')
   }
   if (!riskSnapshot) {
@@ -1057,7 +1070,7 @@ async function reconcileOnce() {
     ...(await shortabilityBlocks(plannedOrders, targets, brokerSnapshot)),
   ]
   const preflightApproved = blockedReasons.length === 0
-  const dryRun = brokerMode === 'dry-run'
+  const dryRun = brokerMode === 'dry-run' || preflightOnly
   const orderResults = []
   let openOrderReplacement = {
     enabled: replaceOpenOrders,
@@ -1142,6 +1155,7 @@ async function reconcileOnce() {
     broker: 'alpaca',
     mode: brokerMode,
     dryRun,
+    preflightOnly,
     preflightApproved,
     approved,
     executionStatus: execution.executionStatus,
@@ -1152,6 +1166,8 @@ async function reconcileOnce() {
     blockedReasons,
     warnings: gateResult.warnings,
     riskPolicyChecks: gateResult.riskPolicyChecks,
+    rawAccount: brokerSnapshot.rawAccount ?? null,
+    marketClock: brokerSnapshot.marketClock ?? null,
     marketData: quoteSnapshot
       ? {
           source: quoteSnapshot.source,
@@ -1212,6 +1228,7 @@ async function statusOnce() {
     positions: snapshot?.positions ?? [],
     openOrders: snapshot?.openOrders ?? [],
     marketData,
+    marketClock: snapshot?.marketClock ?? null,
     files: {
       accountSnapshot: relative(brokerSnapshotPath),
       status: relative(brokerStatusPath),

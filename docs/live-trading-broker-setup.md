@@ -63,16 +63,16 @@ By default, QORE skips symbols that already have open Alpaca orders. Set `QORE_A
 
 ## Commands
 
-Run the fail-closed readiness audit. It checks the Node version, runtime files, secret-file permissions, Git state, routing confirmations, Alpaca account status, and Alpaca bid/ask access without placing an order:
-
-```bash
-npm run live:readiness
-```
-
-Refresh live handoff files once:
+Refresh the live handoff files once:
 
 ```bash
 npm run live:weather:once
+```
+
+Then run the fail-closed readiness audit. It checks the Node version, runtime files, secret-file permissions, Git state, routing confirmations, Alpaca account status, Alpaca's authoritative market clock, current signal/risk gates, and Alpaca bid/ask access without placing an order:
+
+```bash
+npm run live:readiness
 ```
 
 Check broker connectivity and write the account snapshot:
@@ -105,7 +105,7 @@ Run the unattended supervisor:
 npm run live:trade
 ```
 
-The supervisor refreshes research data, regenerates Summer/Winter/All-Year artifacts, refreshes live weather/market/risk handoff files, and then runs the Alpaca reconciler on cadence.
+The supervisor refreshes research data, regenerates Summer/Winter/All-Year artifacts, refreshes live weather/market/risk handoff files, and then runs the Alpaca reconciler on cadence. It launches every job with the same absolute Node binary as the service, so operation after logout or reboot does not depend on an interactive-shell `npm` path.
 
 ## Linux VPS Service
 
@@ -120,8 +120,8 @@ chmod 600 .env.local
 Keep `QORE_BROKER_MODE=paper` through the first deployment. Then run:
 
 ```bash
-npm run live:readiness
 npm run live:weather:once
+npm run live:readiness
 npm run broker:alpaca:status
 npm run broker:alpaca:dry-run
 npm run broker:alpaca:paper

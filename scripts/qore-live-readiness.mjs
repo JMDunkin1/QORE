@@ -171,9 +171,9 @@ try {
 checkGitState()
 
 if (!localOnly && mode !== 'dry-run' && apiKey && secretKey) {
-  const broker = command(process.execPath, ['scripts/qore-alpaca-broker.mjs', `--mode=${mode}`, '--status', '--json'])
+  const broker = command(process.execPath, ['scripts/qore-alpaca-broker.mjs', `--mode=${mode}`, '--preflight-only', '--json'])
   const status = parseBrokerStatus(broker.stdout)
-  if (broker.status !== 0 || !status?.brokerConnected) {
+  if (!status?.account || status?.mode !== mode) {
     add('broker-connectivity', 'Alpaca connectivity', 'block', status?.blockedReasons?.join(' ') || broker.stderr.trim() || 'Broker status check failed.')
   } else {
     add('broker-connectivity', 'Alpaca connectivity', 'pass', 'Trading API account, positions, and open orders are readable.')
@@ -196,6 +196,14 @@ if (!localOnly && mode !== 'dry-run' && apiKey && secretKey) {
       'Alpaca latest quotes',
       quotesReady ? 'pass' : 'block',
       quotesReady ? `Executable bid/ask quotes are readable from the ${status.marketData.feed} feed.` : 'One or more UNG/VOO/QQQM bid/ask quotes are unavailable.',
+    )
+    add(
+      'broker-preflight',
+      'No-order broker preflight',
+      status.preflightApproved && ['planned', 'no-op'].includes(status.executionStatus) ? 'pass' : 'block',
+      status.preflightApproved
+        ? 'All current signal, risk, account, market-clock, and routing gates passed without placing an order.'
+        : status.blockedReasons?.join(' ') || 'Broker preflight did not approve the current reconcile.',
     )
   }
 } else if (localOnly && mode !== 'dry-run') {

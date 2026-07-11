@@ -93,6 +93,9 @@ async function scenario({
   marketSpreads = {},
   positions = [],
   rejectFirstOrder = false,
+  preflightOnly = false,
+  readinessOnly = false,
+  marketOpen = true,
   expectedBlock = null,
   expectedSubmissionFailure = false,
 }) {
@@ -126,6 +129,15 @@ async function scenario({
       jsonResponse(response, 200, [])
       return
     }
+    if (request.method === 'GET' && url.pathname === '/v2/clock') {
+      jsonResponse(response, 200, {
+        is_open: marketOpen,
+        timestamp: new Date().toISOString(),
+        next_open: new Date(Date.now() + 3600000).toISOString(),
+        next_close: new Date(Date.now() + 7200000).toISOString(),
+      })
+      return
+    }
     if (request.method === 'GET' && url.pathname === '/v2/stocks/quotes/latest') {
       const timestamp = new Date().toISOString()
       jsonResponse(response, 200, {
@@ -155,7 +167,10 @@ async function scenario({
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   const baseUrl = `http://127.0.0.1:${address.port}`
-  const result = await runNode(['scripts/qore-alpaca-broker.mjs', '--mode=paper', '--reconcile', '--json'], {
+  const commandArgs = readinessOnly
+    ? ['scripts/qore-live-readiness.mjs', '--mode=paper', '--json']
+    : ['scripts/qore-alpaca-broker.mjs', '--mode=paper', preflightOnly ? '--preflight-only' : '--reconcile', '--json']
+  const result = await runNode(commandArgs, {
     APCA_API_KEY_ID: 'test-key',
     APCA_API_SECRET_KEY: 'test-secret',
     QORE_ALPACA_BASE_URL: baseUrl,
@@ -169,7 +184,13 @@ async function scenario({
   await new Promise((resolve) => server.close(resolve))
   const status = JSON.parse(await readFile(path.join(brokerDir, 'status.json'), 'utf8'))
 
-  if (expectedSubmissionFailure) {
+  if (readinessOnly) {
+    const readiness = JSON.parse(result.stdout)
+    assert.equal(result.code, 0, `${name}: readiness should exit 0 (${result.stderr})`)
+    assert.equal(readiness.ready, true, `${name}: readiness should be ready`)
+    assert.equal(readiness.checks.find((check) => check.id === 'broker-preflight')?.status, 'pass')
+    assert.equal(submittedOrders.length, 0, `${name}: readiness must submit no orders`)
+  } else if (expectedSubmissionFailure) {
     assert.equal(result.code, 1, `${name}: failed submission should exit 1`)
     assert.equal(status.approved, false, `${name}: failed submission should not be approved`)
     assert.equal(status.executionStatus, 'submit-failed', `${name}: failure should be reported as submit-failed`)
@@ -184,6 +205,11 @@ async function scenario({
     assert.equal(status.approved, false, `${name}: blocked reconcile should not be approved`)
     assert.match(status.blockedReasons.join(' '), expectedBlock, `${name}: expected block reason`)
     assert.equal(submittedOrders.length, 0, `${name}: blocked reconcile must submit no orders`)
+  } else if (preflightOnly) {
+    assert.equal(result.code, 0, `${name}: preflight should exit 0 (${result.stderr})`)
+    assert.equal(status.preflightApproved, true, `${name}: preflight should be approved`)
+    assert.equal(status.executionStatus, 'planned', `${name}: preflight should only plan orders`)
+    assert.equal(submittedOrders.length, 0, `${name}: preflight must submit no orders`)
   } else {
     assert.equal(result.code, 0, `${name}: approved reconcile should exit 0 (${result.stderr})`)
     assert.equal(status.approved, true, `${name}: reconcile should be approved`)
@@ -236,6 +262,13 @@ async function testSupervisorLock() {
 
 try {
   await scenario({ name: 'paper reconcile uses Alpaca bid/ask and submits ETF deltas' })
+  await scenario({ name: 'preflight validates the complete route without submitting', preflightOnly: true })
+  await scenario({ name: 'readiness runs the complete no-order broker preflight', readinessOnly: true })
+  await scenario({
+    name: 'authoritative Alpaca market clock blocks a closed venue',
+    marketOpen: false,
+    expectedBlock: /Execution venue is closed/,
+  })
   await scenario({
     name: 'wide Alpaca spread blocks all submissions',
     quoteOverrides: { VOO: { bp: 99, ap: 101, t: new Date().toISOString() } },
