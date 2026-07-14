@@ -47,9 +47,11 @@ const marketReferencePath = path.resolve(process.env.QORE_LIVE_MARKET_REFERENCE_
 const brokerAccountPath = path.resolve(process.env.QORE_LIVE_BROKER_ACCOUNT_FILE ?? path.join(stateDir, 'broker-account-and-positions.json'))
 const riskStatePath = path.resolve(process.env.QORE_LIVE_RISK_STATE_FILE ?? path.join(stateDir, 'risk-and-kill-switch-state.json'))
 const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(stateDir, 'signal-intent-reconcile.json'))
+const liveInferencePath = path.resolve(
+  process.env.QORE_LIVE_INFERENCE_FILE ?? path.join(repoDir, '.local', 'qore', 'live-inference', 'all-year-target.json'),
+)
 const eiaStoragePath = path.resolve(process.env.QORE_LIVE_EIA_STORAGE_FILE ?? path.join(stateDir, 'eia-storage-release-window.json'))
 const locationsPath = path.join(repoDir, 'data', 'qore', 'weather', 'locations.csv')
-const selectedTradesPath = path.join(repoDir, 'data', 'qore', 'research', 'strategy-agent-runs', 'ngas-all-year-beta', 'selected-trades.csv')
 const indexBasketConfigPath = path.join(repoDir, 'data', 'qore', 'market', 'index-basket-config.json')
 const localEiaStoragePath = path.join(repoDir, 'data', 'qore', 'fundamentals', 'eia', 'working-gas-storage-lower48-weekly.csv')
 const comparisonSummaryPath = path.join(
@@ -786,46 +788,53 @@ async function collectRiskAndKillSwitchState() {
 
 async function reconcileSignalIntent() {
   const generatedAt = new Date().toISOString()
-  const trades = parseCsv(await readFile(selectedTradesPath, 'utf8'))
-  const latest = latestRow(trades, 'entryTradeDate')
-  if (!latest) throw new Error('No selected all-year rows available for signal reconciliation.')
-  const gasPosition = numericValue(latest.ungPosition, 0)
-  const indexFraction = numericValue(latest.investedIndexFraction || latest.indexFraction, Math.max(0, 1 - Math.abs(gasPosition)))
+  const inference = latestJobOutputs.strategyInference ?? (await readJsonIfExists(liveInferencePath))
+  if (!inference?.validated || !inference.liveForecastAppliedToTarget || !inference.target) {
+    throw new Error(`Validated live strategy inference is unavailable: ${inference?.error ?? 'no successful inference snapshot'}`)
+  }
+  const latest = inference.target
+  const gasPosition = numericValue(latest.gasPosition, 0)
+  const indexFraction = numericValue(latest.indexFraction, Math.max(0, 1 - Math.abs(gasPosition)))
   const cashFraction = numericValue(latest.cashFraction, Math.max(0, 1 - indexFraction - Math.abs(gasPosition)))
-  const generatedDate = generatedAt.slice(0, 10)
-  const signalDate = latest.signalDate || latest.entryTradeDate
-  const signalAgeDays = signalDate ? Math.max(0, (Date.parse(`${generatedDate}T00:00:00Z`) - Date.parse(`${signalDate}T00:00:00Z`)) / 86400000) : null
+  const signalDate = latest.signalDate
+  const signalAgeDays = signalDate ? Math.max(0, (Date.parse(`${generatedAt.slice(0, 10)}T00:00:00Z`) - Date.parse(`${signalDate}T00:00:00Z`)) / 86400000) : null
   const intent = {
     strategyId: 'ngas-all-year-beta',
     strategyName: 'NGAS All-Year Beta',
     generatedAt,
     signalDate,
-    targetDate: latest.targetDate || latest.targetTradeDate || latest.exitTradeDate,
+    targetDate: latest.targetDate,
     instrument: 'UNG',
     direction: gasPosition > 0 ? 'long' : gasPosition < 0 ? 'short' : 'flat',
     confidence: numericValue(latest.confidence, 0),
-    expectedReturnPct: numericValue(latest.netReturnPct, 0),
+    expectedReturnPct: 0,
     indexFraction: round(indexFraction, 4),
     gasPosition: round(gasPosition, 4),
     cashFraction: round(cashFraction, 4),
     sourceSynthetic: indexFraction > 0 ? 'US-INDEX-BASKET' : undefined,
-    maxHoldingDays: Math.max(
-      1,
-      Math.round((Date.parse(`${latest.exitTradeDate || latest.targetTradeDate || latest.entryTradeDate}T00:00:00Z`) - Date.parse(`${latest.entryTradeDate}T00:00:00Z`)) / 86400000) || 1,
-    ),
-    source: 'research-backtest',
+    maxHoldingDays: latest.windowId === 'weather-follow' ? 3 : 1,
+    source: 'live-selected-contract-inference',
     notes: [
       'Live reconciliation snapshot only. No broker order is routed.',
-      signalAgeDays && signalAgeDays > 1 ? `Latest checked-in all-year row is ${round(signalAgeDays, 1)} days old.` : 'Latest checked-in row is current enough for this snapshot.',
+      `Target was inferred from validated NOAA GFS/GEFS 00z data for ${inference.forecastValidation.latestCommonIssueDate}.`,
     ],
   }
   const snapshot = {
     generatedAt,
     serviceId: 'qore-live-signal-intent-reconcile',
-    sourceFile: relative(selectedTradesPath),
-    stale: signalAgeDays !== null && signalAgeDays > 1,
+    sourceFile: relative(liveInferencePath),
+    stale: inference.forecastValidation.issueAgeDays > 2,
     signalAgeDays: signalAgeDays === null ? null : round(signalAgeDays, 2),
     intent,
+    inference: {
+      mode: inference.inferenceMode,
+      liveForecastAppliedToTarget: true,
+      validated: true,
+      forecastValidation: inference.forecastValidation,
+      componentStrategyId: latest.componentStrategyId,
+      windowId: latest.windowId,
+      thesisKind: latest.thesisKind,
+    },
     context: {
       currentWeatherDigest: latestJobOutputs.currentWeather?.digest ?? null,
       marketReferenceGeneratedAt: latestJobOutputs.marketReferencePrices?.generatedAt ?? null,
@@ -836,6 +845,14 @@ async function reconcileSignalIntent() {
     },
   }
   await writeJson(signalIntentPath, snapshot)
+  return snapshot
+}
+
+async function collectStrategyInference() {
+  const result = await runCommand('live-all-year-strategy-inference', process.execPath, ['scripts/qore-live-strategy-inference.mjs'])
+  if (!result.ok) throw new Error(result.stderr || result.stdout || 'Live all-year inference failed.')
+  const snapshot = await readJsonIfExists(liveInferencePath)
+  if (!snapshot?.validated || !snapshot.liveForecastAppliedToTarget) throw new Error(snapshot?.error ?? 'Inference snapshot was not validated.')
   return snapshot
 }
 
@@ -1069,6 +1086,14 @@ function liveJobs() {
       run: collectEiaStorageReleaseWindow,
     },
     {
+      id: 'strategyInference',
+      label: 'Validated NOAA forecast to all-year target inference',
+      enabled: jobEnabled('strategyInference', true),
+      intervalMs: jobIntervalMs('strategyInference', 60 * 60 * 1000),
+      outputFile: liveInferencePath,
+      run: collectStrategyInference,
+    },
+    {
       id: 'riskAndKillSwitchState',
       label: 'Risk and kill-switch state',
       enabled: jobEnabled('riskAndKillSwitchState', true),
@@ -1249,6 +1274,7 @@ async function runCycle() {
       brokerAccountAndPositions: latestJobOutputs.brokerAccountAndPositions?.brokerConnected ? 'connected' : 'not-connected',
       riskAndKillSwitchState: latestJobOutputs.riskAndKillSwitchState ? 'ready' : 'unavailable',
       signalIntentReconcile: latestJobOutputs.signalIntentReconcile ? 'ready' : 'unavailable',
+      strategyInference: latestJobOutputs.strategyInference?.validated ? 'ready' : 'unavailable',
       eiaStorageReleaseWindow: latestJobOutputs.eiaStorageReleaseWindow ? 'ready' : 'unavailable',
       liveRoutingEnabled: Boolean(latestJobOutputs.brokerAccountAndPositions?.liveRoutingEnabled),
       brokerAdapter: latestJobOutputs.brokerAccountAndPositions?.brokerConnected
@@ -1284,6 +1310,7 @@ async function runCycle() {
     brokerAccountAndPositions: latestJobOutputs.brokerAccountAndPositions ?? null,
     riskAndKillSwitchState: latestJobOutputs.riskAndKillSwitchState ?? null,
     signalIntentReconcile: latestJobOutputs.signalIntentReconcile ?? null,
+    strategyInference: latestJobOutputs.strategyInference ?? null,
     eiaStorageReleaseWindow: latestJobOutputs.eiaStorageReleaseWindow ?? null,
     performance: latestComparison,
     files: {
@@ -1295,6 +1322,7 @@ async function runCycle() {
       brokerAccountAndPositions: relative(brokerAccountPath),
       riskAndKillSwitchState: relative(riskStatePath),
       signalIntentReconcile: relative(signalIntentPath),
+      strategyInference: relative(liveInferencePath),
       eiaStorageReleaseWindow: relative(eiaStoragePath),
     },
   }

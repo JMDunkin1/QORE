@@ -11,6 +11,7 @@ loadLocalEnv(repoDir)
 const rawArgs = process.argv.slice(2)
 const args = new Set(rawArgs)
 const once = args.has('--once')
+const prepareOnly = args.has('--prepare')
 const jsonOutput = args.has('--json')
 const supervisorDir = path.resolve(process.env.QORE_LIVE_SUPERVISOR_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-trading-supervisor'))
 const supervisorStatusPath = path.resolve(process.env.QORE_LIVE_SUPERVISOR_STATUS_FILE ?? path.join(supervisorDir, 'status.json'))
@@ -105,7 +106,7 @@ async function sleep(ms) {
   })
 }
 
-function nodeJob(id, label, scriptPath, intervalEnv, fallbackIntervalMs, enabledEnv, fallbackEnabled = true, scriptArgs = []) {
+function nodeJob(id, label, scriptPath, intervalEnv, fallbackIntervalMs, enabledEnv, fallbackEnabled = true, scriptArgs = [], env = {}) {
   return {
     id,
     label,
@@ -113,18 +114,34 @@ function nodeJob(id, label, scriptPath, intervalEnv, fallbackIntervalMs, enabled
     args: [scriptPath, ...scriptArgs],
     intervalMs: positiveNumber(process.env[intervalEnv], fallbackIntervalMs),
     enabled: truthy(process.env[enabledEnv], fallbackEnabled),
+    env,
   }
 }
 
 function jobs() {
   const researchRefreshEnabled = truthy(process.env.QORE_LIVE_REFRESH_RESEARCH, true)
   return [
-    nodeJob('collectFreeData', 'Collect free market/weather/storage data', 'scripts/collect-free-data.mjs', 'QORE_LIVE_DATA_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_COLLECT_FREE_DATA_ENABLED', researchRefreshEnabled),
+    nodeJob(
+      'collectFreeData',
+      'Collect free market/weather/storage data',
+      'scripts/collect-free-data.mjs',
+      'QORE_LIVE_DATA_REFRESH_INTERVAL_MS',
+      24 * 60 * 60 * 1000,
+      'QORE_LIVE_COLLECT_FREE_DATA_ENABLED',
+      researchRefreshEnabled,
+      [],
+      {
+        // The historical Open-Meteo backfill is a research job, not a live dependency. Running it daily
+        // exhausts the free minutely quota before the current-forecast handoff can run.
+        QORE_SKIP_OPEN_METEO: truthy(process.env.QORE_LIVE_COLLECT_OPEN_METEO_ENABLED) ? '0' : '1',
+        QORE_FAIL_ON_DATA_FAILURE: '1',
+      },
+    ),
     nodeJob('optimizeSummerAlpha', 'Refresh NGAS Summer Alpha artifact', 'scripts/optimize-ngas-summer-alpha.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_SUMMER_ENABLED', researchRefreshEnabled),
     nodeJob('optimizeWinterAlpha', 'Refresh NGAS Winter Alpha artifact', 'scripts/optimize-ngas-winter-alpha.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_WINTER_ENABLED', researchRefreshEnabled),
     nodeJob('optimizeAllYearBeta', 'Refresh NGAS All-Year Beta artifact', 'scripts/optimize-ngas-all-year-beta.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_ALL_YEAR_ENABLED', researchRefreshEnabled),
-    nodeJob('liveWeatherOnce', 'Refresh live weather, market, risk, and signal handoff', 'scripts/qore-live-weather-service.mjs', 'QORE_LIVE_HANDOFF_REFRESH_INTERVAL_MS', 5 * 60 * 1000, 'QORE_LIVE_WEATHER_HANDOFF_ENABLED', true, ['--once']),
-    nodeJob('brokerReconcile', 'Reconcile Alpaca target weights', 'scripts/qore-alpaca-broker.mjs', 'QORE_LIVE_BROKER_RECONCILE_INTERVAL_MS', 60 * 1000, 'QORE_LIVE_BROKER_RECONCILE_ENABLED', true, ['--reconcile']),
+    nodeJob('liveWeatherOnce', 'Refresh live weather, market, risk, and signal handoff', 'scripts/qore-live-weather-service.mjs', 'QORE_LIVE_HANDOFF_REFRESH_INTERVAL_MS', 5 * 60 * 1000, 'QORE_LIVE_WEATHER_HANDOFF_ENABLED', true, ['--once', '--no-performance-test']),
+    nodeJob('brokerReconcile', 'Reconcile Alpaca target weights', 'scripts/qore-alpaca-broker.mjs', 'QORE_LIVE_BROKER_RECONCILE_INTERVAL_MS', 60 * 1000, 'QORE_LIVE_BROKER_RECONCILE_ENABLED', !prepareOnly, ['--reconcile']),
   ]
 }
 
@@ -145,7 +162,7 @@ function runJob(job) {
     let timedOut = false
     const child = spawn(job.command, job.args, {
       cwd: repoDir,
-      env: process.env,
+      env: { ...process.env, ...(job.env ?? {}) },
       shell: process.platform === 'win32',
     })
     activeChild = child
@@ -214,6 +231,7 @@ async function writeSupervisorStatus(activeJob = null) {
     serviceId: 'qore-live-trading-supervisor',
     mode: process.env.QORE_BROKER_MODE ?? 'dry-run',
     once,
+    prepareOnly,
     ok: failedJobs.length === 0,
     activeJob,
     jobs: jobSnapshots,

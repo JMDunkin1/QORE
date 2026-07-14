@@ -2,17 +2,24 @@
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { parseMessagesFromBuffer } from '@mattnucc/gribberish'
+import { createRequire } from 'node:module'
 import { loadLocalEnv } from './local-env.mjs'
+
+const require = createRequire(import.meta.url)
+const usePortableGribParser = process.platform === 'linux' && process.arch === 'arm64'
+const portableGrib = usePortableGribParser ? require('grib-js') : null
+const nativeGrib = usePortableGribParser ? null : require('@mattnucc/gribberish')
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
 
 const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
+const outputRoot = process.env.QORE_GFS_OUTPUT_ROOT ?? dataRoot
 const forecastSource = process.env.QORE_FORECAST_SOURCE ?? 'gfs'
 const latestCompleteDate = addDays(new Date().toISOString().slice(0, 10), -1)
 const startDate = process.env.QORE_GFS_CALENDAR_START ?? process.env.QORE_TEST_START ?? '2021-01-01'
 const endDate = process.env.QORE_GFS_CALENDAR_END ?? process.env.QORE_TEST_END ?? latestCompleteDate
+const issueEndDate = process.env.QORE_GFS_CALENDAR_ISSUE_END ?? endDate
 const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
 const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
 const runHour = process.env.QORE_GFS_RUN_HOUR ?? '00'
@@ -113,11 +120,13 @@ if (!sourceConfig) {
 const rangeLabel = `${startDate}-${endDate}`
 const validHourLabel = validHoursUtc.join('-')
 const leadLabel = leadDays.join('-')
-const baseName = `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
-const anomalyPath = path.join(dataRoot, 'weather', sourceConfig.weatherDir, `${baseName}-location-anomalies.csv`)
-const scorePath = path.join(dataRoot, 'research', `${baseName}-signal-scores.csv`)
-const returnsPath = path.join(dataRoot, 'research', `${baseName}-signal-returns.csv`)
-const manifestPath = path.join(dataRoot, 'weather', sourceConfig.weatherDir, `${baseName}-manifest.json`)
+const baseName =
+  process.env.QORE_GFS_OUTPUT_BASENAME ??
+  `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
+const anomalyPath = path.join(outputRoot, 'weather', sourceConfig.weatherDir, `${baseName}-location-anomalies.csv`)
+const scorePath = path.join(outputRoot, 'research', `${baseName}-signal-scores.csv`)
+const returnsPath = path.join(outputRoot, 'research', `${baseName}-signal-returns.csv`)
+const manifestPath = path.join(outputRoot, 'weather', sourceConfig.weatherDir, `${baseName}-manifest.json`)
 
 const anomalyHeaders = [
   'issueDate',
@@ -369,11 +378,44 @@ function sampleLocation(message, location) {
   }
 }
 
+function parsePortableMessage(bytes) {
+  const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+  let parsed = null
+  let parseError = null
+  portableGrib.readData(arrayBuffer, (error, messages) => {
+    parseError = error
+    parsed = messages
+  })
+  if (parseError) throw parseError
+  const field = parsed?.[0]?.fields?.[0]
+  if (!field) return null
+  const grid = field.grid?.definition ?? {}
+  const rows = Number(grid.nj ?? grid.ny)
+  const cols = Number(grid.ni ?? grid.nx)
+  const latitudeStep = Math.abs(Number(grid.dj ?? grid.dy))
+  const longitudeStep = Math.abs(Number(grid.di ?? grid.dx))
+  const latitudeStart = Number(grid.la1)
+  const longitudeStart = Number(grid.lo1)
+  return {
+    gridShape: { rows, cols },
+    data: field.data,
+    latlng: {
+      latitude: Array.from({ length: rows }, (_, index) => latitudeStart - index * latitudeStep),
+      longitude: Array.from({ length: cols }, (_, index) => longitudeStart + index * longitudeStep),
+    },
+  }
+}
+
+function parseFirstMessage(bytes) {
+  if (usePortableGribParser) return parsePortableMessage(bytes)
+  return nativeGrib.parseMessagesFromBuffer(bytes)[0] ?? null
+}
+
 async function fetchForecastSamples(issueDate, fhr) {
   const { gribUrl, idxUrl, text } = await fetchForecastIndex(issueDate, fhr)
   const { start, end, indexLine } = targetRangeFromIndex(text)
   const bytes = await fetchWithRetry(`grib ${gribUrl}`, () => fetchRange(gribUrl, start, end))
-  const [message] = parseMessagesFromBuffer(bytes)
+  const message = parseFirstMessage(bytes)
   if (!message) throw new Error(`Could not parse ${forecastSource} GRIB message from ${gribUrl}`)
   return {
     sourceUrl: gribUrl,
@@ -524,7 +566,7 @@ async function loadResumeState(expectedReturnRows) {
 function buildWorkItems(doneKeys, options = {}) {
   const { includeDone = false } = options
   const items = []
-  for (const issueDate of datesBetween(startDate, endDate)) {
+  for (const issueDate of datesBetween(startDate, issueEndDate)) {
     for (const leadDay of leadDays) {
       const targetDate = addDays(issueDate, leadDay)
       if (targetDate > endDate) continue
@@ -688,7 +730,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     source: sourceConfig.source,
     forecastSource,
-    range: { startDate, endDate },
+    range: { startDate, issueEndDate, targetEndDate: endDate },
     runHour,
     leadDays,
     validHoursUtc,

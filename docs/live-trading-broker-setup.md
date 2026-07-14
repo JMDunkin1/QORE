@@ -66,8 +66,10 @@ By default, QORE skips symbols that already have open Alpaca orders. Set `QORE_A
 Refresh the live handoff files once:
 
 ```bash
-npm run live:weather:once
+npm run live:prepare
 ```
+
+`live:prepare` refreshes market, EIA, and NASA inputs; rebuilds Summer, Winter, and All-Year artifacts; collects complete NOAA GFS/GEFS 00z inputs for the selected live contract; and writes current strategy, weather, and risk handoffs without invoking the broker. Historical Open-Meteo backfills are deliberately excluded from the unattended path because they are research inputs and can exhaust the free minutely request quota.
 
 Then run the fail-closed readiness audit. It checks the Node version, runtime files, secret-file permissions, Git state, routing confirmations, Alpaca account status, Alpaca's authoritative market clock, current signal/risk gates, and Alpaca bid/ask access without placing an order:
 
@@ -107,6 +109,12 @@ npm run live:trade
 
 The supervisor refreshes research data, regenerates Summer/Winter/All-Year artifacts, refreshes live weather/market/risk handoff files, and then runs the Alpaca reconciler on cadence. It launches every job with the same absolute Node binary as the service, so operation after logout or reboot does not depend on an interactive-shell `npm` path.
 
+## Live Strategy Inference
+
+The broker target is inferred from persistent NOAA GFS and GEFS mean 00z forecast history. The live engine reuses the frozen Summer and Winter signal thresholds, source-family requirements, confidence scoring, follow/fade timing, Summer heat freshness and storage sizing, and Winter storage/HDD/volatility blend rules. The All-Year selector then uses the material Summer row, else the material Winter row, else the index fallback. Open-Meteo remains a separate risk-context feed and cannot set the target.
+
+The engine requires a complete common GFS/GEFS issue set no more than two calendar days old and writes `.local/qore/live-inference/all-year-target.json` atomically. `npm run live:readiness` reports this as `Current forecast strategy inference`; the Alpaca broker independently requires `liveForecastAppliedToTarget=true` on every live reconcile, so a failed or stale inference cannot be bypassed by skipping readiness. `npm run test:live-inference` checks scoring parity against the frozen historical Summer and Winter forecast-follow ledgers.
+
 ## Linux VPS Service
 
 Use a dedicated, unprivileged Linux user. From a clean clone of the reviewed commit:
@@ -120,18 +128,24 @@ chmod 600 .env.local
 Keep `QORE_BROKER_MODE=paper` through the first deployment. Then run:
 
 ```bash
-npm run live:weather:once
+npm run live:prepare
 npm run live:readiness
 npm run broker:alpaca:status
 npm run broker:alpaca:dry-run
 npm run broker:alpaca:paper
 ```
 
+On Linux, keep the hardware clock in UTC and enable the user manager across logout/reboot:
+
+```bash
+sudo timedatectl set-local-rtc 0
+sudo loginctl enable-linger "$USER"
+```
+
 Install the user-level systemd service only after those checks pass:
 
 ```bash
 npm run install:linux-service
-sudo loginctl enable-linger "$USER"
 systemctl --user start qore-live-trading.service
 systemctl --user status qore-live-trading.service
 journalctl --user -u qore-live-trading.service -f
@@ -163,6 +177,7 @@ npm run live:kill-switch:clear -- --confirm=RESUME_TRADING --reason="review comp
 QORE blocks live orders when:
 
 - The signal intent is stale.
+- The validated GFS/GEFS forecast set is missing or is not applied to the target.
 - The kill switch is engaged.
 - The venue is closed and outside-market queuing is not enabled.
 - Account, market, weather, or storage risk context is missing.
@@ -181,6 +196,7 @@ The broker state and order logs are written under `.local/qore/`:
 - `.local/qore/broker/orders.jsonl`
 - `.local/qore/broker/risk-ledger.json`
 - `.local/qore/live-trading-supervisor/status.json`
+- `.local/qore/live-inference/all-year-target.json`
 
 ## External References
 

@@ -919,6 +919,9 @@ function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnap
   const warnings = []
   const staleBlock = signalAgeBlock(signalSnapshot)
   if (staleBlock) blocks.push(staleBlock)
+  if (brokerMode === 'live' && signalSnapshot?.inference?.liveForecastAppliedToTarget !== true) {
+    blocks.push('Current live forecast has not been applied to the all-year target; real-money routing is disabled.')
+  }
 
   if (alpacaLiveRiskPolicy.requireAccountContext && (!brokerSnapshot?.account?.equityUsd || brokerSnapshot.account.equityUsd <= 0)) {
     blocks.push('Broker account equity is missing or zero.')

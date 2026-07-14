@@ -37,7 +37,7 @@ function today() {
   return new Date().toISOString().slice(0, 10)
 }
 
-async function writeHandoffs({ killSwitchEngaged = false, marketSpreads = {} } = {}) {
+async function writeHandoffs({ killSwitchEngaged = false, marketSpreads = {}, liveForecastAppliedToTarget = true } = {}) {
   const now = new Date().toISOString()
   await writeJson(path.join(liveDir, 'signal-intent-reconcile.json'), {
     generatedAt: now,
@@ -52,6 +52,10 @@ async function writeHandoffs({ killSwitchEngaged = false, marketSpreads = {} } =
       confidence: 0.8,
       indexFraction: 1,
       gasPosition: 0,
+    },
+    inference: {
+      mode: liveForecastAppliedToTarget ? 'test-live-inference' : 'historical-artifact-latest-row',
+      liveForecastAppliedToTarget,
     },
   })
   await writeJson(path.join(liveDir, 'market-reference-prices.json'), {
@@ -98,9 +102,11 @@ async function scenario({
   marketOpen = true,
   expectedBlock = null,
   expectedSubmissionFailure = false,
+  brokerMode = 'paper',
+  liveForecastAppliedToTarget = true,
 }) {
   await rm(brokerDir, { recursive: true, force: true })
-  await writeHandoffs({ killSwitchEngaged, marketSpreads })
+  await writeHandoffs({ killSwitchEngaged, marketSpreads, liveForecastAppliedToTarget })
   const submittedOrders = []
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
@@ -168,8 +174,8 @@ async function scenario({
   const address = server.address()
   const baseUrl = `http://127.0.0.1:${address.port}`
   const commandArgs = readinessOnly
-    ? ['scripts/qore-live-readiness.mjs', '--mode=paper', '--json']
-    : ['scripts/qore-alpaca-broker.mjs', '--mode=paper', preflightOnly ? '--preflight-only' : '--reconcile', '--json']
+    ? ['scripts/qore-live-readiness.mjs', `--mode=${brokerMode}`, '--json']
+    : ['scripts/qore-alpaca-broker.mjs', `--mode=${brokerMode}`, preflightOnly ? '--preflight-only' : '--reconcile', '--json']
   const result = await runNode(commandArgs, {
     APCA_API_KEY_ID: 'test-key',
     APCA_API_SECRET_KEY: 'test-secret',
@@ -179,6 +185,9 @@ async function scenario({
     QORE_LIVE_WEATHER_STATE_DIR: liveDir,
     QORE_BROKER_STATE_DIR: brokerDir,
     QORE_PAPER_ORDER_ROUTING_ENABLED: '1',
+    QORE_LIVE_TRADING_ENABLED: brokerMode === 'live' ? '1' : '0',
+    QORE_LIVE_ORDER_ROUTING_ENABLED: brokerMode === 'live' ? '1' : '0',
+    QORE_CONFIRM_LIVE_TRADING: brokerMode === 'live' ? 'I_UNDERSTAND_THIS_CAN_LOSE_MONEY' : '',
     QORE_LIVE_MAX_QUOTE_AGE_MINUTES: '5',
   })
   await new Promise((resolve) => server.close(resolve))
@@ -300,6 +309,12 @@ try {
     name: 'direct operator kill switch blocks all submissions',
     killSwitchEngaged: true,
     expectedBlock: /kill switch is engaged/,
+  })
+  await scenario({
+    name: 'live mode blocks a historical-artifact target even when all routing flags are enabled',
+    brokerMode: 'live',
+    liveForecastAppliedToTarget: false,
+    expectedBlock: /live forecast has not been applied/,
   })
   await testSupervisorLock()
 } finally {

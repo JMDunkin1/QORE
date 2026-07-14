@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { constants as fsConstants, existsSync, statSync } from 'node:fs'
+import { constants as fsConstants, existsSync, readFileSync, statSync } from 'node:fs'
 import { access } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
@@ -66,7 +66,20 @@ function checkGitState() {
   if (status.status !== 0) {
     add('git-state', 'Git working tree', 'block', status.stderr.trim() || 'Could not read Git working tree state.')
   } else if (status.stdout.trim()) {
-    add('git-state', 'Git working tree', mode === 'live' ? 'block' : 'warn', 'Working tree is not clean; deploy a reviewed commit for reproducible operation.')
+    const changedPaths = status.stdout
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.slice(3).split(' -> ').at(-1))
+      .filter(Boolean)
+    const codeOrConfigPaths = changedPaths.filter((filePath) => !filePath.startsWith('data/qore/'))
+    add(
+      'git-state',
+      'Git working tree',
+      mode === 'live' && codeOrConfigPaths.length ? 'block' : 'warn',
+      codeOrConfigPaths.length
+        ? `Working tree has ${codeOrConfigPaths.length} code/config change(s) and ${changedPaths.length - codeOrConfigPaths.length} generated data change(s); deploy a reviewed commit for reproducible operation.`
+        : `Working tree contains ${changedPaths.length} generated data artifact change(s), which is expected after a live refresh.`,
+    )
   } else {
     add('git-state', 'Git working tree', 'pass', 'Working tree is clean.')
   }
@@ -90,6 +103,36 @@ function parseBrokerStatus(stdout) {
   } catch {
     return null
   }
+}
+
+function readJson(relativePath) {
+  try {
+    return JSON.parse(readFileSync(path.join(repoDir, relativePath), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function latestCsvDate(relativePath, columnName) {
+  try {
+    const lines = readFileSync(path.join(repoDir, relativePath), 'utf8').trim().split(/\r?\n/)
+    const headers = lines.shift()?.split(',') ?? []
+    const index = headers.indexOf(columnName)
+    if (index < 0) return null
+    return lines.reduce((latest, line) => {
+      const value = line.split(',')[index]
+      return /^\d{4}-\d{2}-\d{2}$/.test(value) && (!latest || value > latest) ? value : latest
+    }, null)
+  } catch {
+    return null
+  }
+}
+
+function calendarAgeDays(dateText) {
+  if (!dateText) return null
+  const timestamp = Date.parse(`${dateText}T00:00:00Z`)
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+  return Number.isFinite(timestamp) ? Math.max(0, (today - timestamp) / 86400000) : null
 }
 
 add(
@@ -120,6 +163,43 @@ for (const relativePath of requiredFiles) {
     existsSync(path.join(repoDir, relativePath)) ? 'pass' : 'block',
     existsSync(path.join(repoDir, relativePath)) ? 'Required runtime file is present.' : 'Required runtime file is missing.',
   )
+}
+
+const allYearTradesPath = 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv'
+const latestAllYearDate = latestCsvDate(allYearTradesPath, 'entryTradeDate')
+const allYearAgeDays = calendarAgeDays(latestAllYearDate)
+add(
+  'all-year-artifact-freshness',
+  'All-year strategy artifact freshness',
+  allYearAgeDays !== null && allYearAgeDays <= 1 ? 'pass' : 'block',
+  allYearAgeDays === null
+    ? 'Could not determine the latest entryTradeDate in the all-year artifact.'
+    : `Latest all-year row is ${latestAllYearDate} (${allYearAgeDays.toFixed(1)} calendar day(s) old); cap is 1 day.`,
+)
+
+const dataManifest = readJson('data/qore/runs/free-data-manifest.json')
+if (dataManifest) {
+  const failedSourceCount = Number(dataManifest.refreshSummary?.failedSourceCount ?? 0)
+  add(
+    'last-data-refresh',
+    'Last free-data refresh',
+    failedSourceCount > 0 ? 'block' : 'pass',
+    failedSourceCount > 0
+      ? `The last refresh recorded ${failedSourceCount} failed source request(s).`
+      : `Refresh manifest is healthy (${dataManifest.generatedAt ?? 'timestamp unavailable'}).`,
+  )
+}
+
+const signalHandoff = readJson('.local/qore/live-weather/signal-intent-reconcile.json')
+if (signalHandoff?.inference?.liveForecastAppliedToTarget === false) {
+  add(
+    'live-strategy-inference',
+    'Current forecast strategy inference',
+    mode === 'live' ? 'block' : 'warn',
+    'Current weather is a risk gate only; it is not yet converted into the all-year target. Real-money mode remains blocked.',
+  )
+} else if (signalHandoff?.inference?.liveForecastAppliedToTarget === true) {
+  add('live-strategy-inference', 'Current forecast strategy inference', 'pass', 'The current forecast was applied to the target-weight inference.')
 }
 
 const hasDotEnv = checkEnvFile('.env')
@@ -169,6 +249,36 @@ try {
 }
 
 checkGitState()
+
+if (process.platform === 'linux') {
+  const ntpSynchronized = command('timedatectl', ['show', '-p', 'NTPSynchronized', '--value'])
+  add(
+    'host-clock-sync',
+    'Host clock synchronization',
+    ntpSynchronized.status === 0 && ntpSynchronized.stdout.trim() === 'yes' ? 'pass' : 'block',
+    ntpSynchronized.status === 0 && ntpSynchronized.stdout.trim() === 'yes'
+      ? 'The host clock is NTP-synchronized.'
+      : 'The host clock is not confirmed synchronized; accurate market and quote timestamps are required.',
+  )
+  const localRtc = command('timedatectl', ['show', '-p', 'LocalRTC', '--value'])
+  add(
+    'host-rtc-mode',
+    'Hardware clock mode',
+    localRtc.status === 0 && localRtc.stdout.trim() === 'no' ? 'pass' : 'warn',
+    localRtc.status === 0 && localRtc.stdout.trim() === 'no'
+      ? 'The hardware clock is stored in UTC.'
+      : 'The hardware clock is stored in local time; switch it to UTC to avoid DST/reboot timestamp problems.',
+  )
+  const userSystemd = command('systemctl', ['--user', 'show-environment'])
+  add(
+    'systemd-user-manager',
+    'systemd user manager',
+    userSystemd.status === 0 ? 'pass' : 'warn',
+    userSystemd.status === 0
+      ? 'The systemd user manager is reachable.'
+      : 'The systemd user manager is not reachable in this session; enable lingering before unattended operation.',
+  )
+}
 
 if (!localOnly && mode !== 'dry-run' && apiKey && secretKey) {
   const broker = command(process.execPath, ['scripts/qore-alpaca-broker.mjs', `--mode=${mode}`, '--preflight-only', '--json'])
