@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-13T19:24:43.188Z",
+  "generatedAt": "2026-07-14T22:45:26.682Z",
   "strategyId": "ngas-winter-alpha",
   "data": {
     "frozenInputManifest": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/frozen-inputs/input-manifest.json",
@@ -765,7 +765,7 @@
         },
         "reversionLong": {
           "totalReturnPct": 2.47,
-          "cagrPct": 7.86,
+          "cagrPct": 7.85,
           "annualVolPct": 16.22,
           "sharpe": 4.29,
           "sortino": 7.67,
@@ -807,7 +807,7 @@
         },
         "weatherReversion": {
           "totalReturnPct": 23.5,
-          "cagrPct": 70.2,
+          "cagrPct": 70.19,
           "annualVolPct": 28.26,
           "sharpe": 5.53,
           "sortino": 9.17,
@@ -828,7 +828,7 @@
         },
         "longSide": {
           "totalReturnPct": 8.86,
-          "cagrPct": 30.04,
+          "cagrPct": 30.03,
           "annualVolPct": 44.23,
           "sharpe": 3.24,
           "sortino": 3.18,
@@ -2805,7 +2805,7 @@
     {
       "candidateId": "ngas-alpha-short-fade-plus-cold-follow-vol-long-75-graded-shift-sizing-storage-seasonal-tight-hdd-follow-tiered-risk-125",
       "eligible": true,
-      "trainValidationRank": 131.4884,
+      "trainValidationRank": 131.4779,
       "architectureId": "frozen-input-blend",
       "conflictPolicy": "short-fade-plus-cold-follow-vol-long",
       "weatherResolutionPolicy": "graded-shift-sizing",
@@ -2833,9 +2833,9 @@
       "trainSharpe": 1.07,
       "trainVolatilityPct": 20,
       "trainMaxDrawdownPct": -25.86,
-      "validationReturnPct": 62.31,
+      "validationReturnPct": 62.3,
       "validationIndexReturnPct": 35.01,
-      "validationEdgePct": 27.3,
+      "validationEdgePct": 27.29,
       "validationSharpe": 1.71,
       "validationVolatilityPct": 18.93,
       "validationMaxDrawdownPct": -14.81,
@@ -6603,9 +6603,9 @@
       "holdoutEdgePct": 10.79,
       "holdoutSharpe": 1.59,
       "holdoutMaxDrawdownPct": -11.38,
-      "allReturnPct": 239.8,
+      "allReturnPct": 239.79,
       "allIndexReturnPct": 117.16,
-      "allEdgePct": 122.64,
+      "allEdgePct": 122.63,
       "allVolatilityPct": 19.32,
       "allSharpe": 1.27,
       "allMaxDrawdownPct": -23.5
@@ -8549,7 +8549,7 @@
       "nullMaxMeanDailyEdgePct": {
         "p05": -0.01131,
         "p50": 0.01066,
-        "p95": 0.03617
+        "p95": 0.03618
       },
       "sampleCount": 1362,
       "activeOverlayDays": 200,

@@ -1,0 +1,23 @@
+eventId,startDate,endDate,peakDate,minWeightedAnomalyF,maxCoveragePct,qualifyingDays,source
+actual-heating-cold-1,2021-02-17,2021-02-17,2021-02-17,-12.39,0.566,1,NASA POWER actual anomaly basket
+actual-heating-cold-2,2021-02-19,2021-02-20,2021-02-20,-12.86,0.84,2,NASA POWER actual anomaly basket
+actual-heating-cold-3,2022-01-29,2022-01-29,2022-01-29,-8.31,0.755,1,NASA POWER actual anomaly basket
+actual-heating-cold-4,2022-03-12,2022-03-12,2022-03-12,-12.34,0.679,1,NASA POWER actual anomaly basket
+actual-heating-cold-5,2022-03-27,2022-03-28,2022-03-28,-10.5,0.764,2,NASA POWER actual anomaly basket
+actual-heating-cold-6,2022-11-18,2022-11-20,2022-11-20,-12.23,0.887,3,NASA POWER actual anomaly basket
+actual-heating-cold-7,2022-12-23,2022-12-26,2022-12-24,-20.06,1,4,NASA POWER actual anomaly basket
+actual-heating-cold-8,2023-02-03,2023-02-03,2023-02-03,-10.82,0.726,1,NASA POWER actual anomaly basket
+actual-heating-cold-9,2023-03-18,2023-03-19,2023-03-19,-11.59,0.651,2,NASA POWER actual anomaly basket
+actual-heating-cold-10,2023-11-01,2023-11-01,2023-11-01,-11.47,0.811,1,NASA POWER actual anomaly basket
+actual-heating-cold-11,2023-11-28,2023-11-28,2023-11-28,-9.69,0.849,1,NASA POWER actual anomaly basket
+actual-heating-cold-12,2024-01-14,2024-01-17,2024-01-16,-12.95,0.83,4,NASA POWER actual anomaly basket
+actual-heating-cold-13,2024-01-20,2024-01-20,2024-01-20,-13.87,0.887,1,NASA POWER actual anomaly basket
+actual-heating-cold-14,2024-11-30,2024-12-02,2024-11-30,-10.57,0.774,3,NASA POWER actual anomaly basket
+actual-heating-cold-15,2025-01-09,2025-01-09,2025-01-09,-8.21,0.594,1,NASA POWER actual anomaly basket
+actual-heating-cold-16,2025-01-20,2025-01-22,2025-01-21,-16.05,0.943,3,NASA POWER actual anomaly basket
+actual-heating-cold-17,2025-02-18,2025-02-22,2025-02-20,-18.96,1,5,NASA POWER actual anomaly basket
+actual-heating-cold-18,2025-11-10,2025-11-11,2025-11-10,-9.13,0.613,2,NASA POWER actual anomaly basket
+actual-heating-cold-19,2025-12-04,2025-12-05,2025-12-04,-10.57,0.651,2,NASA POWER actual anomaly basket
+actual-heating-cold-20,2025-12-14,2025-12-15,2025-12-14,-14.58,0.849,2,NASA POWER actual anomaly basket
+actual-heating-cold-21,2026-01-24,2026-02-01,2026-01-26,-15.24,1,9,NASA POWER actual anomaly basket
+actual-heating-cold-22,2026-03-17,2026-03-17,2026-03-17,-12.04,0.717,1,NASA POWER actual anomaly basket
