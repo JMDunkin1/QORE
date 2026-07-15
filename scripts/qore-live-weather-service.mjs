@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
@@ -22,6 +22,7 @@ const profileName = argValue(rawArgs, '--profile') ?? process.env.QORE_LIVE_WEAT
 const selectedProfile = liveWeatherSettings.profiles?.[profileName] ?? {}
 const selectedProfileExists = Boolean(liveWeatherSettings.profiles?.[profileName])
 const once = args.has('--once') || truthy(process.env.QORE_LIVE_WEATHER_ONCE)
+const respectCadence = args.has('--respect-cadence') || truthy(process.env.QORE_LIVE_WEATHER_RESPECT_CADENCE)
 const runLiveForecast = !args.has('--no-current-forecast') && settingBool('QORE_LIVE_WEATHER_CURRENT_FORECAST', 'runLiveForecast', true)
 const runPerformanceTest = !args.has('--no-performance-test') && settingBool('QORE_LIVE_WEATHER_PERFORMANCE_TEST', 'runPerformanceTest', true)
 const runForecastCalendar =
@@ -740,6 +741,20 @@ async function collectBrokerAccountAndPositions() {
   return snapshot
 }
 
+function storageInferenceIsCoherent(inference, eia) {
+  const latest = eia?.latestStorage
+  const validation = inference?.storageValidation
+  const inferenceValue = Number(validation?.latestPolledStorageBcf)
+  const polledValue = Number(latest?.storageBcf)
+  return Boolean(
+    latest?.date
+    && validation?.latestPolledDate === latest.date
+    && Number.isFinite(inferenceValue)
+    && Number.isFinite(polledValue)
+    && Math.abs(inferenceValue - polledValue) <= 1e-6,
+  )
+}
+
 async function collectRiskAndKillSwitchState() {
   const generatedAt = new Date().toISOString()
   const operatorStateFile = jobSettingPath('riskAndKillSwitchState', 'operatorStateFile', '.local/qore/live-weather/operator-state.json')
@@ -748,6 +763,8 @@ async function collectRiskAndKillSwitchState() {
   const broker = latestJobOutputs.brokerAccountAndPositions
   const weather = latestJobOutputs.currentWeather
   const eia = latestJobOutputs.eiaStorageReleaseWindow
+  const inference = latestJobOutputs.strategyInference ?? (await readJsonIfExists(liveInferencePath))
+  const storageContextCoherent = storageInferenceIsCoherent(inference, eia)
   const operator = {
     killSwitchEngaged: operatorFile?.killSwitchEngaged ?? truthy(process.env.QORE_KILL_SWITCH_ENGAGED),
     venueOpen: operatorFile?.venueOpen ?? isUsEquityMarketOpen(),
@@ -769,14 +786,15 @@ async function collectRiskAndKillSwitchState() {
         }
       : null,
     weather: weather?.riskContext ?? null,
-    storage: eia?.riskContext ?? null,
+    storage: storageContextCoherent ? eia.riskContext : null,
     readiness: {
       killSwitchClear: !operator.killSwitchEngaged,
       venueOpen: operator.venueOpen,
       accountContextPresent: Boolean(broker?.account),
       marketContextPresent: Boolean(market?.referencePrices && Object.keys(market.referencePrices).length),
       weatherContextPresent: Boolean(weather?.riskContext),
-      storageContextPresent: Boolean(eia?.riskContext),
+      storageContextPresent: Boolean(eia?.riskContext && storageContextCoherent),
+      storageInferenceCoherent: storageContextCoherent,
     },
     files: {
       snapshot: relative(riskStatePath),
@@ -792,12 +810,19 @@ async function reconcileSignalIntent() {
   if (!inference?.validated || !inference.liveForecastAppliedToTarget || !inference.target) {
     throw new Error(`Validated live strategy inference is unavailable: ${inference?.error ?? 'no successful inference snapshot'}`)
   }
+  const eia = latestJobOutputs.eiaStorageReleaseWindow
+  if (eia?.latestStorage && !storageInferenceIsCoherent(inference, eia)) {
+    throw new Error(`Live strategy inference storage input does not match polled EIA release ${eia.latestStorage.date}.`)
+  }
   const latest = inference.target
   const gasPosition = numericValue(latest.gasPosition, 0)
   const indexFraction = numericValue(latest.indexFraction, Math.max(0, 1 - Math.abs(gasPosition)))
   const cashFraction = numericValue(latest.cashFraction, Math.max(0, 1 - indexFraction - Math.abs(gasPosition)))
   const signalDate = latest.signalDate
-  const signalAgeDays = signalDate ? Math.max(0, (Date.parse(`${generatedAt.slice(0, 10)}T00:00:00Z`) - Date.parse(`${signalDate}T00:00:00Z`)) / 86400000) : null
+  const validatedIssueDate = inference.forecastValidation.latestCommonIssueDate
+  const signalAgeDays = validatedIssueDate
+    ? Math.max(0, (Date.parse(`${generatedAt.slice(0, 10)}T00:00:00Z`) - Date.parse(`${validatedIssueDate}T00:00:00Z`)) / 86400000)
+    : null
   const intent = {
     strategyId: 'ngas-all-year-beta',
     strategyName: 'NGAS All-Year Beta',
@@ -849,7 +874,9 @@ async function reconcileSignalIntent() {
 }
 
 async function collectStrategyInference() {
-  const result = await runCommand('live-all-year-strategy-inference', process.execPath, ['scripts/qore-live-strategy-inference.mjs'])
+  const result = await runCommand('live-all-year-strategy-inference', process.execPath, ['scripts/qore-live-strategy-inference.mjs'], {
+    env: existsSync(eiaStoragePath) ? { QORE_LIVE_INFERENCE_EIA_SNAPSHOT_FILE: eiaStoragePath } : {},
+  })
   if (!result.ok) throw new Error(result.stderr || result.stdout || 'Live all-year inference failed.')
   const snapshot = await readJsonIfExists(liveInferencePath)
   if (!snapshot?.validated || !snapshot.liveForecastAppliedToTarget) throw new Error(snapshot?.error ?? 'Inference snapshot was not validated.')
@@ -925,6 +952,7 @@ async function collectEiaStorageReleaseWindow() {
       liveRows: liveRows.length,
       localRows: localRows.length,
     },
+    storageRows: liveRows,
     files: {
       snapshot: relative(eiaStoragePath),
       localCache: relative(localEiaStoragePath),
@@ -1130,9 +1158,33 @@ function liveJobs() {
 
 function jobIsDue(job, nowMs) {
   if (!job.enabled) return false
-  if (once) return true
+  if (once && !respectCadence) return true
   const lastRunAt = lastJobRunAt.get(job.id)
-  return !lastRunAt || nowMs - Date.parse(lastRunAt) >= job.intervalMs
+  if (lastRunAt) return nowMs - Date.parse(lastRunAt) >= job.intervalMs
+  if (!respectCadence || !job.outputFile || !existsSync(job.outputFile)) return true
+  if (!persistedOutputIsUsable(job, latestJobOutputs[job.id])) return true
+  return nowMs - statSync(job.outputFile).mtimeMs >= job.intervalMs
+}
+
+function persistedOutputIsUsable(job, output) {
+  if (!output || typeof output !== 'object') return false
+  if (job.id === 'strategyInference') {
+    return Boolean(output.validated && output.liveForecastAppliedToTarget && output.target)
+  }
+  return true
+}
+
+async function hydratePersistedJobOutputs(jobs) {
+  if (!respectCadence) return
+  for (const job of jobs) {
+    if (!job.enabled || !job.outputFile || latestJobOutputs[job.id] !== undefined) continue
+    try {
+      const output = await readJsonIfExists(job.outputFile)
+      if (persistedOutputIsUsable(job, output)) latestJobOutputs[job.id] = output
+    } catch {
+      // A missing or malformed output must be refreshed instead of satisfying cadence.
+    }
+  }
 }
 
 function nextDueSleepMs(jobs, nowMs) {
@@ -1140,8 +1192,11 @@ function nextDueSleepMs(jobs, nowMs) {
   if (!enabled.length) return 60_000
   const waits = enabled.map((job) => {
     const lastRunAt = lastJobRunAt.get(job.id)
-    if (!lastRunAt) return 0
-    return Math.max(0, job.intervalMs - (nowMs - Date.parse(lastRunAt)))
+    if (lastRunAt) return Math.max(0, job.intervalMs - (nowMs - Date.parse(lastRunAt)))
+    if (respectCadence && job.outputFile && existsSync(job.outputFile) && persistedOutputIsUsable(job, latestJobOutputs[job.id])) {
+      return Math.max(0, job.intervalMs - (nowMs - statSync(job.outputFile).mtimeMs))
+    }
+    return 0
   })
   return Math.min(...waits)
 }
@@ -1196,6 +1251,7 @@ async function runLiveJob(job) {
 async function runCycle() {
   const cycleStartedAt = new Date()
   const jobs = liveJobs()
+  await hydratePersistedJobOutputs(jobs)
   const dueJobs = jobs.filter((job) => jobIsDue(job, cycleStartedAt.getTime()))
   const jobRuns = []
 
@@ -1231,6 +1287,7 @@ async function runCycle() {
       runLiveForecast,
       runForecastCalendar,
       runPerformanceTest,
+      respectCadence,
       liveModels,
       forecastDays,
       fetchConcurrency,

@@ -13,6 +13,9 @@ const rawArgs = process.argv.slice(2)
 const jsonOutput = rawArgs.includes('--json')
 const localOnly = rawArgs.includes('--local-only')
 const mode = normalizeMode(argValue('--mode') ?? process.env.QORE_BROKER_MODE ?? 'dry-run')
+const weatherStateDir = path.resolve(process.env.QORE_LIVE_WEATHER_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-weather'))
+const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(weatherStateDir, 'signal-intent-reconcile.json'))
+const maxSignalAgeDays = 1
 const checks = []
 
 function argValue(name) {
@@ -30,6 +33,26 @@ function normalizeMode(value) {
 
 function truthy(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').toLowerCase())
+}
+
+function signalFreshness(signalHandoff) {
+  const issueDate = signalHandoff?.inference?.forecastValidation?.latestCommonIssueDate
+  const targetDate = signalHandoff?.intent?.targetDate
+  const freshnessDate = issueDate ?? targetDate
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(freshnessDate ?? ''))
+    ? new Date(`${freshnessDate}T00:00:00Z`)
+    : null
+  const validDate = parsedDate && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === freshnessDate
+    ? parsedDate
+    : null
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+  const ageDays = validDate ? (today - validDate.getTime()) / 86400000 : null
+  return {
+    ageDays,
+    freshnessDate,
+    source: issueDate ? 'validated inference issue date' : 'target date',
+    stale: signalHandoff?.stale === true || ageDays === null || ageDays < 0 || ageDays > maxSignalAgeDays,
+  }
 }
 
 function add(id, label, status, detail) {
@@ -61,17 +84,43 @@ function checkEnvFile(fileName) {
   return true
 }
 
+const generatedArtifactPrefixes = [
+  'data/qore/fundamentals/eia/',
+  'data/qore/market/yahoo/',
+  'data/qore/research/',
+  'data/qore/runs/',
+  'data/qore/weather/',
+]
+
+function isGeneratedArtifactPath(filePath) {
+  if (filePath === 'data/qore/dataset-manifest.json') return true
+  return generatedArtifactPrefixes.some((prefix) => filePath.startsWith(prefix)) && /\.(?:csv|json)$/.test(filePath)
+}
+
+function changedPathsFromStatus(output) {
+  const records = output.split('\0')
+  const changedPaths = []
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index]
+    if (!record) continue
+    const status = record.slice(0, 2)
+    changedPaths.push(record.slice(3))
+    if (status.includes('R') || status.includes('C')) {
+      const sourcePath = records[index + 1]
+      if (sourcePath) changedPaths.push(sourcePath)
+      index += 1
+    }
+  }
+  return [...new Set(changedPaths.filter(Boolean))]
+}
+
 function checkGitState() {
-  const status = command('git', ['status', '--porcelain'])
+  const status = command('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'])
   if (status.status !== 0) {
     add('git-state', 'Git working tree', 'block', status.stderr.trim() || 'Could not read Git working tree state.')
   } else if (status.stdout.trim()) {
-    const changedPaths = status.stdout
-      .trim()
-      .split(/\r?\n/)
-      .map((line) => line.slice(3).split(' -> ').at(-1))
-      .filter(Boolean)
-    const codeOrConfigPaths = changedPaths.filter((filePath) => !filePath.startsWith('data/qore/'))
+    const changedPaths = changedPathsFromStatus(status.stdout)
+    const codeOrConfigPaths = changedPaths.filter((filePath) => !isGeneratedArtifactPath(filePath))
     add(
       'git-state',
       'Git working tree',
@@ -105,34 +154,12 @@ function parseBrokerStatus(stdout) {
   }
 }
 
-function readJson(relativePath) {
+function readJson(filePath) {
   try {
-    return JSON.parse(readFileSync(path.join(repoDir, relativePath), 'utf8'))
+    return JSON.parse(readFileSync(path.resolve(repoDir, filePath), 'utf8'))
   } catch {
     return null
   }
-}
-
-function latestCsvDate(relativePath, columnName) {
-  try {
-    const lines = readFileSync(path.join(repoDir, relativePath), 'utf8').trim().split(/\r?\n/)
-    const headers = lines.shift()?.split(',') ?? []
-    const index = headers.indexOf(columnName)
-    if (index < 0) return null
-    return lines.reduce((latest, line) => {
-      const value = line.split(',')[index]
-      return /^\d{4}-\d{2}-\d{2}$/.test(value) && (!latest || value > latest) ? value : latest
-    }, null)
-  } catch {
-    return null
-  }
-}
-
-function calendarAgeDays(dateText) {
-  if (!dateText) return null
-  const timestamp = Date.parse(`${dateText}T00:00:00Z`)
-  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
-  return Number.isFinite(timestamp) ? Math.max(0, (today - timestamp) / 86400000) : null
 }
 
 add(
@@ -152,7 +179,6 @@ const requiredFiles = [
   'config/qore-live-broker-settings.json',
   'config/qore-live-weather-settings.json',
   'data/qore/market/index-basket-config.json',
-  'data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv',
   'scripts/qore-alpaca-broker.mjs',
   'scripts/qore-live-trading-supervisor.mjs',
 ]
@@ -164,18 +190,6 @@ for (const relativePath of requiredFiles) {
     existsSync(path.join(repoDir, relativePath)) ? 'Required runtime file is present.' : 'Required runtime file is missing.',
   )
 }
-
-const allYearTradesPath = 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv'
-const latestAllYearDate = latestCsvDate(allYearTradesPath, 'entryTradeDate')
-const allYearAgeDays = calendarAgeDays(latestAllYearDate)
-add(
-  'all-year-artifact-freshness',
-  'All-year strategy artifact freshness',
-  allYearAgeDays !== null && allYearAgeDays <= 1 ? 'pass' : 'block',
-  allYearAgeDays === null
-    ? 'Could not determine the latest entryTradeDate in the all-year artifact.'
-    : `Latest all-year row is ${latestAllYearDate} (${allYearAgeDays.toFixed(1)} calendar day(s) old); cap is 1 day.`,
-)
 
 const dataManifest = readJson('data/qore/runs/free-data-manifest.json')
 if (dataManifest) {
@@ -190,23 +204,42 @@ if (dataManifest) {
   )
 }
 
-const signalHandoff = readJson('.local/qore/live-weather/signal-intent-reconcile.json')
-if (signalHandoff?.inference?.liveForecastAppliedToTarget === false) {
+const signalHandoff = readJson(signalIntentPath)
+if (signalHandoff?.inference?.validated === true && signalHandoff.inference.liveForecastAppliedToTarget === true) {
+  add('live-strategy-inference', 'Current forecast strategy inference', 'pass', 'The current validated forecast was applied to the target-weight inference.')
+} else {
   add(
     'live-strategy-inference',
     'Current forecast strategy inference',
     mode === 'live' ? 'block' : 'warn',
-    'Current weather is a risk gate only; it is not yet converted into the all-year target. Real-money mode remains blocked.',
+    signalHandoff
+      ? `The configured signal handoff does not contain validated live inference (${path.relative(repoDir, signalIntentPath)}). Real-money mode remains blocked.`
+      : `The configured signal handoff is missing or malformed (${path.relative(repoDir, signalIntentPath)}). Real-money mode remains blocked.`,
   )
-} else if (signalHandoff?.inference?.liveForecastAppliedToTarget === true) {
-  add('live-strategy-inference', 'Current forecast strategy inference', 'pass', 'The current forecast was applied to the target-weight inference.')
 }
+
+const currentSignalFreshness = signalFreshness(signalHandoff)
+add(
+  'live-strategy-freshness',
+  'Current forecast strategy freshness',
+  currentSignalFreshness.stale ? (mode === 'live' ? 'block' : 'warn') : 'pass',
+  currentSignalFreshness.ageDays === null
+    ? 'The signal handoff has no valid validated inference issue date or target date.'
+    : `${currentSignalFreshness.source} ${currentSignalFreshness.freshnessDate} is ${currentSignalFreshness.ageDays.toFixed(1)} calendar day(s) old; cap is ${maxSignalAgeDays} day.`,
+)
 
 const hasDotEnv = checkEnvFile('.env')
 const hasLocalEnv = checkEnvFile('.env.local')
 const hasEnv = hasDotEnv || hasLocalEnv
 if (!hasEnv && mode !== 'dry-run') {
-  add('env-file', 'Broker environment file', 'block', 'Create .env.local from .env.live.example before paper or live operation.')
+  add(
+    'env-file',
+    'Broker environment file',
+    mode === 'live' ? 'block' : 'warn',
+    mode === 'live'
+      ? 'Create .env.local from .env.live.example before live operation.'
+      : 'No local broker environment file is present; paper credentials must be supplied by the process environment.',
+  )
 }
 
 const apiKey = process.env.QORE_ALPACA_API_KEY_ID ?? process.env.APCA_API_KEY_ID ?? process.env.ALPACA_API_KEY_ID ?? process.env.ALPACA_API_KEY

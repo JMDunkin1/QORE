@@ -51,6 +51,7 @@
     "test:github-service": "node scripts/test-qore-git-service.mjs",
     "test:live-trading": "node scripts/test-qore-live-trading.mjs",
     "test:live-inference": "node scripts/test-qore-live-inference.mjs",
+    "test:live-inference-fetch": "node scripts/test-qore-live-inference.mjs --live-fetch",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

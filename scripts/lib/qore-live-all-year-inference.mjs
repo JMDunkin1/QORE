@@ -9,6 +9,9 @@ const SUMMER = {
 const WINTER_FOLLOW = {
   candidateId: 'dual-ncep-complex-bg-shrink-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-vol0-fixed',
   sourceSetId: 'ncep-complex', sourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'aigfs'], sourceWeightMode: 'bg-shrink',
+  heatingDemandSourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs', 'gem-global'],
+  liveSourceIds: ['gfs', 'gefs-mean', 'aigfs'],
+  liveHeatingDemandSourceIds: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
   anomalyThreshold: 5, coverageThreshold: 0.5, minConfidence: 0.5, minGroups: 1, minFamilies: 2,
   weatherFraction: 0.25, reversionFraction: 0.2, followHoldDays: 3, reversionHoldDays: 2, minRealizedMovePct: 2,
 }
@@ -196,7 +199,8 @@ function schedule(days, signals, candidate, season) {
   }
   for (const signal of signals) {
     const entry = days.findIndex((day) => day.date > signal.issueDate)
-    const target = days.findIndex((day) => day.date >= signal.targetDate)
+    const targetIndex = days.findIndex((day) => day.date >= signal.targetDate)
+    const target = targetIndex < 0 ? days.length - 1 : targetIndex
     if (entry < 0 || target < entry) continue
     const followEnd = Math.min(target, entry + candidate.followHoldDays - 1)
     const isHeat = signal.thesisKind === 'summer-heat-long'
@@ -243,35 +247,40 @@ function volatilityDirection(days, date) {
   const index = days.findIndex((day) => day.date === date)
   if (index < 2) return { direction: 0 }
   const returns = []
-  for (let cursor = Math.max(1, index - 40); cursor < index; cursor += 1) returns.push(((days[cursor].gasClose - days[cursor - 1].gasClose) / days[cursor - 1].gasClose) * 100)
-  const previousReturnPct = returns.at(-1) ?? 0
+  for (let cursor = Math.max(1, index - 41); cursor < index - 1; cursor += 1) returns.push(((days[cursor].gasClose - days[cursor - 1].gasClose) / days[cursor - 1].gasClose) * 100)
+  const previousReturnPct = ((days[index - 1].gasClose - days[index - 2].gasClose) / days[index - 2].gasClose) * 100
   const volatilityPct = std(returns)
   const reversalZ = volatilityPct ? previousReturnPct / volatilityPct : 0
   const qualifies = volatilityPct >= 2.5 && volatilityPct <= 6 && Math.abs(reversalZ) >= 0.8
   return { direction: qualifies ? -Math.sign(previousReturnPct) : 0, previousReturnPct: round(previousReturnPct), volatilityPct: round(volatilityPct), reversalZ: round(reversalZ), qualifies }
 }
 
-function winterWeatherResolution(forecastRows, fadeRow, fadePosition, entryDate, standalone) {
+function winterWeatherResolution(forecastRows, actualWeatherRows, fadeRow, fadePosition, entryDate, standalone) {
   if (!fadeRow || fadePosition === 0) return { position: fadePosition, action: 'no-reversion', scale: 1 }
-  const eligible = forecastRows.filter((row) => ['gfs', 'gefs-mean'].includes(row.sourceId) && row.leadDays >= 1 && row.leadDays <= 3 && row.targetDate === fadeRow.targetDate && row.issueDate <= entryDate)
-  const latestIssue = eligible.map((row) => row.issueDate).sort().at(-1)
-  const closeRows = eligible.filter((row) => row.issueDate === latestIssue)
-  if (!closeRows.length) return { position: fadePosition, action: 'missing-kept', scale: 1 }
+  const actual = fadeRow.targetDate < entryDate
+    ? actualWeatherRows.find((row) => row.date === fadeRow.targetDate && Number.isFinite(numberFrom(row.weightedAnomalyF, Number.NaN)))
+    : null
+  const eligible = actual ? [] : forecastRows.filter((row) => ['gfs', 'gefs-mean'].includes(row.sourceId) && row.leadDays >= 1 && row.leadDays <= 3 && row.targetDate === fadeRow.targetDate && row.issueDate <= entryDate)
+  const latestIssue = actual ? fadeRow.targetDate : eligible.map((row) => row.issueDate).sort().at(-1)
+  const closeRows = actual ? [] : eligible.filter((row) => row.issueDate === latestIssue)
+  if (!actual && !closeRows.length) return { position: fadePosition, action: 'missing-kept', scale: 1 }
   const weight = closeRows.reduce((sum, row) => sum + Math.max(0.0001, numberFrom(row.sampledWeight, 1)), 0)
-  const resolutionAnomalyF = closeRows.reduce((sum, row) => sum + row.weightedAnomalyF * Math.max(0.0001, numberFrom(row.sampledWeight, 1)), 0) / weight
+  const resolutionAnomalyF = actual
+    ? numberFrom(actual.weightedAnomalyF)
+    : closeRows.reduce((sum, row) => sum + row.weightedAnomalyF * Math.max(0.0001, numberFrom(row.sampledWeight, 1)), 0) / weight
   const shiftF = resolutionAnomalyF - fadeRow.weightedAnomalyF
   const weatherGasDirection = shiftF < 0 ? 1 : shiftF > 0 ? -1 : 0
   const same = weatherGasDirection !== 0 && weatherGasDirection === Math.sign(fadePosition)
   const adverse = weatherGasDirection !== 0 && weatherGasDirection === -Math.sign(fadePosition)
   if (standalone && adverse) {
-    return { position: 0, action: 'standalone-adverse-dropped', scale: 0, issueDate: latestIssue, resolutionAnomalyF: round(resolutionAnomalyF, 3), shiftF: round(shiftF, 3) }
+    return { position: 0, action: 'standalone-adverse-dropped', scale: 0, source: actual ? 'actual' : 'close-forecast', issueDate: latestIssue, resolutionAnomalyF: round(resolutionAnomalyF, 3), shiftF: round(shiftF, 3) }
   }
   const scale = same ? clamp(0.75 + Math.abs(shiftF) / 8, 0.75, 1.25)
     : adverse ? clamp(0.9 - Math.abs(shiftF) / 10, 0.45, 0.9) : 0.85
   return {
     position: fadePosition * scale,
     action: same ? 'confirm-scaled' : adverse ? 'adverse-shrunk' : 'neutral-shrunk',
-    scale: round(scale), issueDate: latestIssue, resolutionAnomalyF: round(resolutionAnomalyF, 3), shiftF: round(shiftF, 3),
+    scale: round(scale), source: actual ? 'actual' : 'close-forecast', issueDate: latestIssue, resolutionAnomalyF: round(resolutionAnomalyF, 3), shiftF: round(shiftF, 3),
   }
 }
 
@@ -286,16 +295,37 @@ function summerStorageDeficit(storageRows, date) {
   return peers.length >= 3 && latest.value <= mean(peers.map((row) => row.value))
 }
 
-export function inferAllYearTarget({ forecastRows, marketDays, storageRows, targetDate }) {
-  const month = Number(targetDate.slice(5, 7))
+const scheduleCache = new WeakMap()
+
+function preparedSchedules(forecastRows, marketDays, storageRows) {
+  let marketCache = scheduleCache.get(forecastRows)
+  if (!marketCache) { marketCache = new WeakMap(); scheduleCache.set(forecastRows, marketCache) }
+  let storageCache = marketCache.get(marketDays)
+  if (!storageCache) { storageCache = new WeakMap(); marketCache.set(marketDays, storageCache) }
+  let prepared = storageCache.get(storageRows)
+  if (prepared) return prepared
   const days = marketDays.map((day) => ({ ...day, summerStorageDeficit: summerStorageDeficit(storageRows, day.date) }))
-  const summerRows = forecastRows.filter((row) => Number(row.issueDate.slice(5, 7)) >= 5 && Number(row.issueDate.slice(5, 7)) <= 9 && row.leadDays === 7)
+  const summerRows = forecastRows.filter((row) => Number(row.targetDate.slice(5, 7)) >= 5 && Number(row.targetDate.slice(5, 7)) <= 9 && row.leadDays === 7)
   const winterRows = forecastRows.filter((row) => [11, 12, 1, 2, 3].includes(Number(row.issueDate.slice(5, 7))) && row.leadDays >= 7 && row.leadDays <= 10)
-  const summer = schedule(days, signalsFor(summerRows, SUMMER, 'summer'), SUMMER, 'summer').get(targetDate) ?? null
-  const follow = schedule(days, signalsFor(winterRows, WINTER_FOLLOW, 'winter'), WINTER_FOLLOW, 'winter').get(targetDate) ?? null
-  const fade = schedule(days, signalsFor(winterRows, WINTER_FADE, 'winter'), WINTER_FADE, 'winter').get(targetDate) ?? null
+  prepared = {
+    days,
+    summer: schedule(days, signalsFor(summerRows, SUMMER, 'summer'), SUMMER, 'summer'),
+    follow: schedule(days, signalsFor(winterRows, WINTER_FOLLOW, 'winter'), WINTER_FOLLOW, 'winter'),
+    fade: schedule(days, signalsFor(winterRows, WINTER_FADE, 'winter'), WINTER_FADE, 'winter'),
+  }
+  storageCache.set(storageRows, prepared)
+  return prepared
+}
+
+export function inferAllYearTarget({ forecastRows, actualWeatherRows = [], marketDays, storageRows, targetDate }) {
+  const month = Number(targetDate.slice(5, 7))
+  const prepared = preparedSchedules(forecastRows, marketDays, storageRows)
+  const { days } = prepared
+  const summer = prepared.summer.get(targetDate) ?? null
+  const follow = prepared.follow.get(targetDate) ?? null
+  const fade = prepared.fade.get(targetDate) ?? null
   let component = 'index-fallback'; let position = 0; let selected = null; const diagnostics = {}
-  if (month >= 5 && month <= 9 && summer) {
+  if (summer) {
     component = 'ngas-summer-alpha'; position = summer.position; selected = summer
   } else if ([11, 12, 1, 2, 3].includes(month)) {
     const followRow = follow?.windowId === 'weather-follow' ? follow : null
@@ -322,7 +352,7 @@ export function inferAllYearTarget({ forecastRows, marketDays, storageRows, targ
       }
     }
     const volConfirmedLongFade = fadeRow?.thesisKind === 'reversion-long' && vol.direction === 1 && fadePosition !== 0
-    const resolution = winterWeatherResolution(forecastRows, fadeRow, fadePosition, targetDate, followPosition === 0 && !volConfirmedLongFade)
+    const resolution = winterWeatherResolution(forecastRows, actualWeatherRows, fadeRow, fadePosition, targetDate, followPosition === 0 && !volConfirmedLongFade)
     fadePosition = resolution.position
     if (resolution.scale === 0 && followRow?.thesisKind !== 'cold-long') followPosition = 0
     diagnostics.weatherResolution = resolution

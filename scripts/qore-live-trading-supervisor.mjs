@@ -120,6 +120,8 @@ function nodeJob(id, label, scriptPath, intervalEnv, fallbackIntervalMs, enabled
 
 function jobs() {
   const researchRefreshEnabled = truthy(process.env.QORE_LIVE_REFRESH_RESEARCH, true)
+  const brokerReconcile = nodeJob('brokerReconcile', 'Reconcile Alpaca target weights', 'scripts/qore-alpaca-broker.mjs', 'QORE_LIVE_BROKER_RECONCILE_INTERVAL_MS', 60 * 1000, 'QORE_LIVE_BROKER_RECONCILE_ENABLED', true, ['--reconcile'])
+  brokerReconcile.enabled = !prepareOnly && brokerReconcile.enabled
   return [
     nodeJob(
       'collectFreeData',
@@ -140,8 +142,8 @@ function jobs() {
     nodeJob('optimizeSummerAlpha', 'Refresh NGAS Summer Alpha artifact', 'scripts/optimize-ngas-summer-alpha.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_SUMMER_ENABLED', researchRefreshEnabled),
     nodeJob('optimizeWinterAlpha', 'Refresh NGAS Winter Alpha artifact', 'scripts/optimize-ngas-winter-alpha.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_WINTER_ENABLED', researchRefreshEnabled),
     nodeJob('optimizeAllYearBeta', 'Refresh NGAS All-Year Beta artifact', 'scripts/optimize-ngas-all-year-beta.mjs', 'QORE_LIVE_SIGNAL_REFRESH_INTERVAL_MS', 24 * 60 * 60 * 1000, 'QORE_LIVE_OPTIMIZE_ALL_YEAR_ENABLED', researchRefreshEnabled),
-    nodeJob('liveWeatherOnce', 'Refresh live weather, market, risk, and signal handoff', 'scripts/qore-live-weather-service.mjs', 'QORE_LIVE_HANDOFF_REFRESH_INTERVAL_MS', 5 * 60 * 1000, 'QORE_LIVE_WEATHER_HANDOFF_ENABLED', true, ['--once', '--no-performance-test']),
-    nodeJob('brokerReconcile', 'Reconcile Alpaca target weights', 'scripts/qore-alpaca-broker.mjs', 'QORE_LIVE_BROKER_RECONCILE_INTERVAL_MS', 60 * 1000, 'QORE_LIVE_BROKER_RECONCILE_ENABLED', !prepareOnly, ['--reconcile']),
+    nodeJob('liveWeatherOnce', 'Refresh live weather, market, risk, and signal handoff', 'scripts/qore-live-weather-service.mjs', 'QORE_LIVE_HANDOFF_REFRESH_INTERVAL_MS', 5 * 60 * 1000, 'QORE_LIVE_WEATHER_HANDOFF_ENABLED', true, ['--once', '--respect-cadence', '--no-performance-test']),
+    brokerReconcile,
   ]
 }
 
