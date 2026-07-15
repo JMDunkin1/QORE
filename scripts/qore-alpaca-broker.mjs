@@ -33,7 +33,7 @@ const loopIntervalMs = positiveNumber(process.env.QORE_BROKER_RECONCILE_INTERVAL
 const allocationPct = boundedNumber(process.env.QORE_LIVE_ACCOUNT_ALLOCATION_PCT, 100, 0, 100)
 const minOrderUsd = positiveNumber(process.env.QORE_LIVE_MIN_ORDER_USD, 10)
 const rebalanceDeadbandPct = boundedNumber(process.env.QORE_LIVE_REBALANCE_DEADBAND_PCT, 0.25, 0, 100)
-const minCashBufferPct = boundedNumber(process.env.QORE_LIVE_MIN_CASH_BUFFER_PCT, 0, 0, 100)
+const minCashBufferPct = boundedNumber(process.env.QORE_LIVE_MIN_CASH_BUFFER_PCT, 2, 0, 100)
 const maxOrderUsd = optionalPositiveNumber(process.env.QORE_LIVE_MAX_ORDER_USD)
 const fractionalOrders = !falsey(process.env.QORE_ALPACA_FRACTIONAL_ORDERS)
 const allowShorts = truthy(process.env.QORE_ALPACA_ALLOW_SHORTS)
@@ -496,8 +496,8 @@ function orderQuantity(absDeltaUsd, price, forceWholeShares = false) {
   return Math.floor(raw * 1_000_000) / 1_000_000
 }
 
-function clientOrderIdFor(intent, symbol, side, deltaNotionalUsd) {
-  const hash = stableHash({ strategyId: intent.strategyId, signalDate: intent.signalDate, symbol, side, deltaNotionalUsd })
+function clientOrderIdFor(intent, symbol, side, targetDeltaNotionalUsd) {
+  const hash = stableHash({ strategyId: intent.strategyId, signalDate: intent.signalDate, symbol, side, targetDeltaNotionalUsd })
   return `qore-${compactDate(intent.signalDate)}-${symbol}-${side}-${hash}`.slice(0, 48)
 }
 
@@ -506,24 +506,26 @@ function buildPlannedOrders({ signalSnapshot, targets, current, prices, openOrde
   const planned = []
   const skipped = []
   const openSymbols = new Set((openOrders ?? []).map((order) => order.symbol).filter(Boolean))
-  const minimumRebalanceUsd = Math.max(minOrderUsd, Math.max(0, accountEquityUsd) * (rebalanceDeadbandPct / 100))
+  const rebalanceDeadbandUsd = Math.max(0, accountEquityUsd) * (rebalanceDeadbandPct / 100)
 
   for (const [symbol, targetNotionalUsd] of Object.entries(targets)) {
     const price = Number(prices[symbol])
     if (!Number.isFinite(price) || price <= 0) continue
     const currentNotionalUsd = Number(current[symbol] ?? 0)
-    let deltaNotionalUsd = targetNotionalUsd - currentNotionalUsd
+    const targetDeltaNotionalUsd = targetNotionalUsd - currentNotionalUsd
+    if (Math.abs(targetDeltaNotionalUsd) < rebalanceDeadbandUsd) continue
+    let deltaNotionalUsd = targetDeltaNotionalUsd
     if (maxOrderUsd && Math.abs(deltaNotionalUsd) > maxOrderUsd) {
       deltaNotionalUsd = Math.sign(deltaNotionalUsd) * maxOrderUsd
     }
     const absDeltaUsd = Math.abs(deltaNotionalUsd)
-    if (absDeltaUsd < minimumRebalanceUsd) continue
+    if (absDeltaUsd < minOrderUsd) continue
     const side = deltaNotionalUsd > 0 ? 'buy' : 'sell'
     const opensShort = symbol === 'UNG' && targetNotionalUsd < 0
     const quantity = orderQuantity(absDeltaUsd, price, opensShort)
     if (quantity <= 0) continue
     const orderRequest = {
-      clientOrderId: clientOrderIdFor(intent, symbol, side, deltaNotionalUsd),
+      clientOrderId: clientOrderIdFor(intent, symbol, side, targetDeltaNotionalUsd),
       symbol,
       side,
       quantity,

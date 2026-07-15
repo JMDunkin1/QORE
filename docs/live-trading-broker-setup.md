@@ -157,7 +157,7 @@ systemctl --user status qore-live-trading.service
 journalctl --user -u qore-live-trading.service -f
 ```
 
-The service restarts after failures, uses a single-process lock, terminates its active child on shutdown, retries failed upstream jobs before allowing downstream broker work, and writes runtime state under `.local/qore/` with a restrictive umask. Its process timezone is pinned to UTC and every start requires the local readiness checks—including NTP synchronization—to pass.
+The service restarts after failures, uses a single-process lock, terminates its active child on shutdown, retries failed upstream jobs before allowing downstream broker work, and writes runtime state under `.local/qore/` with a restrictive umask. Its process timezone is pinned to UTC and every start requires the static local readiness checks—including NTP synchronization—to pass. Data-refresh and signal-freshness checks are deferred until the supervisor refreshes that state, so a stale-state reboot can recover without operator intervention.
 
 Before changing from paper to live, stop the service, change the four live-mode values in `.env.local`, rerun `npm run live:readiness`, run one explicit `npm run broker:alpaca:live`, inspect the resulting broker status and Alpaca activity, and only then restart the service.
 

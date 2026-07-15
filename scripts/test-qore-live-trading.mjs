@@ -18,6 +18,9 @@ function runNode(args, env = {}) {
   const cwd = env.QORE_TEST_CWD ?? repoDir
   const childEnv = { ...process.env, ...env }
   delete childEnv.QORE_TEST_CWD
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined || value === null) delete childEnv[name]
+  }
   return new Promise((resolve) => {
     const child = spawn(process.execPath, args, {
       cwd,
@@ -134,6 +137,13 @@ async function scenario({
   expectedOrderCount = 2,
   expectedFirstSide = null,
   expectedNoOp = false,
+  minCashBufferPct = '0',
+  maxOrderUsd = undefined,
+  expectedTargetNotionalUsd = null,
+  expectedDeltaNotionalUsd = null,
+  reconcileCount = 1,
+  fillSubmittedOrders = false,
+  rejectDuplicateClientOrderIds = false,
   liveForecastAppliedToTarget = true,
   inferenceValidated = liveForecastAppliedToTarget,
   targetDate = today(),
@@ -149,6 +159,8 @@ async function scenario({
     indexFraction,
   })
   const submittedOrders = []
+  const submittedClientOrderIds = new Set()
+  let brokerPositions = positions
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     if (request.method === 'GET' && url.pathname === '/v2/account') {
@@ -169,7 +181,7 @@ async function scenario({
       return
     }
     if (request.method === 'GET' && url.pathname === '/v2/positions') {
-      jsonResponse(response, 200, positions)
+      jsonResponse(response, 200, brokerPositions)
       return
     }
     if (request.method === 'GET' && url.pathname === '/v2/orders') {
@@ -212,10 +224,33 @@ async function scenario({
     if (request.method === 'POST' && url.pathname === '/v2/orders') {
       let body = ''
       for await (const chunk of request) body += chunk
-      submittedOrders.push(JSON.parse(body))
+      const order = JSON.parse(body)
+      submittedOrders.push(order)
       if (rejectFirstOrder && submittedOrders.length === 1) {
         jsonResponse(response, 422, { message: 'simulated sell rejection' })
         return
+      }
+      if (rejectDuplicateClientOrderIds && submittedClientOrderIds.has(order.client_order_id)) {
+        jsonResponse(response, 422, { message: 'client_order_id must be unique' })
+        return
+      }
+      submittedClientOrderIds.add(order.client_order_id)
+      if (fillSubmittedOrders) {
+        const price = { UNG: 15, VOO: 100, QQQM: 50 }[order.symbol]
+        const existing = brokerPositions.find((position) => position.symbol === order.symbol)
+        const currentNotionalUsd = Number(existing?.market_value ?? 0)
+        const filledNotionalUsd = Number(order.qty) * price * (order.side === 'buy' ? 1 : -1)
+        const marketValue = currentNotionalUsd + filledNotionalUsd
+        brokerPositions = [
+          ...brokerPositions.filter((position) => position.symbol !== order.symbol),
+          {
+            symbol: order.symbol,
+            qty: String(Math.abs(marketValue / price)),
+            side: marketValue < 0 ? 'short' : 'long',
+            current_price: String(price),
+            market_value: String(Math.abs(marketValue)),
+          },
+        ]
       }
       jsonResponse(response, 200, { id: `order-${submittedOrders.length}`, status: 'accepted' })
       return
@@ -229,7 +264,7 @@ async function scenario({
   const commandArgs = readinessOnly
     ? ['scripts/qore-live-readiness.mjs', `--mode=${brokerMode}`, '--json']
     : ['scripts/qore-alpaca-broker.mjs', `--mode=${brokerMode}`, preflightOnly ? '--preflight-only' : '--reconcile', '--json']
-  const result = await runNode(commandArgs, {
+  const commandEnv = {
     APCA_API_KEY_ID: 'test-key',
     APCA_API_SECRET_KEY: 'test-secret',
     QORE_ALPACA_BASE_URL: baseUrl,
@@ -245,9 +280,15 @@ async function scenario({
     QORE_LIVE_ORDER_ROUTING_ENABLED: brokerMode === 'live' ? '1' : '0',
     QORE_CONFIRM_LIVE_TRADING: brokerMode === 'live' ? 'I_UNDERSTAND_THIS_CAN_LOSE_MONEY' : '',
     QORE_LIVE_MAX_QUOTE_AGE_MINUTES: '5',
-    QORE_LIVE_MIN_CASH_BUFFER_PCT: '0',
+    QORE_LIVE_MIN_CASH_BUFFER_PCT: minCashBufferPct,
     QORE_LIVE_REBALANCE_DEADBAND_PCT: '0.25',
-  })
+    QORE_LIVE_MAX_ORDER_USD: maxOrderUsd,
+  }
+  const results = []
+  for (let attempt = 0; attempt < reconcileCount; attempt += 1) {
+    results.push(await runNode(commandArgs, commandEnv))
+  }
+  const result = results.at(-1)
   await new Promise((resolve) => server.close(resolve))
   const status = JSON.parse(await readFile(path.join(brokerDir, 'status.json'), 'utf8'))
 
@@ -290,6 +331,23 @@ async function scenario({
     assert.equal(status.executionStatus, 'submitted', `${name}: orders should be submitted`)
     assert.equal(submittedOrders.length, expectedOrderCount, `${name}: expected paper order count`)
     if (expectedFirstSide) assert.equal(submittedOrders[0]?.side, expectedFirstSide, `${name}: expected first paper order side`)
+  }
+  if (expectedTargetNotionalUsd) {
+    assert.deepEqual(status.targetNotionalUsd, expectedTargetNotionalUsd, `${name}: expected target notionals`)
+  }
+  if (expectedDeltaNotionalUsd !== null) {
+    assert.ok(
+      status.plannedOrders.every((order) => Math.abs(order.deltaNotionalUsd) === expectedDeltaNotionalUsd),
+      `${name}: expected every planned order to respect the configured cap`,
+    )
+  }
+  if (reconcileCount > 1) {
+    assert.ok(results.every((entry) => entry.code === 0), `${name}: every reconcile should exit 0`)
+    assert.equal(
+      new Set(submittedOrders.map((order) => order.client_order_id)).size,
+      submittedOrders.length,
+      `${name}: filled tranches should use distinct client order IDs`,
+    )
   }
   console.log(`ok - ${name}`)
 }
@@ -642,6 +700,21 @@ async function testStaleTargetFailsDirectReadiness() {
   console.log('ok - direct live readiness recomputes and blocks a stale target')
 }
 
+async function testSupervisorPrestartDefersRefreshableState() {
+  await writeHandoffs({ targetDate: '2000-01-01' })
+  const result = await runNode(['scripts/qore-live-readiness.mjs', '--mode=live', '--local-only', '--supervisor-prestart', '--json'], {
+    QORE_LIVE_SIGNAL_INTENT_FILE: path.join(liveDir, 'signal-intent-reconcile.json'),
+  })
+  const readiness = JSON.parse(result.stdout)
+  assert.equal(readiness.checks.some((check) => check.id === 'last-data-refresh'), false)
+  assert.equal(readiness.checks.some((check) => check.id === 'live-strategy-inference'), false)
+  assert.equal(readiness.checks.some((check) => check.id === 'live-strategy-freshness'), false)
+
+  const installer = await readFile(path.join(repoDir, 'scripts/install-linux-live-service.mjs'), 'utf8')
+  assert.match(installer, /ExecStartPre=.* --local-only --supervisor-prestart/)
+  console.log('ok - systemd prestart defers state that the supervisor refreshes')
+}
+
 async function testSignalFreshnessUsesValidatedInferenceIssue() {
   const freshnessDir = path.join(scratch, 'signal-freshness')
   const inferencePath = path.join(freshnessDir, 'all-year-target.json')
@@ -683,6 +756,22 @@ try {
   testEiaReleaseTimestamp()
   await scenario({ name: 'paper reconcile uses Alpaca bid/ask and submits ETF deltas' })
   await scenario({
+    name: 'capped paper reconcile advances through two consecutively filled tranches',
+    gasPosition: 1,
+    indexFraction: 0,
+    maxOrderUsd: '100',
+    reconcileCount: 2,
+    fillSubmittedOrders: true,
+    rejectDuplicateClientOrderIds: true,
+    expectedOrderCount: 2,
+    expectedDeltaNotionalUsd: 100,
+  })
+  await scenario({
+    name: 'paper reconcile defaults to a two-percent cash buffer when the setting is absent',
+    minCashBufferPct: null,
+    expectedTargetNotionalUsd: { VOO: 7840, QQQM: 1960, UNG: 0 },
+  })
+  await scenario({
     name: 'paper reconcile can route the strategy short leg when Alpaca confirms borrowability',
     allowShorts: true,
     gasPosition: -1,
@@ -699,6 +788,12 @@ try {
     expectedOrderCount: 0,
     expectedNoOp: true,
   })
+  await scenario({
+    name: 'paper reconcile applies the equity-relative deadband before the maximum order cap',
+    accountOverrides: { equity: '100000', last_equity: '100000', cash: '100000', buying_power: '100000' },
+    maxOrderUsd: '100',
+    expectedDeltaNotionalUsd: 100,
+  })
   await scenario({ name: 'preflight validates the complete route without submitting', preflightOnly: true })
   await scenario({ name: 'readiness runs the complete no-order broker preflight', readinessOnly: true })
   await scenario({
@@ -708,6 +803,7 @@ try {
   })
   await testMissingInferenceFailsClosed()
   await testStaleTargetFailsDirectReadiness()
+  await testSupervisorPrestartDefersRefreshableState()
   await testSignalFreshnessUsesValidatedInferenceIssue()
   await testGitGeneratedArtifactAllowlist()
   await scenario({

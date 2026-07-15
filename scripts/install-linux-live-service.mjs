@@ -52,7 +52,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory=${escapeUnitDirectivePath(repoDir)}
 Environment=TZ=UTC
-ExecStartPre=${quoteUnitPath(process.execPath)} ${quoteUnitPath(path.join(repoDir, 'scripts', 'qore-live-readiness.mjs'))} --local-only
+ExecStartPre=${quoteUnitPath(process.execPath)} ${quoteUnitPath(path.join(repoDir, 'scripts', 'qore-live-readiness.mjs'))} --local-only --supervisor-prestart
 ExecStart=${quoteUnitPath(process.execPath)} ${quoteUnitPath(path.join(repoDir, 'scripts', 'qore-live-trading-supervisor.mjs'))}
 Restart=always
 RestartSec=15

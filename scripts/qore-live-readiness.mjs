@@ -12,6 +12,7 @@ loadLocalEnv(repoDir)
 const rawArgs = process.argv.slice(2)
 const jsonOutput = rawArgs.includes('--json')
 const localOnly = rawArgs.includes('--local-only')
+const supervisorPrestart = rawArgs.includes('--supervisor-prestart')
 const mode = normalizeMode(argValue('--mode') ?? process.env.QORE_BROKER_MODE ?? 'dry-run')
 const weatherStateDir = path.resolve(process.env.QORE_LIVE_WEATHER_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-weather'))
 const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(weatherStateDir, 'signal-intent-reconcile.json'))
@@ -192,7 +193,7 @@ for (const relativePath of requiredFiles) {
 }
 
 const dataManifest = readJson('data/qore/runs/free-data-manifest.json')
-if (dataManifest) {
+if (!supervisorPrestart && dataManifest) {
   const failedSourceCount = Number(dataManifest.refreshSummary?.failedSourceCount ?? 0)
   add(
     'last-data-refresh',
@@ -205,9 +206,9 @@ if (dataManifest) {
 }
 
 const signalHandoff = readJson(signalIntentPath)
-if (signalHandoff?.inference?.validated === true && signalHandoff.inference.liveForecastAppliedToTarget === true) {
+if (!supervisorPrestart && signalHandoff?.inference?.validated === true && signalHandoff.inference.liveForecastAppliedToTarget === true) {
   add('live-strategy-inference', 'Current forecast strategy inference', 'pass', 'The current validated forecast was applied to the target-weight inference.')
-} else {
+} else if (!supervisorPrestart) {
   add(
     'live-strategy-inference',
     'Current forecast strategy inference',
@@ -218,15 +219,17 @@ if (signalHandoff?.inference?.validated === true && signalHandoff.inference.live
   )
 }
 
-const currentSignalFreshness = signalFreshness(signalHandoff)
-add(
-  'live-strategy-freshness',
-  'Current forecast strategy freshness',
-  currentSignalFreshness.stale ? (mode === 'live' ? 'block' : 'warn') : 'pass',
-  currentSignalFreshness.ageDays === null
-    ? 'The signal handoff has no valid validated inference issue date or target date.'
-    : `${currentSignalFreshness.source} ${currentSignalFreshness.freshnessDate} is ${currentSignalFreshness.ageDays.toFixed(1)} calendar day(s) old; cap is ${maxSignalAgeDays} day.`,
-)
+if (!supervisorPrestart) {
+  const currentSignalFreshness = signalFreshness(signalHandoff)
+  add(
+    'live-strategy-freshness',
+    'Current forecast strategy freshness',
+    currentSignalFreshness.stale ? (mode === 'live' ? 'block' : 'warn') : 'pass',
+    currentSignalFreshness.ageDays === null
+      ? 'The signal handoff has no valid validated inference issue date or target date.'
+      : `${currentSignalFreshness.source} ${currentSignalFreshness.freshnessDate} is ${currentSignalFreshness.ageDays.toFixed(1)} calendar day(s) old; cap is ${maxSignalAgeDays} day.`,
+  )
+}
 
 const hasDotEnv = checkEnvFile('.env')
 const hasLocalEnv = checkEnvFile('.env.local')
