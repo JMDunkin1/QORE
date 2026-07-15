@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
@@ -22,6 +22,7 @@ const profileName = argValue(rawArgs, '--profile') ?? process.env.QORE_LIVE_WEAT
 const selectedProfile = liveWeatherSettings.profiles?.[profileName] ?? {}
 const selectedProfileExists = Boolean(liveWeatherSettings.profiles?.[profileName])
 const once = args.has('--once') || truthy(process.env.QORE_LIVE_WEATHER_ONCE)
+const respectCadence = args.has('--respect-cadence') || truthy(process.env.QORE_LIVE_WEATHER_RESPECT_CADENCE)
 const runLiveForecast = !args.has('--no-current-forecast') && settingBool('QORE_LIVE_WEATHER_CURRENT_FORECAST', 'runLiveForecast', true)
 const runPerformanceTest = !args.has('--no-performance-test') && settingBool('QORE_LIVE_WEATHER_PERFORMANCE_TEST', 'runPerformanceTest', true)
 const runForecastCalendar =
@@ -47,9 +48,11 @@ const marketReferencePath = path.resolve(process.env.QORE_LIVE_MARKET_REFERENCE_
 const brokerAccountPath = path.resolve(process.env.QORE_LIVE_BROKER_ACCOUNT_FILE ?? path.join(stateDir, 'broker-account-and-positions.json'))
 const riskStatePath = path.resolve(process.env.QORE_LIVE_RISK_STATE_FILE ?? path.join(stateDir, 'risk-and-kill-switch-state.json'))
 const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(stateDir, 'signal-intent-reconcile.json'))
+const liveInferencePath = path.resolve(
+  process.env.QORE_LIVE_INFERENCE_FILE ?? path.join(repoDir, '.local', 'qore', 'live-inference', 'all-year-target.json'),
+)
 const eiaStoragePath = path.resolve(process.env.QORE_LIVE_EIA_STORAGE_FILE ?? path.join(stateDir, 'eia-storage-release-window.json'))
 const locationsPath = path.join(repoDir, 'data', 'qore', 'weather', 'locations.csv')
-const selectedTradesPath = path.join(repoDir, 'data', 'qore', 'research', 'strategy-agent-runs', 'ngas-all-year-beta', 'selected-trades.csv')
 const indexBasketConfigPath = path.join(repoDir, 'data', 'qore', 'market', 'index-basket-config.json')
 const localEiaStoragePath = path.join(repoDir, 'data', 'qore', 'fundamentals', 'eia', 'working-gas-storage-lower48-weekly.csv')
 const comparisonSummaryPath = path.join(
@@ -738,6 +741,20 @@ async function collectBrokerAccountAndPositions() {
   return snapshot
 }
 
+function storageInferenceIsCoherent(inference, eia) {
+  const latest = eia?.latestStorage
+  const validation = inference?.storageValidation
+  const inferenceValue = Number(validation?.latestPolledStorageBcf)
+  const polledValue = Number(latest?.storageBcf)
+  return Boolean(
+    latest?.date
+    && validation?.latestPolledDate === latest.date
+    && Number.isFinite(inferenceValue)
+    && Number.isFinite(polledValue)
+    && Math.abs(inferenceValue - polledValue) <= 1e-6,
+  )
+}
+
 async function collectRiskAndKillSwitchState() {
   const generatedAt = new Date().toISOString()
   const operatorStateFile = jobSettingPath('riskAndKillSwitchState', 'operatorStateFile', '.local/qore/live-weather/operator-state.json')
@@ -746,6 +763,8 @@ async function collectRiskAndKillSwitchState() {
   const broker = latestJobOutputs.brokerAccountAndPositions
   const weather = latestJobOutputs.currentWeather
   const eia = latestJobOutputs.eiaStorageReleaseWindow
+  const inference = latestJobOutputs.strategyInference ?? (await readJsonIfExists(liveInferencePath))
+  const storageContextCoherent = storageInferenceIsCoherent(inference, eia)
   const operator = {
     killSwitchEngaged: operatorFile?.killSwitchEngaged ?? truthy(process.env.QORE_KILL_SWITCH_ENGAGED),
     venueOpen: operatorFile?.venueOpen ?? isUsEquityMarketOpen(),
@@ -767,14 +786,15 @@ async function collectRiskAndKillSwitchState() {
         }
       : null,
     weather: weather?.riskContext ?? null,
-    storage: eia?.riskContext ?? null,
+    storage: storageContextCoherent ? eia.riskContext : null,
     readiness: {
       killSwitchClear: !operator.killSwitchEngaged,
       venueOpen: operator.venueOpen,
       accountContextPresent: Boolean(broker?.account),
       marketContextPresent: Boolean(market?.referencePrices && Object.keys(market.referencePrices).length),
       weatherContextPresent: Boolean(weather?.riskContext),
-      storageContextPresent: Boolean(eia?.riskContext),
+      storageContextPresent: Boolean(eia?.riskContext && storageContextCoherent),
+      storageInferenceCoherent: storageContextCoherent,
     },
     files: {
       snapshot: relative(riskStatePath),
@@ -786,46 +806,60 @@ async function collectRiskAndKillSwitchState() {
 
 async function reconcileSignalIntent() {
   const generatedAt = new Date().toISOString()
-  const trades = parseCsv(await readFile(selectedTradesPath, 'utf8'))
-  const latest = latestRow(trades, 'entryTradeDate')
-  if (!latest) throw new Error('No selected all-year rows available for signal reconciliation.')
-  const gasPosition = numericValue(latest.ungPosition, 0)
-  const indexFraction = numericValue(latest.investedIndexFraction || latest.indexFraction, Math.max(0, 1 - Math.abs(gasPosition)))
+  const inference = latestJobOutputs.strategyInference ?? (await readJsonIfExists(liveInferencePath))
+  if (!inference?.validated || !inference.liveForecastAppliedToTarget || !inference.target) {
+    throw new Error(`Validated live strategy inference is unavailable: ${inference?.error ?? 'no successful inference snapshot'}`)
+  }
+  const eia = latestJobOutputs.eiaStorageReleaseWindow
+  if (eia?.latestStorage && !storageInferenceIsCoherent(inference, eia)) {
+    throw new Error(`Live strategy inference storage input does not match polled EIA release ${eia.latestStorage.date}.`)
+  }
+  const latest = inference.target
+  const gasPosition = numericValue(latest.gasPosition, 0)
+  const indexFraction = numericValue(latest.indexFraction, Math.max(0, 1 - Math.abs(gasPosition)))
   const cashFraction = numericValue(latest.cashFraction, Math.max(0, 1 - indexFraction - Math.abs(gasPosition)))
-  const generatedDate = generatedAt.slice(0, 10)
-  const signalDate = latest.signalDate || latest.entryTradeDate
-  const signalAgeDays = signalDate ? Math.max(0, (Date.parse(`${generatedDate}T00:00:00Z`) - Date.parse(`${signalDate}T00:00:00Z`)) / 86400000) : null
+  const signalDate = latest.signalDate
+  const validatedIssueDate = inference.forecastValidation.latestCommonIssueDate
+  const signalAgeDays = validatedIssueDate
+    ? Math.max(0, (Date.parse(`${generatedAt.slice(0, 10)}T00:00:00Z`) - Date.parse(`${validatedIssueDate}T00:00:00Z`)) / 86400000)
+    : null
   const intent = {
     strategyId: 'ngas-all-year-beta',
     strategyName: 'NGAS All-Year Beta',
     generatedAt,
     signalDate,
-    targetDate: latest.targetDate || latest.targetTradeDate || latest.exitTradeDate,
+    targetDate: latest.targetDate,
     instrument: 'UNG',
     direction: gasPosition > 0 ? 'long' : gasPosition < 0 ? 'short' : 'flat',
     confidence: numericValue(latest.confidence, 0),
-    expectedReturnPct: numericValue(latest.netReturnPct, 0),
+    expectedReturnPct: 0,
     indexFraction: round(indexFraction, 4),
     gasPosition: round(gasPosition, 4),
     cashFraction: round(cashFraction, 4),
     sourceSynthetic: indexFraction > 0 ? 'US-INDEX-BASKET' : undefined,
-    maxHoldingDays: Math.max(
-      1,
-      Math.round((Date.parse(`${latest.exitTradeDate || latest.targetTradeDate || latest.entryTradeDate}T00:00:00Z`) - Date.parse(`${latest.entryTradeDate}T00:00:00Z`)) / 86400000) || 1,
-    ),
-    source: 'research-backtest',
+    maxHoldingDays: latest.windowId === 'weather-follow' ? 3 : 1,
+    source: 'live-selected-contract-inference',
     notes: [
       'Live reconciliation snapshot only. No broker order is routed.',
-      signalAgeDays && signalAgeDays > 1 ? `Latest checked-in all-year row is ${round(signalAgeDays, 1)} days old.` : 'Latest checked-in row is current enough for this snapshot.',
+      `Target was inferred from validated NOAA GFS/GEFS 00z data for ${inference.forecastValidation.latestCommonIssueDate}.`,
     ],
   }
   const snapshot = {
     generatedAt,
     serviceId: 'qore-live-signal-intent-reconcile',
-    sourceFile: relative(selectedTradesPath),
-    stale: signalAgeDays !== null && signalAgeDays > 1,
+    sourceFile: relative(liveInferencePath),
+    stale: inference.forecastValidation.issueAgeDays > 2,
     signalAgeDays: signalAgeDays === null ? null : round(signalAgeDays, 2),
     intent,
+    inference: {
+      mode: inference.inferenceMode,
+      liveForecastAppliedToTarget: true,
+      validated: true,
+      forecastValidation: inference.forecastValidation,
+      componentStrategyId: latest.componentStrategyId,
+      windowId: latest.windowId,
+      thesisKind: latest.thesisKind,
+    },
     context: {
       currentWeatherDigest: latestJobOutputs.currentWeather?.digest ?? null,
       marketReferenceGeneratedAt: latestJobOutputs.marketReferencePrices?.generatedAt ?? null,
@@ -836,6 +870,16 @@ async function reconcileSignalIntent() {
     },
   }
   await writeJson(signalIntentPath, snapshot)
+  return snapshot
+}
+
+async function collectStrategyInference() {
+  const result = await runCommand('live-all-year-strategy-inference', process.execPath, ['scripts/qore-live-strategy-inference.mjs'], {
+    env: existsSync(eiaStoragePath) ? { QORE_LIVE_INFERENCE_EIA_SNAPSHOT_FILE: eiaStoragePath } : {},
+  })
+  if (!result.ok) throw new Error(result.stderr || result.stdout || 'Live all-year inference failed.')
+  const snapshot = await readJsonIfExists(liveInferencePath)
+  if (!snapshot?.validated || !snapshot.liveForecastAppliedToTarget) throw new Error(snapshot?.error ?? 'Inference snapshot was not validated.')
   return snapshot
 }
 
@@ -908,6 +952,7 @@ async function collectEiaStorageReleaseWindow() {
       liveRows: liveRows.length,
       localRows: localRows.length,
     },
+    storageRows: liveRows,
     files: {
       snapshot: relative(eiaStoragePath),
       localCache: relative(localEiaStoragePath),
@@ -1069,6 +1114,14 @@ function liveJobs() {
       run: collectEiaStorageReleaseWindow,
     },
     {
+      id: 'strategyInference',
+      label: 'Validated NOAA forecast to all-year target inference',
+      enabled: jobEnabled('strategyInference', true),
+      intervalMs: jobIntervalMs('strategyInference', 60 * 60 * 1000),
+      outputFile: liveInferencePath,
+      run: collectStrategyInference,
+    },
+    {
       id: 'riskAndKillSwitchState',
       label: 'Risk and kill-switch state',
       enabled: jobEnabled('riskAndKillSwitchState', true),
@@ -1105,9 +1158,33 @@ function liveJobs() {
 
 function jobIsDue(job, nowMs) {
   if (!job.enabled) return false
-  if (once) return true
+  if (once && !respectCadence) return true
   const lastRunAt = lastJobRunAt.get(job.id)
-  return !lastRunAt || nowMs - Date.parse(lastRunAt) >= job.intervalMs
+  if (lastRunAt) return nowMs - Date.parse(lastRunAt) >= job.intervalMs
+  if (!respectCadence || !job.outputFile || !existsSync(job.outputFile)) return true
+  if (!persistedOutputIsUsable(job, latestJobOutputs[job.id])) return true
+  return nowMs - statSync(job.outputFile).mtimeMs >= job.intervalMs
+}
+
+function persistedOutputIsUsable(job, output) {
+  if (!output || typeof output !== 'object') return false
+  if (job.id === 'strategyInference') {
+    return Boolean(output.validated && output.liveForecastAppliedToTarget && output.target)
+  }
+  return true
+}
+
+async function hydratePersistedJobOutputs(jobs) {
+  if (!respectCadence) return
+  for (const job of jobs) {
+    if (!job.enabled || !job.outputFile || latestJobOutputs[job.id] !== undefined) continue
+    try {
+      const output = await readJsonIfExists(job.outputFile)
+      if (persistedOutputIsUsable(job, output)) latestJobOutputs[job.id] = output
+    } catch {
+      // A missing or malformed output must be refreshed instead of satisfying cadence.
+    }
+  }
 }
 
 function nextDueSleepMs(jobs, nowMs) {
@@ -1115,8 +1192,11 @@ function nextDueSleepMs(jobs, nowMs) {
   if (!enabled.length) return 60_000
   const waits = enabled.map((job) => {
     const lastRunAt = lastJobRunAt.get(job.id)
-    if (!lastRunAt) return 0
-    return Math.max(0, job.intervalMs - (nowMs - Date.parse(lastRunAt)))
+    if (lastRunAt) return Math.max(0, job.intervalMs - (nowMs - Date.parse(lastRunAt)))
+    if (respectCadence && job.outputFile && existsSync(job.outputFile) && persistedOutputIsUsable(job, latestJobOutputs[job.id])) {
+      return Math.max(0, job.intervalMs - (nowMs - statSync(job.outputFile).mtimeMs))
+    }
+    return 0
   })
   return Math.min(...waits)
 }
@@ -1171,6 +1251,7 @@ async function runLiveJob(job) {
 async function runCycle() {
   const cycleStartedAt = new Date()
   const jobs = liveJobs()
+  await hydratePersistedJobOutputs(jobs)
   const dueJobs = jobs.filter((job) => jobIsDue(job, cycleStartedAt.getTime()))
   const jobRuns = []
 
@@ -1206,6 +1287,7 @@ async function runCycle() {
       runLiveForecast,
       runForecastCalendar,
       runPerformanceTest,
+      respectCadence,
       liveModels,
       forecastDays,
       fetchConcurrency,
@@ -1249,6 +1331,7 @@ async function runCycle() {
       brokerAccountAndPositions: latestJobOutputs.brokerAccountAndPositions?.brokerConnected ? 'connected' : 'not-connected',
       riskAndKillSwitchState: latestJobOutputs.riskAndKillSwitchState ? 'ready' : 'unavailable',
       signalIntentReconcile: latestJobOutputs.signalIntentReconcile ? 'ready' : 'unavailable',
+      strategyInference: latestJobOutputs.strategyInference?.validated ? 'ready' : 'unavailable',
       eiaStorageReleaseWindow: latestJobOutputs.eiaStorageReleaseWindow ? 'ready' : 'unavailable',
       liveRoutingEnabled: Boolean(latestJobOutputs.brokerAccountAndPositions?.liveRoutingEnabled),
       brokerAdapter: latestJobOutputs.brokerAccountAndPositions?.brokerConnected
@@ -1284,6 +1367,7 @@ async function runCycle() {
     brokerAccountAndPositions: latestJobOutputs.brokerAccountAndPositions ?? null,
     riskAndKillSwitchState: latestJobOutputs.riskAndKillSwitchState ?? null,
     signalIntentReconcile: latestJobOutputs.signalIntentReconcile ?? null,
+    strategyInference: latestJobOutputs.strategyInference ?? null,
     eiaStorageReleaseWindow: latestJobOutputs.eiaStorageReleaseWindow ?? null,
     performance: latestComparison,
     files: {
@@ -1295,6 +1379,7 @@ async function runCycle() {
       brokerAccountAndPositions: relative(brokerAccountPath),
       riskAndKillSwitchState: relative(riskStatePath),
       signalIntentReconcile: relative(signalIntentPath),
+      strategyInference: relative(liveInferencePath),
       eiaStorageReleaseWindow: relative(eiaStoragePath),
     },
   }

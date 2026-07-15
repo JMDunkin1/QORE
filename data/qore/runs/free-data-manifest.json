@@ -1,25 +1,25 @@
 {
-  "generatedAt": "2026-06-13T19:22:42.679Z",
+  "generatedAt": "2026-07-14T22:45:02.604Z",
   "profile": "arctic-blast-history",
   "dataRoot": "data/qore",
   "sourceNote": "No-key/free data only. Files are shared research artifacts under data/qore.",
   "ranges": {
     "testStart": "2021-01-01",
-    "testEnd": "2026-06-12",
+    "testEnd": "2026-07-13",
     "normalStart": "1991-01-01",
     "normalEnd": "2020-12-31",
-    "marketEnd": "2026-06-14",
-    "marketEndEpoch": 1781395200
+    "marketEnd": "2026-07-15",
+    "marketEndEpoch": 1784073600
   },
-  "previousManifestGeneratedAt": "2026-06-10T16:19:51.579Z",
+  "previousManifestGeneratedAt": "2026-07-14T20:57:10.066Z",
   "market": [
     {
       "status": "ok",
       "symbol": "UNG",
       "label": "United States Natural Gas Fund",
-      "rows": 4820,
+      "rows": 4840,
       "firstDate": "2007-04-18",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/UNG-daily.csv",
         "data/qore/market/yahoo/UNG-qore-market.csv",
@@ -30,9 +30,9 @@
       "status": "ok",
       "symbol": "NG=F",
       "label": "Yahoo continuous front-month natural gas future",
-      "rows": 6476,
+      "rows": 6496,
       "firstDate": "2000-08-30",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/NG-F-daily.csv",
         "data/qore/market/yahoo/NG-F-qore-market.csv",
@@ -43,9 +43,9 @@
       "status": "ok",
       "symbol": "SPY",
       "label": "SPDR S&P 500 ETF Trust",
-      "rows": 8400,
+      "rows": 8420,
       "firstDate": "1993-01-29",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/SPY-daily.csv",
         "data/qore/market/yahoo/SPY-qore-market.csv"
@@ -55,9 +55,9 @@
       "status": "ok",
       "symbol": "VOO",
       "label": "Vanguard S&P 500 ETF",
-      "rows": 3964,
+      "rows": 3984,
       "firstDate": "2010-09-09",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/VOO-daily.csv",
         "data/qore/market/yahoo/VOO-qore-market.csv"
@@ -67,9 +67,9 @@
       "status": "ok",
       "symbol": "DIA",
       "label": "SPDR Dow Jones Industrial Average ETF Trust",
-      "rows": 7144,
+      "rows": 7164,
       "firstDate": "1998-01-20",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/DIA-daily.csv",
         "data/qore/market/yahoo/DIA-qore-market.csv"
@@ -79,9 +79,9 @@
       "status": "ok",
       "symbol": "QQQ",
       "label": "Invesco QQQ Trust",
-      "rows": 6858,
+      "rows": 6878,
       "firstDate": "1999-03-10",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/QQQ-daily.csv",
         "data/qore/market/yahoo/QQQ-qore-market.csv"
@@ -91,9 +91,9 @@
       "status": "ok",
       "symbol": "QQQM",
       "label": "Invesco NASDAQ 100 ETF",
-      "rows": 1423,
+      "rows": 1443,
       "firstDate": "2020-10-13",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/QQQM-daily.csv",
         "data/qore/market/yahoo/QQQM-qore-market.csv"
@@ -103,9 +103,9 @@
       "status": "ok",
       "symbol": "IWM",
       "label": "iShares Russell 2000 ETF",
-      "rows": 6546,
+      "rows": 6566,
       "firstDate": "2000-06-02",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/IWM-daily.csv",
         "data/qore/market/yahoo/IWM-qore-market.csv"
@@ -134,9 +134,9 @@
           "targetWeight": 0.2
         }
       ],
-      "rows": 1423,
+      "rows": 1443,
       "firstDate": "2020-10-13",
-      "lastDate": "2026-06-12",
+      "lastDate": "2026-07-14",
       "files": [
         "data/qore/market/yahoo/US-INDEX-BASKET-qore-market.csv"
       ]
@@ -145,28 +145,33 @@
   "fundamentals": {
     "eiaStorage": [
       {
-        "status": "skipped",
-        "reason": "QORE_SKIP_EIA is enabled; using existing checked-in EIA storage rows for market joins.",
-        "existingRows": 857,
-        "existingFile": "data/qore/fundamentals/eia/working-gas-storage-lower48-weekly.csv"
+        "status": "ok",
+        "rows": 862,
+        "firstDate": "2010-01-01",
+        "lastDate": "2026-07-03",
+        "apiKeySource": "DEMO_KEY",
+        "files": [
+          "data/qore/fundamentals/eia/working-gas-storage-lower48-weekly.csv",
+          "data/qore/fundamentals/eia/working-gas-storage-lower48-weekly.raw.json"
+        ]
       }
     ],
     "marketStorageJoins": [
       {
         "status": "ok",
         "file": "data/qore/market/yahoo/UNG-qore-market.csv",
-        "rows": 4820,
-        "storageRowsUsed": 857,
+        "rows": 4840,
+        "storageRowsUsed": 862,
         "firstStorageDate": "2010-01-01",
-        "lastStorageDate": "2026-05-29"
+        "lastStorageDate": "2026-07-03"
       },
       {
         "status": "ok",
         "file": "data/qore/market/yahoo/NG-F-qore-market.csv",
-        "rows": 6476,
-        "storageRowsUsed": 857,
+        "rows": 6496,
+        "storageRowsUsed": 862,
         "firstStorageDate": "2010-01-01",
-        "lastStorageDate": "2026-05-29"
+        "lastStorageDate": "2026-07-03"
       }
     ]
   },
@@ -174,12 +179,188 @@
     "locationsFile": "data/qore/weather/locations.csv",
     "nasaPower": [
       {
-        "status": "skipped",
-        "reason": "QORE_SKIP_NASA_POWER is enabled; keeping existing NASA POWER files."
+        "status": "ok",
+        "locationId": "minneapolis",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/minneapolis-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/minneapolis-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "chicago",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/chicago-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/chicago-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "detroit",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/detroit-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/detroit-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "cleveland",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/cleveland-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/cleveland-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "indianapolis",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/indianapolis-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/indianapolis-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "st-louis",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/st-louis-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/st-louis-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "kansas-city",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/kansas-city-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/kansas-city-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "nashville",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/nashville-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/nashville-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "memphis",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/memphis-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/memphis-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "atlanta",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/atlanta-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/atlanta-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "charlotte",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/charlotte-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/charlotte-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "raleigh",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/raleigh-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/raleigh-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "washington-dc",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/washington-dc-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/washington-dc-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "philadelphia",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/philadelphia-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/philadelphia-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "new-york",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/new-york-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/new-york-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "boston",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/boston-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/boston-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "dallas",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/dallas-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/dallas-2021-01-01-2026-07-13.json"
+        ]
+      },
+      {
+        "status": "ok",
+        "locationId": "houston",
+        "normalRows": 10958,
+        "actualRows": 2020,
+        "files": [
+          "data/qore/weather/nasa-power/normals/houston-1991-01-01-2020-12-31.json",
+          "data/qore/weather/nasa-power/actuals/houston-2021-01-01-2026-07-13.json"
+        ]
       }
     ],
-    "nasaPowerAnomalyFile": null,
-    "nasaPowerAnomalyRows": 0,
+    "nasaPowerAnomalyFile": "data/qore/weather/nasa-power/daily-temperature-anomalies-2021-01-01-2026-07-13.csv",
+    "nasaPowerAnomalyRows": 36324,
     "normals": [
       {
         "status": "skipped",
@@ -206,9 +387,25 @@
     ],
     "actualArcticBlastEvents": [
       {
-        "status": "skipped",
-        "reason": "QORE_SKIP_NASA_POWER is enabled; keeping existing actual arctic blast event files."
+        "status": "ok",
+        "dailyRows": 2018,
+        "eventRows": 27,
+        "windowRows": 81,
+        "heatingSeasonEventRows": 22,
+        "heatingSeasonWindowRows": 66,
+        "files": [
+          "data/qore/weather/events/arctic-blast-actual-daily-2021-01-01-2026-07-13.csv",
+          "data/qore/weather/events/arctic-blast-actual-events-2021-01-01-2026-07-13.csv",
+          "data/qore/weather/events/arctic-blast-trade-windows-2021-01-01-2026-07-13.csv",
+          "data/qore/weather/events/arctic-blast-heating-season-events-2021-01-01-2026-07-13.csv",
+          "data/qore/weather/events/arctic-blast-heating-season-trade-windows-2021-01-01-2026-07-13.csv"
+        ]
       }
     ]
+  },
+  "refreshSummary": {
+    "failedSourceCount": 0,
+    "failedSources": [],
+    "failOnDataFailure": true
   }
 }

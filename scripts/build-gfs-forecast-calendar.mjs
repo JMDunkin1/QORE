@@ -2,17 +2,26 @@
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { parseMessagesFromBuffer } from '@mattnucc/gribberish'
+import { createRequire } from 'node:module'
 import { loadLocalEnv } from './local-env.mjs'
+
+const require = createRequire(import.meta.url)
+const usePortableGribParser =
+  truthy(process.env.QORE_GFS_PORTABLE_GRIB_PARSER) ||
+  (process.platform === 'linux' && process.arch === 'arm64')
+const portableGrib = usePortableGribParser ? require('grib-js') : null
+const nativeGrib = usePortableGribParser ? null : require('@mattnucc/gribberish')
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
 
 const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
+const outputRoot = process.env.QORE_GFS_OUTPUT_ROOT ?? dataRoot
 const forecastSource = process.env.QORE_FORECAST_SOURCE ?? 'gfs'
 const latestCompleteDate = addDays(new Date().toISOString().slice(0, 10), -1)
 const startDate = process.env.QORE_GFS_CALENDAR_START ?? process.env.QORE_TEST_START ?? '2021-01-01'
 const endDate = process.env.QORE_GFS_CALENDAR_END ?? process.env.QORE_TEST_END ?? latestCompleteDate
+const issueEndDate = process.env.QORE_GFS_CALENDAR_ISSUE_END ?? endDate
 const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
 const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
 const runHour = process.env.QORE_GFS_RUN_HOUR ?? '00'
@@ -105,6 +114,38 @@ const sourceConfigs = {
       ]
     },
   },
+  aigfs: {
+    outputPrefix: 'aigfs',
+    weatherDir: 'aigfs',
+    modelId: () => `ncep-aigfs-025-${runHour}z-openmeteo-single-runs`,
+    source: 'Open-Meteo Single Runs API, model ncep_aigfs025, temperature_2m',
+    userAgent: 'QORE NCEP AIGFS live calendar',
+    openMeteoModel: 'ncep_aigfs025',
+  },
+  'ecmwf-ifs': {
+    outputPrefix: 'ecmwf-ifs',
+    weatherDir: 'ecmwf-ifs',
+    modelId: () => `ecmwf-ifs-${runHour}z-openmeteo-single-runs`,
+    source: 'Open-Meteo Single Runs API, model ecmwf_ifs, temperature_2m',
+    userAgent: 'QORE ECMWF IFS live calendar',
+    openMeteoModel: 'ecmwf_ifs',
+  },
+  'ecmwf-aifs': {
+    outputPrefix: 'ecmwf-aifs',
+    weatherDir: 'ecmwf-aifs',
+    modelId: () => `ecmwf-aifs-025-${runHour}z-openmeteo-single-runs`,
+    source: 'Open-Meteo Single Runs API, model ecmwf_aifs025_single, temperature_2m',
+    userAgent: 'QORE ECMWF AIFS live calendar',
+    openMeteoModel: 'ecmwf_aifs025_single',
+  },
+  'gem-global': {
+    outputPrefix: 'gem-global',
+    weatherDir: 'gem-global',
+    modelId: () => `gem-global-${runHour}z-openmeteo-single-runs`,
+    source: 'Open-Meteo Single Runs API, model gem_global, temperature_2m',
+    userAgent: 'QORE GEM Global live calendar',
+    openMeteoModel: 'gem_global',
+  },
 }
 const sourceConfig = sourceConfigs[forecastSource]
 if (!sourceConfig) {
@@ -113,11 +154,13 @@ if (!sourceConfig) {
 const rangeLabel = `${startDate}-${endDate}`
 const validHourLabel = validHoursUtc.join('-')
 const leadLabel = leadDays.join('-')
-const baseName = `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
-const anomalyPath = path.join(dataRoot, 'weather', sourceConfig.weatherDir, `${baseName}-location-anomalies.csv`)
-const scorePath = path.join(dataRoot, 'research', `${baseName}-signal-scores.csv`)
-const returnsPath = path.join(dataRoot, 'research', `${baseName}-signal-returns.csv`)
-const manifestPath = path.join(dataRoot, 'weather', sourceConfig.weatherDir, `${baseName}-manifest.json`)
+const baseName =
+  process.env.QORE_GFS_OUTPUT_BASENAME ??
+  `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
+const anomalyPath = path.join(outputRoot, 'weather', sourceConfig.weatherDir, `${baseName}-location-anomalies.csv`)
+const scorePath = path.join(outputRoot, 'research', `${baseName}-signal-scores.csv`)
+const returnsPath = path.join(outputRoot, 'research', `${baseName}-signal-returns.csv`)
+const manifestPath = path.join(outputRoot, 'weather', sourceConfig.weatherDir, `${baseName}-manifest.json`)
 
 const anomalyHeaders = [
   'issueDate',
@@ -295,6 +338,13 @@ async function fetchText(url) {
   return text
 }
 
+async function fetchJson(url) {
+  const response = await fetchWithTimeout(url)
+  const text = await response.text()
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 180)}`)
+  return JSON.parse(text)
+}
+
 async function fetchRange(url, start, end) {
   const response = await fetchWithTimeout(url, { headers: { Range: `bytes=${start}-${end}` } })
   const bytes = Buffer.from(await response.arrayBuffer())
@@ -318,7 +368,9 @@ async function fetchWithRetry(label, fn, retries = 2) {
 }
 
 async function fetchForecastIndex(issueDate, fhr) {
-  const bases = sourceConfig.objectBases(issueDate, fhr)
+  const bases = process.env.QORE_GFS_OBJECT_BASE
+    ? [process.env.QORE_GFS_OBJECT_BASE]
+    : sourceConfig.objectBases(issueDate, fhr)
   const errors = []
   for (const gribUrl of bases) {
     const idxUrl = `${gribUrl}.idx`
@@ -362,6 +414,9 @@ function sampleLocation(message, location) {
   const row = Math.max(0, Math.min(rows - 1, Math.round((90 - location.latitude) / 0.25)))
   const col = Math.max(0, Math.min(cols - 1, Math.round(normalizedLongitude / 0.25)))
   const valueK = message.data[row * cols + col]
+  if (!Number.isFinite(valueK)) {
+    throw new Error(`Portable GRIB decoder did not produce a finite value for ${location.id}.`)
+  }
   return {
     valueF: kelvinToFahrenheit(valueK),
     nearestGridLatitude: message.latlng.latitude[row],
@@ -369,11 +424,180 @@ function sampleLocation(message, location) {
   }
 }
 
+function gribSigned16(value) {
+  return value & 0x8000 ? -(value & 0x7fff) : value
+}
+
+function firstPortableFieldSections(bytes) {
+  const messageStart = bytes.indexOf('GRIB')
+  if (messageStart < 0 || bytes[messageStart + 7] !== 2) {
+    throw new Error('Portable GRIB decoder expected a GRIB2 message.')
+  }
+  const declaredLength = Number(bytes.readBigUInt64BE(messageStart + 8))
+  const messageEnd = messageStart + declaredLength
+  if (!Number.isSafeInteger(declaredLength) || messageEnd > bytes.length) {
+    throw new Error('Portable GRIB2 message is truncated or too large to decode safely.')
+  }
+
+  const sections = new Map()
+  let offset = messageStart + 16
+  while (offset + 4 <= messageEnd && bytes.toString('ascii', offset, offset + 4) !== '7777') {
+    if (offset + 5 > messageEnd) throw new Error('Portable GRIB2 section header is truncated.')
+    const length = bytes.readUInt32BE(offset)
+    const number = bytes[offset + 4]
+    if (length < 5 || offset + length > messageEnd) {
+      throw new Error(`Portable GRIB2 section ${number} has an invalid length.`)
+    }
+    sections.set(number, { offset, length })
+    offset += length
+    if (number === 7) break
+  }
+  return sections
+}
+
+function readPackedUnsigned(bytes, start, bitOffset, bitCount) {
+  let value = 0
+  for (let bit = 0; bit < bitCount; bit += 1) {
+    const absoluteBit = bitOffset + bit
+    const byteOffset = start + Math.floor(absoluteBit / 8)
+    if (byteOffset >= bytes.length) throw new Error('Portable GRIB2 packed data is truncated.')
+    value = value * 2 + ((bytes[byteOffset] >> (7 - (absoluteBit % 8))) & 1)
+  }
+  return value
+}
+
+function decodeSimplePackedData(bytes, gridPointCount) {
+  const sections = firstPortableFieldSections(bytes)
+  const section5 = sections.get(5)
+  const section6 = sections.get(6)
+  const section7 = sections.get(7)
+  if (!section5 || !section6 || !section7) {
+    throw new Error('Portable GRIB2 simple-packing decode requires sections 5, 6, and 7.')
+  }
+  if (section5.length < 21 || section6.length < 6 || section7.length < 5) {
+    throw new Error('Portable GRIB2 simple-packing sections are truncated.')
+  }
+  const template = bytes.readUInt16BE(section5.offset + 9)
+  if (template !== 0) {
+    throw new Error(`Portable GRIB2 data representation template ${template} is not decoded by the fallback.`)
+  }
+
+  const packedPointCount = bytes.readUInt32BE(section5.offset + 5)
+  const referenceValue = bytes.readFloatBE(section5.offset + 11)
+  const binaryScale = gribSigned16(bytes.readUInt16BE(section5.offset + 15))
+  const decimalScale = gribSigned16(bytes.readUInt16BE(section5.offset + 17))
+  const bitsPerValue = bytes[section5.offset + 19]
+  if (bitsPerValue > 53) throw new Error(`Portable GRIB2 simple packing uses unsupported ${bitsPerValue}-bit values.`)
+  if (packedPointCount * bitsPerValue > (section7.length - 5) * 8) {
+    throw new Error('Portable GRIB2 simple-packed values exceed the data section.')
+  }
+
+  const dataStart = section7.offset + 5
+  const packedValues = Array.from({ length: packedPointCount }, (_, index) => {
+    const packedValue = bitsPerValue ? readPackedUnsigned(bytes, dataStart, index * bitsPerValue, bitsPerValue) : 0
+    return (referenceValue + packedValue * (2 ** binaryScale)) * (10 ** -decimalScale)
+  })
+
+  const bitmapIndicator = bytes[section6.offset + 5]
+  if (bitmapIndicator === 255) {
+    if (packedPointCount !== gridPointCount) {
+      throw new Error(`Portable GRIB2 point count ${packedPointCount} does not match grid size ${gridPointCount}.`)
+    }
+    return packedValues
+  }
+  if (bitmapIndicator !== 0) {
+    throw new Error(`Portable GRIB2 bitmap indicator ${bitmapIndicator} is unsupported.`)
+  }
+  if (gridPointCount > (section6.length - 6) * 8) {
+    throw new Error('Portable GRIB2 bitmap is shorter than the decoded grid.')
+  }
+
+  const bitmapStart = section6.offset + 6
+  const data = new Array(gridPointCount)
+  let packedIndex = 0
+  for (let index = 0; index < gridPointCount; index += 1) {
+    const present = readPackedUnsigned(bytes, bitmapStart, index, 1) === 1
+    data[index] = present ? packedValues[packedIndex++] : Number.NaN
+  }
+  if (packedIndex !== packedValues.length) {
+    throw new Error('Portable GRIB2 bitmap does not match the packed point count.')
+  }
+  return data
+}
+
+function parsePortableMessage(bytes) {
+  const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+  let parsed = null
+  let parseError = null
+  portableGrib.readData(arrayBuffer, (error, messages) => {
+    parseError = error
+    parsed = messages
+  })
+  if (parseError) throw parseError
+  const field = parsed?.[0]?.fields?.[0]
+  if (!field) return null
+  const grid = field.grid?.definition ?? {}
+  const rows = Number(grid.nj ?? grid.ny)
+  const cols = Number(grid.ni ?? grid.nx)
+  const latitudeStep = Math.abs(Number(grid.dj ?? grid.dy))
+  const longitudeStep = Math.abs(Number(grid.di ?? grid.dx))
+  const latitudeStart = Number(grid.la1)
+  const longitudeStart = Number(grid.lo1)
+  const gridPointCount = rows * cols
+  const data = field.data ?? decodeSimplePackedData(bytes, gridPointCount)
+  if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows <= 0 || cols <= 0 || data.length !== gridPointCount) {
+    throw new Error(`Portable GRIB decoder returned an invalid grid (${rows}x${cols}, ${data.length} values).`)
+  }
+  return {
+    gridShape: { rows, cols },
+    data,
+    latlng: {
+      latitude: Array.from({ length: rows }, (_, index) => latitudeStart - index * latitudeStep),
+      longitude: Array.from({ length: cols }, (_, index) => longitudeStart + index * longitudeStep),
+    },
+  }
+}
+
+function parseFirstMessage(bytes) {
+  if (usePortableGribParser) return parsePortableMessage(bytes)
+  return nativeGrib.parseMessagesFromBuffer(bytes)[0] ?? null
+}
+
 async function fetchForecastSamples(issueDate, fhr) {
+  if (sourceConfig.openMeteoModel) {
+    const url = new URL('https://single-runs-api.open-meteo.com/v1/forecast')
+    url.searchParams.set('latitude', locations.map((location) => location.latitude).join(','))
+    url.searchParams.set('longitude', locations.map((location) => location.longitude).join(','))
+    url.searchParams.set('run', `${issueDate}T${runHour}:00`)
+    url.searchParams.set('hourly', 'temperature_2m')
+    url.searchParams.set('models', sourceConfig.openMeteoModel)
+    url.searchParams.set('temperature_unit', 'fahrenheit')
+    url.searchParams.set('forecast_days', '16')
+    url.searchParams.set('timezone', 'UTC')
+    const json = await fetchWithRetry(`Open-Meteo ${forecastSource} ${issueDate}`, () => fetchJson(url))
+    const responses = Array.isArray(json) ? json : [json]
+    const validTime = new Date(Date.parse(`${issueDate}T${runHour}:00:00Z`) + fhr * 3600000).toISOString().slice(0, 16)
+    return {
+      sourceUrl: url.toString(),
+      indexUrl: '',
+      indexLine: '',
+      samples: Object.fromEntries(locations.map((location, index) => {
+        const response = responses[index] ?? responses[0]
+        const timeIndex = response?.hourly?.time?.indexOf(validTime) ?? -1
+        const valueF = Number(response?.hourly?.temperature_2m?.[timeIndex])
+        if (timeIndex < 0 || !Number.isFinite(valueF)) throw new Error(`Open-Meteo ${forecastSource} response omitted ${validTime} for ${location.id}`)
+        return [location.id, {
+          valueF,
+          nearestGridLatitude: response.latitude ?? location.latitude,
+          nearestGridLongitude: response.longitude ?? location.longitude,
+        }]
+      })),
+    }
+  }
   const { gribUrl, idxUrl, text } = await fetchForecastIndex(issueDate, fhr)
   const { start, end, indexLine } = targetRangeFromIndex(text)
   const bytes = await fetchWithRetry(`grib ${gribUrl}`, () => fetchRange(gribUrl, start, end))
-  const [message] = parseMessagesFromBuffer(bytes)
+  const message = parseFirstMessage(bytes)
   if (!message) throw new Error(`Could not parse ${forecastSource} GRIB message from ${gribUrl}`)
   return {
     sourceUrl: gribUrl,
@@ -524,7 +748,7 @@ async function loadResumeState(expectedReturnRows) {
 function buildWorkItems(doneKeys, options = {}) {
   const { includeDone = false } = options
   const items = []
-  for (const issueDate of datesBetween(startDate, endDate)) {
+  for (const issueDate of datesBetween(startDate, issueEndDate)) {
     for (const leadDay of leadDays) {
       const targetDate = addDays(issueDate, leadDay)
       if (targetDate > endDate) continue
@@ -688,7 +912,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     source: sourceConfig.source,
     forecastSource,
-    range: { startDate, endDate },
+    range: { startDate, issueEndDate, targetEndDate: endDate },
     runHour,
     leadDays,
     validHoursUtc,

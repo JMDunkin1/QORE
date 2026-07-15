@@ -658,9 +658,21 @@ async function shortabilityBlocks(plannedOrders, targets, brokerSnapshot) {
 
 function signalAgeBlock(signalSnapshot) {
   if (allowStaleSignal) return null
-  const age = Number(signalSnapshot.signalAgeDays)
-  if (signalSnapshot.stale || (Number.isFinite(age) && age > alpacaLiveRiskPolicy.maxSignalAgeDays)) {
-    return `Signal intent is stale (${Number.isFinite(age) ? `${round(age, 2)} days` : 'unknown age'}). Refresh data/signals before routing.`
+  const issueDate = signalSnapshot?.inference?.forecastValidation?.latestCommonIssueDate
+  const targetDate = signalSnapshot?.intent?.targetDate
+  const freshnessDate = issueDate ?? targetDate
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(freshnessDate ?? ''))
+    ? dateOrNull(`${freshnessDate}T00:00:00Z`)
+    : null
+  const validDate = parsedDate?.toISOString().slice(0, 10) === freshnessDate ? parsedDate : null
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+  const age = validDate ? (today - validDate.getTime()) / 86400000 : null
+  if (signalSnapshot.stale || age === null || age < 0 || age > alpacaLiveRiskPolicy.maxSignalAgeDays) {
+    const source = issueDate ? 'validated inference issue date' : 'target date'
+    const detail = age === null
+      ? 'no valid validated inference issue date or target date'
+      : `${source} ${freshnessDate} is ${round(age, 2)} days old`
+    return `Signal intent is stale (${detail}). Refresh data/signals before routing.`
   }
   return null
 }
@@ -919,6 +931,12 @@ function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnap
   const warnings = []
   const staleBlock = signalAgeBlock(signalSnapshot)
   if (staleBlock) blocks.push(staleBlock)
+  if (brokerMode === 'live' && signalSnapshot?.inference?.liveForecastAppliedToTarget !== true) {
+    blocks.push('Current live forecast has not been applied to the all-year target; real-money routing is disabled.')
+  }
+  if (brokerMode === 'live' && signalSnapshot?.inference?.validated !== true) {
+    blocks.push('Current live forecast inference is not validated; real-money routing is disabled.')
+  }
 
   if (alpacaLiveRiskPolicy.requireAccountContext && (!brokerSnapshot?.account?.equityUsd || brokerSnapshot.account.equityUsd <= 0)) {
     blocks.push('Broker account equity is missing or zero.')

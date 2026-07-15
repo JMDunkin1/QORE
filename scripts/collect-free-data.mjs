@@ -26,6 +26,7 @@ const skipYahoo = truthy(process.env.QORE_SKIP_YAHOO)
 const skipNasaPower = truthy(process.env.QORE_SKIP_NASA_POWER)
 const skipOpenMeteo = truthy(process.env.QORE_SKIP_OPEN_METEO)
 const skipEia = truthy(process.env.QORE_SKIP_EIA)
+const failOnDataFailure = truthy(process.env.QORE_FAIL_ON_DATA_FAILURE)
 
 const arcticBlastThresholds = {
   coldAnomalyF: -8,
@@ -1125,9 +1126,34 @@ async function main() {
   await collectSingleRuns(manifest)
   await collectPreviousRuns(manifest)
 
+  const failedSources = []
+  const visit = (value, trail = []) => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, [...trail, index]))
+      return
+    }
+    if (!value || typeof value !== 'object') return
+    if (value.status === 'failed') {
+      failedSources.push({
+        path: trail.join('.'),
+        error: value.error ?? 'Source refresh failed without an error message.',
+      })
+    }
+    for (const [key, child] of Object.entries(value)) visit(child, [...trail, key])
+  }
+  visit(manifest)
+  manifest.refreshSummary = {
+    failedSourceCount: failedSources.length,
+    failedSources,
+    failOnDataFailure,
+  }
+
   const manifestPath = path.join(dataRoot, 'runs', 'free-data-manifest.json')
   await writeJson(manifestPath, manifest)
   console.log(`manifest written: ${path.relative(repoDir, manifestPath)}`)
+  if (failOnDataFailure && failedSources.length) {
+    throw new Error(`Free-data refresh had ${failedSources.length} failed source request(s); see ${path.relative(repoDir, manifestPath)}.`)
+  }
 }
 
 main().catch((error) => {

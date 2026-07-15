@@ -13,6 +13,7 @@
         "marketReferencePrices": { "intervalMs": 1000 },
         "brokerAccountAndPositions": { "intervalMs": 1000 },
         "riskAndKillSwitchState": { "intervalMs": 1000 },
+        "strategyInference": { "intervalMs": 3600000 },
         "signalIntentReconcile": { "intervalMs": 5000 },
         "eiaStorageReleaseWindow": { "intervalMs": 60000 }
       },
@@ -33,6 +34,7 @@
         "marketReferencePrices": { "intervalMs": 5000 },
         "brokerAccountAndPositions": { "intervalMs": 5000 },
         "riskAndKillSwitchState": { "intervalMs": 1000 },
+        "strategyInference": { "intervalMs": 3600000 },
         "signalIntentReconcile": { "intervalMs": 30000 },
         "eiaStorageReleaseWindow": { "intervalMs": 60000 }
       },
@@ -53,6 +55,7 @@
         "marketReferencePrices": { "intervalMs": 15000 },
         "brokerAccountAndPositions": { "intervalMs": 5000 },
         "riskAndKillSwitchState": { "intervalMs": 1000 },
+        "strategyInference": { "intervalMs": 3600000 },
         "signalIntentReconcile": { "intervalMs": 60000 },
         "eiaStorageReleaseWindow": { "intervalMs": 60000 }
       },
@@ -73,6 +76,7 @@
         "marketReferencePrices": { "intervalMs": 60000 },
         "brokerAccountAndPositions": { "intervalMs": 15000 },
         "riskAndKillSwitchState": { "intervalMs": 5000 },
+        "strategyInference": { "intervalMs": 21600000 },
         "signalIntentReconcile": { "intervalMs": 300000 },
         "eiaStorageReleaseWindow": { "intervalMs": 300000 }
       },
@@ -83,6 +87,12 @@
     }
   },
   "liveCadences": {
+    "strategyInference": {
+      "enabled": true,
+      "intervalMs": 3600000,
+      "slider": { "minMs": 900000, "maxMs": 21600000, "stepMs": 900000 },
+      "reason": "Refresh the selected-contract target from complete NOAA GFS/GEFS 00z forecast sets while retaining prior validated state across restarts."
+    },
     "marketReferencePrices": {
       "enabled": true,
       "intervalMs": 15000,
