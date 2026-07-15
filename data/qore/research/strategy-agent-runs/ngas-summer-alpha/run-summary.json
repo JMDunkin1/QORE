@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-14T22:45:23.420Z",
+  "generatedAt": "2026-07-15T22:42:56.553Z",
   "strategyId": "ngas-summer-alpha",
   "data": {
     "weatherManifest": "data/qore/dataset-manifest.json",
@@ -833,7 +833,7 @@
         "tStat": 2.68
       },
       "fallback": {
-        "totalReturnPct": 94.27,
+        "totalReturnPct": 94.28,
         "cagrPct": 12.78,
         "annualVolPct": 17.77,
         "sharpe": 0.88,

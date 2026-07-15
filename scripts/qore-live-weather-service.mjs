@@ -6,6 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
+import { nominalEiaStorageReleaseAt } from './lib/eia-release-time.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
@@ -944,7 +945,7 @@ async function collectEiaStorageReleaseWindow() {
       : null,
     riskContext: latest
       ? {
-          reportedAt: `${latest.date}T14:30:00.000Z`,
+          reportedAt: nominalEiaStorageReleaseAt(latest.date),
           storageVsSeasonalAverageBcf: null,
         }
       : null,

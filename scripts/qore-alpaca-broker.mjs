@@ -32,7 +32,8 @@ const once = args.has('--once') || args.has('--reconcile') || (!loop && !statusO
 const loopIntervalMs = positiveNumber(process.env.QORE_BROKER_RECONCILE_INTERVAL_MS, 60_000)
 const allocationPct = boundedNumber(process.env.QORE_LIVE_ACCOUNT_ALLOCATION_PCT, 100, 0, 100)
 const minOrderUsd = positiveNumber(process.env.QORE_LIVE_MIN_ORDER_USD, 10)
-const minCashBufferPct = boundedNumber(process.env.QORE_LIVE_MIN_CASH_BUFFER_PCT, 0, 0, 100)
+const rebalanceDeadbandPct = boundedNumber(process.env.QORE_LIVE_REBALANCE_DEADBAND_PCT, 0.25, 0, 100)
+const minCashBufferPct = boundedNumber(process.env.QORE_LIVE_MIN_CASH_BUFFER_PCT, 2, 0, 100)
 const maxOrderUsd = optionalPositiveNumber(process.env.QORE_LIVE_MAX_ORDER_USD)
 const fractionalOrders = !falsey(process.env.QORE_ALPACA_FRACTIONAL_ORDERS)
 const allowShorts = truthy(process.env.QORE_ALPACA_ALLOW_SHORTS)
@@ -48,6 +49,8 @@ const maxQuoteAgeMinutes = positiveNumber(process.env.QORE_LIVE_MAX_QUOTE_AGE_MI
 const maxDailyLossPct = positiveNumber(process.env.QORE_LIVE_MAX_DAILY_LOSS_PCT, 12)
 const maxTrailingDrawdownPct = positiveNumber(process.env.QORE_LIVE_MAX_TRAILING_DRAWDOWN_PCT, 25)
 const maxGrossExposurePct = positiveNumber(process.env.QORE_LIVE_MAX_GROSS_EXPOSURE_PCT, 100)
+const alpacaPaperBaseUrl = 'https://paper-api.alpaca.markets'
+const alpacaLiveBaseUrl = 'https://api.alpaca.markets'
 
 const alpacaLiveRiskPolicy = {
   id: 'alpaca-live-etf-reconciler-v1',
@@ -178,7 +181,6 @@ async function appendJsonl(filePath, value) {
 }
 
 function alpacaConnectionConfig(mode) {
-  const paper = mode !== 'live'
   const apiKey =
     process.env.QORE_ALPACA_API_KEY_ID ??
     process.env.APCA_API_KEY_ID ??
@@ -192,8 +194,24 @@ function alpacaConnectionConfig(mode) {
   const baseUrl =
     process.env.QORE_ALPACA_BASE_URL ??
     process.env.APCA_API_BASE_URL ??
-    (paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
-  return { apiKey, secretKey, baseUrl: baseUrl.replace(/\/$/, ''), paper }
+    (mode === 'live' ? alpacaLiveBaseUrl : alpacaPaperBaseUrl)
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, '')
+  return {
+    apiKey,
+    secretKey,
+    baseUrl: normalizedBaseUrl,
+    paper: normalizedBaseUrl === alpacaPaperBaseUrl,
+  }
+}
+
+function localTestEndpointConfirmed() {
+  if (process.env.NODE_ENV !== 'test' || !truthy(process.env.QORE_ALPACA_TEST_ENDPOINT_CONFIRMED)) return false
+  try {
+    const host = new URL(alpacaConfig.baseUrl).hostname
+    return ['127.0.0.1', '::1', 'localhost'].includes(host)
+  } catch {
+    return false
+  }
 }
 
 function requireCredentials() {
@@ -478,22 +496,25 @@ function orderQuantity(absDeltaUsd, price, forceWholeShares = false) {
   return Math.floor(raw * 1_000_000) / 1_000_000
 }
 
-function clientOrderIdFor(intent, symbol, side, deltaNotionalUsd) {
-  const hash = stableHash({ strategyId: intent.strategyId, signalDate: intent.signalDate, symbol, side, deltaNotionalUsd })
+function clientOrderIdFor(intent, symbol, side, targetDeltaNotionalUsd) {
+  const hash = stableHash({ strategyId: intent.strategyId, signalDate: intent.signalDate, symbol, side, targetDeltaNotionalUsd })
   return `qore-${compactDate(intent.signalDate)}-${symbol}-${side}-${hash}`.slice(0, 48)
 }
 
-function buildPlannedOrders({ signalSnapshot, targets, current, prices, openOrders }) {
+function buildPlannedOrders({ signalSnapshot, targets, current, prices, openOrders, accountEquityUsd }) {
   const intent = signalSnapshot.intent
   const planned = []
   const skipped = []
   const openSymbols = new Set((openOrders ?? []).map((order) => order.symbol).filter(Boolean))
+  const rebalanceDeadbandUsd = Math.max(0, accountEquityUsd) * (rebalanceDeadbandPct / 100)
 
   for (const [symbol, targetNotionalUsd] of Object.entries(targets)) {
     const price = Number(prices[symbol])
     if (!Number.isFinite(price) || price <= 0) continue
     const currentNotionalUsd = Number(current[symbol] ?? 0)
-    let deltaNotionalUsd = targetNotionalUsd - currentNotionalUsd
+    const targetDeltaNotionalUsd = targetNotionalUsd - currentNotionalUsd
+    if (Math.abs(targetDeltaNotionalUsd) < rebalanceDeadbandUsd) continue
+    let deltaNotionalUsd = targetDeltaNotionalUsd
     if (maxOrderUsd && Math.abs(deltaNotionalUsd) > maxOrderUsd) {
       deltaNotionalUsd = Math.sign(deltaNotionalUsd) * maxOrderUsd
     }
@@ -504,7 +525,7 @@ function buildPlannedOrders({ signalSnapshot, targets, current, prices, openOrde
     const quantity = orderQuantity(absDeltaUsd, price, opensShort)
     if (quantity <= 0) continue
     const orderRequest = {
-      clientOrderId: clientOrderIdFor(intent, symbol, side, deltaNotionalUsd),
+      clientOrderId: clientOrderIdFor(intent, symbol, side, targetDeltaNotionalUsd),
       symbol,
       side,
       quantity,
@@ -680,7 +701,9 @@ function signalAgeBlock(signalSnapshot) {
 function liveConfirmationBlocks() {
   if (brokerMode !== 'live') return []
   const blocks = []
-  if (alpacaConfig.paper || alpacaConfig.baseUrl.includes('paper-api')) blocks.push('Live mode is using the paper Alpaca base URL.')
+  if (!localTestEndpointConfirmed() && alpacaConfig.baseUrl !== alpacaLiveBaseUrl) {
+    blocks.push(`Live mode requires the exact Alpaca live endpoint ${alpacaLiveBaseUrl}.`)
+  }
   if (!truthy(process.env.QORE_LIVE_TRADING_ENABLED)) blocks.push('QORE_LIVE_TRADING_ENABLED=1 is required for real-money orders.')
   if (!truthy(process.env.QORE_LIVE_ORDER_ROUTING_ENABLED)) blocks.push('QORE_LIVE_ORDER_ROUTING_ENABLED=1 is required for real-money orders.')
   if (process.env.QORE_CONFIRM_LIVE_TRADING !== 'I_UNDERSTAND_THIS_CAN_LOSE_MONEY') {
@@ -691,9 +714,14 @@ function liveConfirmationBlocks() {
 
 function paperConfirmationBlocks() {
   if (brokerMode !== 'paper') return []
-  return truthy(process.env.QORE_PAPER_ORDER_ROUTING_ENABLED) || args.has('--execute')
-    ? []
-    : ['Paper order submission requires QORE_PAPER_ORDER_ROUTING_ENABLED=1 or --execute.']
+  const blocks = []
+  if (!localTestEndpointConfirmed() && alpacaConfig.baseUrl !== alpacaPaperBaseUrl) {
+    blocks.push(`Paper mode requires the exact Alpaca paper endpoint ${alpacaPaperBaseUrl}.`)
+  }
+  if (!truthy(process.env.QORE_PAPER_ORDER_ROUTING_ENABLED) && !args.has('--execute')) {
+    blocks.push('Paper order submission requires QORE_PAPER_ORDER_ROUTING_ENABLED=1 or --execute.')
+  }
+  return blocks
 }
 
 function spreadBpsBySymbol(marketSnapshot, quoteSnapshot = null) {
@@ -1067,6 +1095,7 @@ async function reconcileOnce() {
     current,
     prices,
     openOrders: brokerSnapshot.openOrders,
+    accountEquityUsd,
   })
   const gateResult = contextBlocks({
     signalSnapshot,
@@ -1207,6 +1236,11 @@ async function reconcileOnce() {
     },
     targetNotionalUsd: targets,
     currentNotionalUsd: current,
+    reconcileConstraints: {
+      minOrderUsd,
+      rebalanceDeadbandPct,
+      effectiveMinimumRebalanceUsd: round(Math.max(minOrderUsd, accountEquityUsd * (rebalanceDeadbandPct / 100)), 2),
+    },
     plannedOrders,
     openOrderReplacement: {
       ...openOrderReplacement,
