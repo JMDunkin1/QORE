@@ -32,6 +32,15 @@ function quoteUnitPath(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 
+function escapeUnitDirectivePath(value) {
+  return String(value)
+    .replaceAll('\\', '\\x5c')
+    .replaceAll(' ', '\\x20')
+    .replaceAll('\t', '\\x09')
+    .replaceAll('"', '\\x22')
+    .replaceAll('%', '%%')
+}
+
 const unitDir = path.join(homedir(), '.config', 'systemd', 'user')
 const unitPath = path.join(unitDir, 'qore-live-trading.service')
 const unit = `[Unit]
@@ -41,7 +50,9 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=${quoteUnitPath(repoDir)}
+WorkingDirectory=${escapeUnitDirectivePath(repoDir)}
+Environment=TZ=UTC
+ExecStartPre=${quoteUnitPath(process.execPath)} ${quoteUnitPath(path.join(repoDir, 'scripts', 'qore-live-readiness.mjs'))} --local-only
 ExecStart=${quoteUnitPath(process.execPath)} ${quoteUnitPath(path.join(repoDir, 'scripts', 'qore-live-trading-supervisor.mjs'))}
 Restart=always
 RestartSec=15

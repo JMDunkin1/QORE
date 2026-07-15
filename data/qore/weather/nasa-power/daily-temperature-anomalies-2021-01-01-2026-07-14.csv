@@ -2017,6 +2017,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,minneapolis,Upper Midwest,0.07,23.5,74.3,21.88,71.39,2.91,NASA POWER daily T2M
 2026-07-10,minneapolis,Upper Midwest,0.07,24.47,76.05,22.05,71.69,4.36,NASA POWER daily T2M
 2026-07-11,minneapolis,Upper Midwest,0.07,25.98,78.76,22.29,72.13,6.64,NASA POWER daily T2M
+2026-07-12,minneapolis,Upper Midwest,0.07,27.05,80.69,22.2,71.96,8.73,NASA POWER daily T2M
 2021-01-01,chicago,Great Lakes,0.09,0.45,32.81,-1.97,28.45,4.36,NASA POWER daily T2M
 2021-01-02,chicago,Great Lakes,0.09,1.67,35.01,-1.5,29.3,5.71,NASA POWER daily T2M
 2021-01-03,chicago,Great Lakes,0.09,0.39,32.7,-1.37,29.54,3.16,NASA POWER daily T2M
@@ -4035,6 +4036,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,chicago,Great Lakes,0.09,23.95,75.11,21.44,70.6,4.51,NASA POWER daily T2M
 2026-07-10,chicago,Great Lakes,0.09,22.35,72.23,21.32,70.38,1.85,NASA POWER daily T2M
 2026-07-11,chicago,Great Lakes,0.09,22.87,73.17,21.46,70.62,2.55,NASA POWER daily T2M
+2026-07-12,chicago,Great Lakes,0.09,24.21,75.58,21.85,71.33,4.25,NASA POWER daily T2M
 2021-01-01,detroit,Great Lakes,0.06,-2.24,27.97,-3.79,25.18,2.78,NASA POWER daily T2M
 2021-01-02,detroit,Great Lakes,0.06,-0.76,30.63,-3.76,25.24,5.39,NASA POWER daily T2M
 2021-01-03,detroit,Great Lakes,0.06,-0.19,31.66,-3.72,25.3,6.35,NASA POWER daily T2M
@@ -6053,6 +6055,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,detroit,Great Lakes,0.06,24.59,76.26,21.61,70.89,5.37,NASA POWER daily T2M
 2026-07-10,detroit,Great Lakes,0.06,23.35,74.03,21.51,70.73,3.3,NASA POWER daily T2M
 2026-07-11,detroit,Great Lakes,0.06,22.86,73.15,21.35,70.44,2.71,NASA POWER daily T2M
+2026-07-12,detroit,Great Lakes,0.06,23.27,73.89,21.75,71.15,2.74,NASA POWER daily T2M
 2021-01-01,cleveland,Great Lakes,0.05,0.6,33.08,-0.94,30.3,2.78,NASA POWER daily T2M
 2021-01-02,cleveland,Great Lakes,0.05,1.89,35.4,-0.94,30.32,5.09,NASA POWER daily T2M
 2021-01-03,cleveland,Great Lakes,0.05,1.63,34.93,-0.91,30.36,4.57,NASA POWER daily T2M
@@ -8071,6 +8074,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,cleveland,Great Lakes,0.05,25.08,77.14,22.11,71.79,5.35,NASA POWER daily T2M
 2026-07-10,cleveland,Great Lakes,0.05,24.69,76.44,21.94,71.5,4.94,NASA POWER daily T2M
 2026-07-11,cleveland,Great Lakes,0.05,24.55,76.19,21.94,71.49,4.7,NASA POWER daily T2M
+2026-07-12,cleveland,Great Lakes,0.05,23.87,74.97,22.26,72.07,2.9,NASA POWER daily T2M
 2021-01-01,indianapolis,Ohio Valley,0.05,0.26,32.47,-2.66,27.21,5.26,NASA POWER daily T2M
 2021-01-02,indianapolis,Ohio Valley,0.05,-0.03,31.95,-1.95,28.49,3.45,NASA POWER daily T2M
 2021-01-03,indianapolis,Ohio Valley,0.05,-0.73,30.69,-1.94,28.51,2.17,NASA POWER daily T2M
@@ -10089,6 +10093,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,indianapolis,Ohio Valley,0.05,24.65,76.37,23.29,73.91,2.46,NASA POWER daily T2M
 2026-07-10,indianapolis,Ohio Valley,0.05,25.31,77.56,23.04,73.48,4.08,NASA POWER daily T2M
 2026-07-11,indianapolis,Ohio Valley,0.05,22.74,72.93,22.49,72.48,0.45,NASA POWER daily T2M
+2026-07-12,indianapolis,Ohio Valley,0.05,23.72,74.7,23,73.4,1.3,NASA POWER daily T2M
 2021-01-01,st-louis,Midwest,0.05,-0.32,31.42,-1.16,29.91,1.51,NASA POWER daily T2M
 2021-01-02,st-louis,Midwest,0.05,-1.6,29.12,-0.17,31.7,-2.58,NASA POWER daily T2M
 2021-01-03,st-louis,Midwest,0.05,-1.95,28.49,-0.5,31.11,-2.62,NASA POWER daily T2M
@@ -12107,6 +12112,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,st-louis,Midwest,0.05,26.2,79.16,25.89,78.61,0.55,NASA POWER daily T2M
 2026-07-10,st-louis,Midwest,0.05,26.92,80.46,25.61,78.1,2.36,NASA POWER daily T2M
 2026-07-11,st-louis,Midwest,0.05,25,77,25.31,77.56,-0.56,NASA POWER daily T2M
+2026-07-12,st-louis,Midwest,0.05,25.12,77.22,25.3,77.55,-0.33,NASA POWER daily T2M
 2021-01-01,kansas-city,Central Plains,0.04,-4.71,23.52,-2.58,27.36,-3.84,NASA POWER daily T2M
 2021-01-02,kansas-city,Central Plains,0.04,-4.93,23.13,-2.22,28,-4.87,NASA POWER daily T2M
 2021-01-03,kansas-city,Central Plains,0.04,-4.49,23.92,-1.87,28.64,-4.72,NASA POWER daily T2M
@@ -14125,6 +14131,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,kansas-city,Central Plains,0.04,26.32,79.38,25.82,78.47,0.91,NASA POWER daily T2M
 2026-07-10,kansas-city,Central Plains,0.04,25.35,77.63,25.85,78.54,-0.91,NASA POWER daily T2M
 2026-07-11,kansas-city,Central Plains,0.04,25.14,77.25,26.11,79.01,-1.75,NASA POWER daily T2M
+2026-07-12,kansas-city,Central Plains,0.04,24.41,75.94,25.73,78.32,-2.38,NASA POWER daily T2M
 2021-01-01,nashville,Mid-South,0.05,12.24,54.03,2.89,37.2,16.83,NASA POWER daily T2M
 2021-01-02,nashville,Mid-South,0.05,6.44,43.59,3.3,37.94,5.65,NASA POWER daily T2M
 2021-01-03,nashville,Mid-South,0.05,4.1,39.38,3.61,38.51,0.87,NASA POWER daily T2M
@@ -16143,6 +16150,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,nashville,Mid-South,0.05,26.46,79.63,26.41,79.54,0.09,NASA POWER daily T2M
 2026-07-10,nashville,Mid-South,0.05,26.48,79.66,26.02,78.83,0.83,NASA POWER daily T2M
 2026-07-11,nashville,Mid-South,0.05,27.13,80.83,25.95,78.71,2.12,NASA POWER daily T2M
+2026-07-12,nashville,Mid-South,0.05,25.01,77.02,25.8,78.43,-1.42,NASA POWER daily T2M
 2021-01-01,memphis,Mid-South,0.04,7.85,46.13,3.88,38.99,7.14,NASA POWER daily T2M
 2021-01-02,memphis,Mid-South,0.04,4.04,39.27,4.18,39.52,-0.25,NASA POWER daily T2M
 2021-01-03,memphis,Mid-South,0.04,3.7,38.66,4.87,40.76,-2.1,NASA POWER daily T2M
@@ -18161,6 +18169,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,memphis,Mid-South,0.04,28.76,83.77,28.14,82.66,1.11,NASA POWER daily T2M
 2026-07-10,memphis,Mid-South,0.04,29.11,84.4,28.14,82.66,1.74,NASA POWER daily T2M
 2026-07-11,memphis,Mid-South,0.04,29.22,84.6,27.74,81.92,2.67,NASA POWER daily T2M
+2026-07-12,memphis,Mid-South,0.04,26.79,80.22,28.01,82.42,-2.2,NASA POWER daily T2M
 2021-01-01,atlanta,Southeast,0.07,17.31,63.16,6.62,43.92,19.23,NASA POWER daily T2M
 2021-01-02,atlanta,Southeast,0.07,13.06,55.51,6.33,43.39,12.12,NASA POWER daily T2M
 2021-01-03,atlanta,Southeast,0.07,5.65,42.17,5.64,42.14,0.03,NASA POWER daily T2M
@@ -20179,6 +20188,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,atlanta,Southeast,0.07,26.96,80.53,27.13,80.84,-0.31,NASA POWER daily T2M
 2026-07-10,atlanta,Southeast,0.07,27.2,80.96,27.21,80.98,-0.02,NASA POWER daily T2M
 2026-07-11,atlanta,Southeast,0.07,27.37,81.27,27.32,81.17,0.1,NASA POWER daily T2M
+2026-07-12,atlanta,Southeast,0.07,26.98,80.56,27.13,80.83,-0.26,NASA POWER daily T2M
 2021-01-01,charlotte,Southeast,0.05,9.24,48.63,5.26,41.47,7.16,NASA POWER daily T2M
 2021-01-02,charlotte,Southeast,0.05,15.24,59.43,4.97,40.95,18.48,NASA POWER daily T2M
 2021-01-03,charlotte,Southeast,0.05,11.77,53.19,4.98,40.97,12.22,NASA POWER daily T2M
@@ -22197,6 +22207,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,charlotte,Southeast,0.05,30,86,27.37,81.26,4.74,NASA POWER daily T2M
 2026-07-10,charlotte,Southeast,0.05,29.69,85.44,27.69,81.84,3.6,NASA POWER daily T2M
 2026-07-11,charlotte,Southeast,0.05,28.86,83.95,27.18,80.92,3.03,NASA POWER daily T2M
+2026-07-12,charlotte,Southeast,0.05,27.7,81.86,26.9,80.41,1.45,NASA POWER daily T2M
 2021-01-01,raleigh,Southeast,0.04,6.24,43.23,4.46,40.03,3.2,NASA POWER daily T2M
 2021-01-02,raleigh,Southeast,0.04,12.59,54.66,4.03,39.25,15.41,NASA POWER daily T2M
 2021-01-03,raleigh,Southeast,0.04,8.96,48.13,4.52,40.14,7.98,NASA POWER daily T2M
@@ -24215,6 +24226,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,raleigh,Southeast,0.04,29.6,85.28,27.11,80.8,4.48,NASA POWER daily T2M
 2026-07-10,raleigh,Southeast,0.04,29.56,85.21,26.98,80.56,4.65,NASA POWER daily T2M
 2026-07-11,raleigh,Southeast,0.04,27.98,82.36,26.39,79.5,2.86,NASA POWER daily T2M
+2026-07-12,raleigh,Southeast,0.04,26.83,80.29,26.01,78.82,1.48,NASA POWER daily T2M
 2021-01-01,washington-dc,Mid-Atlantic,0.07,1.07,33.93,1.65,34.97,-1.04,NASA POWER daily T2M
 2021-01-02,washington-dc,Mid-Atlantic,0.07,4.35,39.83,0.91,33.65,6.18,NASA POWER daily T2M
 2021-01-03,washington-dc,Mid-Atlantic,0.07,1.99,35.58,1.71,35.07,0.51,NASA POWER daily T2M
@@ -26233,6 +26245,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,washington-dc,Mid-Atlantic,0.07,26.62,79.92,25.58,78.05,1.87,NASA POWER daily T2M
 2026-07-10,washington-dc,Mid-Atlantic,0.07,25.57,78.03,25.32,77.57,0.45,NASA POWER daily T2M
 2026-07-11,washington-dc,Mid-Atlantic,0.07,25.78,78.4,25.26,77.47,0.93,NASA POWER daily T2M
+2026-07-12,washington-dc,Mid-Atlantic,0.07,25,77,25.08,77.15,-0.15,NASA POWER daily T2M
 2021-01-01,philadelphia,Mid-Atlantic,0.06,0.08,32.14,0.46,32.83,-0.69,NASA POWER daily T2M
 2021-01-02,philadelphia,Mid-Atlantic,0.06,4.02,39.24,-0.21,31.63,7.61,NASA POWER daily T2M
 2021-01-03,philadelphia,Mid-Atlantic,0.06,1.59,34.86,0.47,32.84,2.02,NASA POWER daily T2M
@@ -28251,6 +28264,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,philadelphia,Mid-Atlantic,0.06,25.23,77.41,24.49,76.08,1.34,NASA POWER daily T2M
 2026-07-10,philadelphia,Mid-Atlantic,0.06,25.44,77.79,24.17,75.51,2.28,NASA POWER daily T2M
 2026-07-11,philadelphia,Mid-Atlantic,0.06,24.07,75.33,24.08,75.34,-0.01,NASA POWER daily T2M
+2026-07-12,philadelphia,Mid-Atlantic,0.06,24.27,75.69,23.92,75.06,0.63,NASA POWER daily T2M
 2021-01-01,new-york,Northeast,0.11,3.72,38.7,2.4,36.32,2.37,NASA POWER daily T2M
 2021-01-02,new-york,Northeast,0.11,6.28,43.3,2.21,35.99,7.32,NASA POWER daily T2M
 2021-01-03,new-york,Northeast,0.11,4.21,39.58,2.38,36.28,3.3,NASA POWER daily T2M
@@ -30269,6 +30283,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,new-york,Northeast,0.11,23.41,74.14,23.3,73.93,0.2,NASA POWER daily T2M
 2026-07-10,new-york,Northeast,0.11,24.39,75.9,23.41,74.13,1.77,NASA POWER daily T2M
 2026-07-11,new-york,Northeast,0.11,23.04,73.47,23.21,73.78,-0.31,NASA POWER daily T2M
+2026-07-12,new-york,Northeast,0.11,23.12,73.62,23.1,73.57,0.04,NASA POWER daily T2M
 2021-01-01,boston,Northeast,0.06,-0.4,31.28,-2.91,26.77,4.51,NASA POWER daily T2M
 2021-01-02,boston,Northeast,0.06,1.78,35.2,-3.1,26.41,8.79,NASA POWER daily T2M
 2021-01-03,boston,Northeast,0.06,-0.76,30.63,-2.71,27.11,3.52,NASA POWER daily T2M
@@ -32287,6 +32302,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,boston,Northeast,0.06,25.34,77.61,21.68,71.03,6.58,NASA POWER daily T2M
 2026-07-10,boston,Northeast,0.06,24.52,76.14,21.67,71,5.13,NASA POWER daily T2M
 2026-07-11,boston,Northeast,0.06,23.16,73.69,21.31,70.35,3.33,NASA POWER daily T2M
+2026-07-12,boston,Northeast,0.06,22.51,72.52,22,71.59,0.92,NASA POWER daily T2M
 2021-01-01,dallas,Texas/Oklahoma fringe,0.05,2.25,36.05,5.85,42.54,-6.49,NASA POWER daily T2M
 2021-01-02,dallas,Texas/Oklahoma fringe,0.05,3.71,38.68,5.77,42.38,-3.7,NASA POWER daily T2M
 2021-01-03,dallas,Texas/Oklahoma fringe,0.05,6.06,42.91,6.32,43.38,-0.47,NASA POWER daily T2M
@@ -34305,6 +34321,7 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,dallas,Texas/Oklahoma fringe,0.05,31.62,88.92,29.48,85.06,3.85,NASA POWER daily T2M
 2026-07-10,dallas,Texas/Oklahoma fringe,0.05,31.18,88.12,29.47,85.05,3.08,NASA POWER daily T2M
 2026-07-11,dallas,Texas/Oklahoma fringe,0.05,30.6,87.08,30.02,86.04,1.04,NASA POWER daily T2M
+2026-07-12,dallas,Texas/Oklahoma fringe,0.05,29.73,85.51,30.18,86.32,-0.81,NASA POWER daily T2M
 2021-01-01,houston,Texas/Oklahoma fringe,0.05,6.11,43,10.46,50.83,-7.83,NASA POWER daily T2M
 2021-01-02,houston,Texas/Oklahoma fringe,0.05,6.72,44.1,9.35,48.83,-4.73,NASA POWER daily T2M
 2021-01-03,houston,Texas/Oklahoma fringe,0.05,9.64,49.35,9.3,48.74,0.61,NASA POWER daily T2M
@@ -36323,3 +36340,4 @@ date,locationId,region,weight,tempMeanC,tempMeanF,normalMeanC,normalMeanF,anomal
 2026-07-09,houston,Texas/Oklahoma fringe,0.05,28.52,83.34,28.22,82.79,0.54,NASA POWER daily T2M
 2026-07-10,houston,Texas/Oklahoma fringe,0.05,27.93,82.27,28.31,82.95,-0.68,NASA POWER daily T2M
 2026-07-11,houston,Texas/Oklahoma fringe,0.05,28.28,82.9,28.68,83.63,-0.73,NASA POWER daily T2M
+2026-07-12,houston,Texas/Oklahoma fringe,0.05,27.64,81.75,28.87,83.96,-2.21,NASA POWER daily T2M

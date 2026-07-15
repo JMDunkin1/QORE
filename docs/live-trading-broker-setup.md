@@ -38,6 +38,8 @@ APCA_API_SECRET_KEY=...
 QORE_PAPER_ORDER_ROUTING_ENABLED=1
 ```
 
+Paper mode is hard-bound to `https://paper-api.alpaca.markets`. QORE rejects order submission if `QORE_ALPACA_BASE_URL` or `APCA_API_BASE_URL` points anywhere else, so an environment override cannot silently route a paper process to the live venue.
+
 Live mode:
 
 ```bash
@@ -56,6 +58,10 @@ QORE_ALPACA_ALLOW_SHORTS=1
 ```
 
 Leave `QORE_ALPACA_ALLOW_HARD_TO_BORROW=0` unless you intentionally want QORE to allow hard-to-borrow locate workflows. By default, hard-to-borrow `UNG` blocks.
+
+Keep a nonzero cash buffer for market-order slippage. The checked-in default is `QORE_LIVE_MIN_CASH_BUFFER_PCT=2`, so an ordinary target-weight reconcile does not intentionally consume the account's final dollars or create a small margin debit.
+
+QORE also applies a `QORE_LIVE_REBALANCE_DEADBAND_PCT=0.25` equity-relative deadband in addition to the absolute minimum order size. This prevents the minute-level reconciler from submitting tiny orders solely because prices moved a few basis points after the prior fill.
 
 Alpaca does not support fractional short-sale orders. QORE therefore forces whole-share quantities for negative `UNG` targets, while long ETF orders can still use fractional quantities.
 
@@ -151,7 +157,7 @@ systemctl --user status qore-live-trading.service
 journalctl --user -u qore-live-trading.service -f
 ```
 
-The service restarts after failures, uses a single-process lock, terminates its active child on shutdown, retries failed upstream jobs before allowing downstream broker work, and writes runtime state under `.local/qore/` with a restrictive umask.
+The service restarts after failures, uses a single-process lock, terminates its active child on shutdown, retries failed upstream jobs before allowing downstream broker work, and writes runtime state under `.local/qore/` with a restrictive umask. Its process timezone is pinned to UTC and every start requires the local readiness checks—including NTP synchronization—to pass.
 
 Before changing from paper to live, stop the service, change the four live-mode values in `.env.local`, rerun `npm run live:readiness`, run one explicit `npm run broker:alpaca:live`, inspect the resulting broker status and Alpaca activity, and only then restart the service.
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-15T03:50:04.643Z",
+  "generatedAt": "2026-07-15T18:14:05.902Z",
   "profile": "arctic-blast-history",
   "dataRoot": "data/qore",
   "sourceNote": "No-key/free data only. Files are shared research artifacts under data/qore.",
@@ -11,15 +11,15 @@
     "marketEnd": "2026-07-16",
     "marketEndEpoch": 1784160000
   },
-  "previousManifestGeneratedAt": "2026-07-14T22:45:02.604Z",
+  "previousManifestGeneratedAt": "2026-07-15T18:11:52.250Z",
   "market": [
     {
       "status": "ok",
       "symbol": "UNG",
       "label": "United States Natural Gas Fund",
-      "rows": 4840,
+      "rows": 4841,
       "firstDate": "2007-04-18",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/UNG-daily.csv",
         "data/qore/market/yahoo/UNG-qore-market.csv",
@@ -43,9 +43,9 @@
       "status": "ok",
       "symbol": "SPY",
       "label": "SPDR S&P 500 ETF Trust",
-      "rows": 8420,
+      "rows": 8421,
       "firstDate": "1993-01-29",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/SPY-daily.csv",
         "data/qore/market/yahoo/SPY-qore-market.csv"
@@ -55,9 +55,9 @@
       "status": "ok",
       "symbol": "VOO",
       "label": "Vanguard S&P 500 ETF",
-      "rows": 3984,
+      "rows": 3985,
       "firstDate": "2010-09-09",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/VOO-daily.csv",
         "data/qore/market/yahoo/VOO-qore-market.csv"
@@ -67,9 +67,9 @@
       "status": "ok",
       "symbol": "DIA",
       "label": "SPDR Dow Jones Industrial Average ETF Trust",
-      "rows": 7164,
+      "rows": 7165,
       "firstDate": "1998-01-20",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/DIA-daily.csv",
         "data/qore/market/yahoo/DIA-qore-market.csv"
@@ -79,9 +79,9 @@
       "status": "ok",
       "symbol": "QQQ",
       "label": "Invesco QQQ Trust",
-      "rows": 6878,
+      "rows": 6879,
       "firstDate": "1999-03-10",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/QQQ-daily.csv",
         "data/qore/market/yahoo/QQQ-qore-market.csv"
@@ -91,9 +91,9 @@
       "status": "ok",
       "symbol": "QQQM",
       "label": "Invesco NASDAQ 100 ETF",
-      "rows": 1443,
+      "rows": 1444,
       "firstDate": "2020-10-13",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/QQQM-daily.csv",
         "data/qore/market/yahoo/QQQM-qore-market.csv"
@@ -103,9 +103,9 @@
       "status": "ok",
       "symbol": "IWM",
       "label": "iShares Russell 2000 ETF",
-      "rows": 6566,
+      "rows": 6567,
       "firstDate": "2000-06-02",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/IWM-daily.csv",
         "data/qore/market/yahoo/IWM-qore-market.csv"
@@ -134,9 +134,9 @@
           "targetWeight": 0.2
         }
       ],
-      "rows": 1443,
+      "rows": 1444,
       "firstDate": "2020-10-13",
-      "lastDate": "2026-07-14",
+      "lastDate": "2026-07-15",
       "files": [
         "data/qore/market/yahoo/US-INDEX-BASKET-qore-market.csv"
       ]
@@ -160,7 +160,7 @@
       {
         "status": "ok",
         "file": "data/qore/market/yahoo/UNG-qore-market.csv",
-        "rows": 4840,
+        "rows": 4841,
         "storageRowsUsed": 862,
         "firstStorageDate": "2010-01-01",
         "lastStorageDate": "2026-07-03"
@@ -360,7 +360,7 @@
       }
     ],
     "nasaPowerAnomalyFile": "data/qore/weather/nasa-power/daily-temperature-anomalies-2021-01-01-2026-07-14.csv",
-    "nasaPowerAnomalyRows": 36324,
+    "nasaPowerAnomalyRows": 36342,
     "normals": [
       {
         "status": "skipped",
@@ -388,7 +388,7 @@
     "actualArcticBlastEvents": [
       {
         "status": "ok",
-        "dailyRows": 2018,
+        "dailyRows": 2019,
         "eventRows": 27,
         "windowRows": 81,
         "heatingSeasonEventRows": 22,

@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { nominalEiaStorageReleaseAt } from './lib/eia-release-time.mjs'
 
 const repoDir = process.cwd()
 const scratch = await mkdtemp(path.join(tmpdir(), 'qore-live-test-'))
@@ -44,12 +45,21 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function testEiaReleaseTimestamp() {
+  assert.equal(nominalEiaStorageReleaseAt('2026-07-03'), '2026-07-09T14:30:00.000Z')
+  assert.equal(nominalEiaStorageReleaseAt('2026-01-16'), '2026-01-22T15:30:00.000Z')
+  assert.equal(nominalEiaStorageReleaseAt('not-a-date'), null)
+  console.log('ok - EIA storage freshness uses the publication time after the weekly period ends')
+}
+
 async function writeHandoffs({
   killSwitchEngaged = false,
   marketSpreads = {},
   liveForecastAppliedToTarget = true,
   inferenceValidated = liveForecastAppliedToTarget,
   targetDate = today(),
+  gasPosition = 0,
+  indexFraction = 1,
 } = {}) {
   const now = new Date().toISOString()
   await writeJson(path.join(liveDir, 'signal-intent-reconcile.json'), {
@@ -61,10 +71,10 @@ async function writeHandoffs({
       signalDate: today(),
       targetDate,
       instrument: 'UNG',
-      direction: 'flat',
+      direction: gasPosition > 0 ? 'long' : gasPosition < 0 ? 'short' : 'flat',
       confidence: 0.8,
-      indexFraction: 1,
-      gasPosition: 0,
+      indexFraction,
+      gasPosition,
     },
     inference: {
       mode: liveForecastAppliedToTarget ? 'test-live-inference' : 'historical-artifact-latest-row',
@@ -117,12 +127,27 @@ async function scenario({
   expectedBlock = null,
   expectedSubmissionFailure = false,
   brokerMode = 'paper',
+  allowTestEndpoint = true,
+  allowShorts = false,
+  gasPosition = 0,
+  indexFraction = 1,
+  expectedOrderCount = 2,
+  expectedFirstSide = null,
+  expectedNoOp = false,
   liveForecastAppliedToTarget = true,
   inferenceValidated = liveForecastAppliedToTarget,
   targetDate = today(),
 }) {
   await rm(brokerDir, { recursive: true, force: true })
-  await writeHandoffs({ killSwitchEngaged, marketSpreads, liveForecastAppliedToTarget, inferenceValidated, targetDate })
+  await writeHandoffs({
+    killSwitchEngaged,
+    marketSpreads,
+    liveForecastAppliedToTarget,
+    inferenceValidated,
+    targetDate,
+    gasPosition,
+    indexFraction,
+  })
   const submittedOrders = []
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
@@ -157,6 +182,18 @@ async function scenario({
         timestamp: new Date().toISOString(),
         next_open: new Date(Date.now() + 3600000).toISOString(),
         next_close: new Date(Date.now() + 7200000).toISOString(),
+      })
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/v2/assets/UNG') {
+      jsonResponse(response, 200, {
+        symbol: 'UNG',
+        status: 'active',
+        tradable: true,
+        marginable: true,
+        shortable: true,
+        easy_to_borrow: true,
+        borrow_status: 'easy_to_borrow',
       })
       return
     }
@@ -197,14 +234,19 @@ async function scenario({
     APCA_API_SECRET_KEY: 'test-secret',
     QORE_ALPACA_BASE_URL: baseUrl,
     QORE_ALPACA_DATA_BASE_URL: baseUrl,
+    NODE_ENV: 'test',
+    QORE_ALPACA_TEST_ENDPOINT_CONFIRMED: allowTestEndpoint ? '1' : '0',
     QORE_ALPACA_MARKET_DATA_FEED: 'iex',
     QORE_LIVE_WEATHER_STATE_DIR: liveDir,
     QORE_BROKER_STATE_DIR: brokerDir,
     QORE_PAPER_ORDER_ROUTING_ENABLED: '1',
+    QORE_ALPACA_ALLOW_SHORTS: allowShorts ? '1' : '0',
     QORE_LIVE_TRADING_ENABLED: brokerMode === 'live' ? '1' : '0',
     QORE_LIVE_ORDER_ROUTING_ENABLED: brokerMode === 'live' ? '1' : '0',
     QORE_CONFIRM_LIVE_TRADING: brokerMode === 'live' ? 'I_UNDERSTAND_THIS_CAN_LOSE_MONEY' : '',
     QORE_LIVE_MAX_QUOTE_AGE_MINUTES: '5',
+    QORE_LIVE_MIN_CASH_BUFFER_PCT: '0',
+    QORE_LIVE_REBALANCE_DEADBAND_PCT: '0.25',
   })
   await new Promise((resolve) => server.close(resolve))
   const status = JSON.parse(await readFile(path.join(brokerDir, 'status.json'), 'utf8'))
@@ -237,11 +279,17 @@ async function scenario({
     assert.equal(status.preflightApproved, true, `${name}: preflight should be approved`)
     assert.equal(status.executionStatus, 'planned', `${name}: preflight should only plan orders`)
     assert.equal(submittedOrders.length, 0, `${name}: preflight must submit no orders`)
+  } else if (expectedNoOp) {
+    assert.equal(result.code, 0, `${name}: no-op reconcile should exit 0 (${result.stderr})`)
+    assert.equal(status.approved, true, `${name}: no-op reconcile should remain approved`)
+    assert.equal(status.executionStatus, 'no-op', `${name}: drift inside the deadband should be a no-op`)
+    assert.equal(submittedOrders.length, 0, `${name}: no-op reconcile must submit no orders`)
   } else {
     assert.equal(result.code, 0, `${name}: approved reconcile should exit 0 (${result.stderr})`)
     assert.equal(status.approved, true, `${name}: reconcile should be approved`)
     assert.equal(status.executionStatus, 'submitted', `${name}: orders should be submitted`)
-    assert.equal(submittedOrders.length, 2, `${name}: VOO and QQQM deltas should be submitted`)
+    assert.equal(submittedOrders.length, expectedOrderCount, `${name}: expected paper order count`)
+    if (expectedFirstSide) assert.equal(submittedOrders[0]?.side, expectedFirstSide, `${name}: expected first paper order side`)
   }
   console.log(`ok - ${name}`)
 }
@@ -632,9 +680,32 @@ async function testSignalFreshnessUsesValidatedInferenceIssue() {
 }
 
 try {
+  testEiaReleaseTimestamp()
   await scenario({ name: 'paper reconcile uses Alpaca bid/ask and submits ETF deltas' })
+  await scenario({
+    name: 'paper reconcile can route the strategy short leg when Alpaca confirms borrowability',
+    allowShorts: true,
+    gasPosition: -1,
+    indexFraction: 0,
+    expectedOrderCount: 1,
+    expectedFirstSide: 'sell',
+  })
+  await scenario({
+    name: 'paper reconcile ignores mark-to-market drift inside the equity-relative deadband',
+    positions: [
+      { symbol: 'VOO', qty: '79.9', side: 'long', current_price: '100', market_value: '7990' },
+      { symbol: 'QQQM', qty: '40.2', side: 'long', current_price: '50', market_value: '2010' },
+    ],
+    expectedOrderCount: 0,
+    expectedNoOp: true,
+  })
   await scenario({ name: 'preflight validates the complete route without submitting', preflightOnly: true })
   await scenario({ name: 'readiness runs the complete no-order broker preflight', readinessOnly: true })
+  await scenario({
+    name: 'paper mode refuses a non-paper trading endpoint',
+    allowTestEndpoint: false,
+    expectedBlock: /Paper mode requires the exact Alpaca paper endpoint/,
+  })
   await testMissingInferenceFailsClosed()
   await testStaleTargetFailsDirectReadiness()
   await testSignalFreshnessUsesValidatedInferenceIssue()

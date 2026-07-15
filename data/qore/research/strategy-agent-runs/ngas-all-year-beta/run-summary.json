@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-15T03:50:30.683Z",
+  "generatedAt": "2026-07-15T18:14:36.309Z",
   "strategyId": "ngas-all-year-beta",
   "displayName": "NGAS All-Year Beta",
   "data": {
@@ -8,8 +8,8 @@
     "winterSummaryFile": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/run-summary.json",
     "winterSelectedTrades": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv",
     "marketStartDate": "2021-01-04",
-    "marketEndDate": "2026-07-14",
-    "marketDays": 1387
+    "marketEndDate": "2026-07-15",
+    "marketDays": 1388
   },
   "contract": {
     "trainEnd": "component-specific",
@@ -42,15 +42,15 @@
     "sourceWeightMode": "component-selected",
     "sizingMode": "component-selected",
     "allMetrics": {
-      "totalReturnPct": 889.85,
-      "cagrPct": 51.46,
-      "annualVolPct": 22.14,
+      "totalReturnPct": 892.39,
+      "cagrPct": 51.49,
+      "annualVolPct": 22.13,
       "sharpe": 1.99,
       "sortino": 3.1,
       "maxDrawdownPct": -15.86,
       "calmar": 3.25,
       "winRatePct": 55.5,
-      "profitFactor": 1.43,
+      "profitFactor": 1.44,
       "tradeCount": 397,
       "exposurePct": 11,
       "turnover": 130.49,
@@ -58,7 +58,7 @@
       "cvar95Pct": -2.75,
       "averageDailyPnlPct": 0.175,
       "firstEntry": "2021-01-04",
-      "lastExit": "2026-07-14",
+      "lastExit": "2026-07-15",
       "averageHoldDays": 1,
       "tStat": 4.68
     },
@@ -105,31 +105,31 @@
       "tStat": 2.63
     },
     "holdoutMetrics": {
-      "totalReturnPct": 102.5,
-      "cagrPct": 61.59,
-      "annualVolPct": 23.14,
-      "sharpe": 2.32,
+      "totalReturnPct": 103.02,
+      "cagrPct": 61.73,
+      "annualVolPct": 23.11,
+      "sharpe": 2.33,
       "sortino": 3.2,
       "maxDrawdownPct": -16.72,
-      "calmar": 3.68,
-      "winRatePct": 58,
+      "calmar": 3.69,
+      "winRatePct": 58.2,
       "profitFactor": 1.57,
       "tradeCount": 87,
-      "exposurePct": 9.5,
+      "exposurePct": 9.4,
       "turnover": 28.97,
       "var95Pct": -1.75,
       "cvar95Pct": -2.96,
-      "averageDailyPnlPct": 0.213,
+      "averageDailyPnlPct": 0.214,
       "firstEntry": "2025-01-23",
-      "lastExit": "2026-07-14",
+      "lastExit": "2026-07-15",
       "averageHoldDays": 1,
-      "tStat": 2.73
+      "tStat": 2.74
     },
     "indexMetrics": {
       "all": {
-        "totalReturnPct": 122.02,
-        "cagrPct": 15.54,
-        "annualVolPct": 17.58,
+        "totalReturnPct": 122.59,
+        "cagrPct": 15.58,
+        "annualVolPct": 17.57,
         "sharpe": 0.91,
         "sortino": 1.27,
         "maxDrawdownPct": -26.52,
@@ -143,9 +143,9 @@
         "cvar95Pct": -2.53,
         "averageDailyPnlPct": 0.064,
         "firstEntry": "2021-01-04",
-        "lastExit": "2026-07-14",
+        "lastExit": "2026-07-15",
         "averageHoldDays": 1,
-        "tStat": 2.14
+        "tStat": 2.15
       },
       "train": {
         "totalReturnPct": 40.58,
@@ -190,14 +190,14 @@
         "tStat": 1.34
       },
       "holdout": {
-        "totalReturnPct": 31.85,
-        "cagrPct": 20.69,
-        "annualVolPct": 18.02,
-        "sharpe": 1.2,
-        "sortino": 1.59,
+        "totalReturnPct": 32.18,
+        "cagrPct": 20.86,
+        "annualVolPct": 18,
+        "sharpe": 1.21,
+        "sortino": 1.6,
         "maxDrawdownPct": -16.72,
-        "calmar": 1.24,
-        "winRatePct": 57.5,
+        "calmar": 1.25,
+        "winRatePct": 57.6,
         "profitFactor": 1.26,
         "tradeCount": 0,
         "exposurePct": 0,
@@ -206,22 +206,22 @@
         "cvar95Pct": -2.5,
         "averageDailyPnlPct": 0.086,
         "firstEntry": "2025-01-23",
-        "lastExit": "2026-07-14",
+        "lastExit": "2026-07-15",
         "averageHoldDays": 1,
-        "tStat": 1.41
+        "tStat": 1.42
       }
     },
     "splitEdges": {
       "train": 145.71,
       "validation": 50.96,
-      "holdout": 70.65,
-      "all": 767.83
+      "holdout": 70.84,
+      "all": 769.8
     },
     "splitAnnualEdges": {
       "train": 27.39,
       "validation": 38.94,
-      "holdout": 40.9,
-      "all": 35.92
+      "holdout": 40.87,
+      "all": 35.91
     },
     "rowSelectionPolicy": "For each entry date, pick the material Summer Alpha row, else the material Winter Alpha row, else the identical no-cost index fallback row.",
     "materialRowDefinition": "A source row is material when it has a non-index thesis, non-zero gas position, or non-zero trading cost.",
@@ -229,7 +229,7 @@
       "summer": 197,
       "winter": 200
     },
-    "indexFallbackRows": 990,
+    "indexFallbackRows": 991,
     "materialRows": 540,
     "sourceUniverse": [
       "US-INDEX-BASKET",
@@ -249,28 +249,28 @@
       "method": "standalone all-year centered circular block bootstrap",
       "comparison": "all-year beta net daily return minus US index basket daily return",
       "alternative": "greater-than-zero daily active edge",
-      "observedAverageDailyEdgePct": 0.11143,
-      "observedAnnualizedEdgePct": 28.08,
+      "observedAverageDailyEdgePct": 0.11135,
+      "observedAnnualizedEdgePct": 28.06,
       "pValue": 0.00005,
       "singleCandidatePValue": 0.00005,
       "selectionAdjustedPValue": null,
       "candidateFamilySize": 1,
       "bestObservedCandidateId": "ngas-all-year-beta",
-      "bestObservedAverageDailyEdgePct": 0.11143,
-      "dailyActiveVolPct": 0.9656,
-      "standardErrorDailyEdgePct": 0.02593,
+      "bestObservedAverageDailyEdgePct": 0.11135,
+      "dailyActiveVolPct": 0.9652,
+      "standardErrorDailyEdgePct": 0.02591,
       "meanConfidenceIntervalDailyEdgePct": {
-        "p05": 0.07377,
+        "p05": 0.07343,
         "p50": 0.11093,
-        "p95": 0.15026
+        "p95": 0.15015
       },
       "nullConfidenceIntervalDailyEdgePct": {
-        "p05": -0.03766,
-        "p50": -0.0005,
-        "p95": 0.03883
+        "p05": -0.03792,
+        "p50": -0.00042,
+        "p95": 0.0388
       },
       "nullMaxMeanDailyEdgePct": null,
-      "sampleCount": 1387,
+      "sampleCount": 1388,
       "activeOverlayDays": 397,
       "materialRows": 540,
       "minimumResolvablePValue": 0.00005,
@@ -282,32 +282,32 @@
         "method": "rank-window selection-adjusted centered circular block bootstrap",
         "comparison": "strategy net daily return minus US index basket daily return",
         "alternative": "greater-than-zero daily active edge",
-        "observedAverageDailyEdgePct": 0.05748,
-        "observedAnnualizedEdgePct": 14.49,
-        "pValue": 0.0008,
+        "observedAverageDailyEdgePct": 0.05744,
+        "observedAnnualizedEdgePct": 14.47,
+        "pValue": 0.0017,
         "singleCandidatePValue": 0.0008,
-        "selectionAdjustedPValue": 0.0008,
+        "selectionAdjustedPValue": 0.0017,
         "candidateFamilySize": 2,
         "rankWindow": 20,
         "bestObservedCandidateId": "summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed",
-        "bestObservedAverageDailyEdgePct": 0.05748,
-        "dailyActiveVolPct": 0.6504,
+        "bestObservedAverageDailyEdgePct": 0.05744,
+        "dailyActiveVolPct": 0.6502,
         "meanConfidenceIntervalDailyEdgePct": {
-          "p05": 0.03317,
-          "p50": 0.05659,
-          "p95": 0.08275
+          "p05": 0.03281,
+          "p50": 0.05687,
+          "p95": 0.08245
         },
         "nullConfidenceIntervalDailyEdgePct": {
-          "p05": -0.02431,
-          "p50": -0.00089,
-          "p95": 0.02527
+          "p05": -0.02463,
+          "p50": -0.00057,
+          "p95": 0.02501
         },
         "nullMaxMeanDailyEdgePct": {
-          "p05": -0.02314,
-          "p50": 0.00097,
-          "p95": 0.02638
+          "p05": -0.02251,
+          "p50": 0.00045,
+          "p95": 0.02695
         },
-        "sampleCount": 1387,
+        "sampleCount": 1388,
         "activeOverlayDays": 197,
         "minimumResolvablePValue": 0.0008,
         "iterations": 1200,
@@ -369,7 +369,7 @@
       "componentStrategyIds": "ngas-summer-alpha|ngas-winter-alpha",
       "gasOverlayRows": 397,
       "materialRows": 540,
-      "indexFallbackRows": 990,
+      "indexFallbackRows": 991,
       "summerGasRows": 197,
       "winterGasRows": 200,
       "trainReturnPct": 186.29,
@@ -382,14 +382,14 @@
       "validationEdgePct": 50.96,
       "validationSharpe": 2.64,
       "validationMaxDrawdownPct": -9.57,
-      "holdoutReturnPct": 102.5,
-      "holdoutIndexReturnPct": 31.85,
-      "holdoutEdgePct": 70.65,
-      "holdoutSharpe": 2.32,
+      "holdoutReturnPct": 103.02,
+      "holdoutIndexReturnPct": 32.18,
+      "holdoutEdgePct": 70.84,
+      "holdoutSharpe": 2.33,
       "holdoutMaxDrawdownPct": -16.72,
-      "allReturnPct": 889.85,
-      "allIndexReturnPct": 122.02,
-      "allEdgePct": 767.83,
+      "allReturnPct": 892.39,
+      "allIndexReturnPct": 122.59,
+      "allEdgePct": 769.8,
       "allSharpe": 1.99,
       "allMaxDrawdownPct": -15.86
     }
