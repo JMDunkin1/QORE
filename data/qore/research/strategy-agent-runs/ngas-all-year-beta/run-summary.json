@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-14T22:45:27.343Z",
+  "generatedAt": "2026-07-15T03:50:30.683Z",
   "strategyId": "ngas-all-year-beta",
   "displayName": "NGAS All-Year Beta",
   "data": {
@@ -43,12 +43,12 @@
     "sizingMode": "component-selected",
     "allMetrics": {
       "totalReturnPct": 889.85,
-      "cagrPct": 51.45,
+      "cagrPct": 51.46,
       "annualVolPct": 22.14,
       "sharpe": 1.99,
       "sortino": 3.1,
       "maxDrawdownPct": -15.86,
-      "calmar": 3.24,
+      "calmar": 3.25,
       "winRatePct": 55.5,
       "profitFactor": 1.43,
       "tradeCount": 397,
@@ -221,7 +221,7 @@
       "train": 27.39,
       "validation": 38.94,
       "holdout": 40.9,
-      "all": 35.91
+      "all": 35.92
     },
     "rowSelectionPolicy": "For each entry date, pick the material Summer Alpha row, else the material Winter Alpha row, else the identical no-cost index fallback row.",
     "materialRowDefinition": "A source row is material when it has a non-index thesis, non-zero gas position, or non-zero trading cost.",
@@ -340,7 +340,7 @@
         "nullMaxMeanDailyEdgePct": {
           "p05": -0.01131,
           "p50": 0.01066,
-          "p95": 0.03618
+          "p95": 0.03617
         },
         "sampleCount": 1362,
         "activeOverlayDays": 200,
