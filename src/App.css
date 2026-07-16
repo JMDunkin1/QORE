@@ -1950,3 +1950,711 @@ code {
   }
 
 }
+
+/* Dark appearance layer. Layout and page composition intentionally remain unchanged. */
+.dashboard {
+  background: transparent;
+}
+
+.metric-card,
+.panel,
+.stat-tile {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.ghost-button {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.ghost-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: #222b29;
+}
+
+.primary-button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.primary-button:hover:not(:disabled) {
+  border-color: #e5ff83;
+  background: #e5ff83;
+}
+
+.metric-icon {
+  border: 1px solid rgba(141, 154, 150, 0.15);
+  background: rgba(141, 154, 150, 0.08);
+  color: #a4b0ac;
+}
+
+.metric-card.positive .metric-icon {
+  background: rgba(70, 214, 180, 0.1);
+  color: var(--teal);
+}
+
+.metric-card.negative .metric-icon {
+  background: rgba(255, 107, 114, 0.1);
+  color: var(--danger);
+}
+
+.metric-card.warning .metric-icon {
+  background: rgba(245, 187, 88, 0.1);
+  color: var(--warning-color);
+}
+
+.positive {
+  color: var(--teal);
+}
+
+.negative {
+  color: var(--danger);
+}
+
+.warning {
+  color: var(--warning-color);
+}
+
+.chart-title-strategy-control,
+.chart-button-group button,
+.select-control select,
+.commit-control input {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.chart-title-strategy-control:hover,
+.chart-title-strategy-control:focus-within,
+.chart-button-group button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: #222b29;
+}
+
+.chart-title-strategy-name,
+.validation-chart-heading strong,
+.validation-empty strong,
+.parameter-comparison-summary strong,
+.parameter-comparison-row span,
+.parameter-comparison-row strong,
+.strategy-chart-key strong,
+.chart-empty-overlay strong,
+.empty-list strong,
+.readiness-row p strong,
+.side-split-card > strong,
+.risk-control-card strong,
+.execution-status strong,
+.repo-status-grid strong,
+.empty-state strong {
+  color: var(--ink);
+}
+
+.chart-title-strategy-control svg,
+.chart-range-label,
+.strategy-chart-key span,
+.strategy-chart-key em,
+.validation-axis,
+.chart-empty-overlay span,
+.empty-list span,
+dt,
+th,
+td span,
+.select-control span,
+.capital-impact-panel td span,
+.side-split-card dt,
+.side-split-card > span,
+.data-list span,
+.risk-control-card p,
+.risk-note-list p,
+.repo-status-grid span,
+.repo-status-grid em,
+.commit-control span {
+  color: var(--muted);
+}
+
+.smooth-chart-gridline line {
+  stroke: rgba(255, 255, 255, 0.07);
+}
+
+.smooth-chart-gridline text,
+.smooth-chart-axis-label,
+.smooth-chart-x-tick text {
+  fill: #8d9a96;
+}
+
+.smooth-chart-axis-line,
+.smooth-chart-x-tick line,
+.smooth-chart-hover-line {
+  stroke: rgba(255, 255, 255, 0.13);
+}
+
+.smooth-chart-legend {
+  color: var(--soft);
+}
+
+.smooth-chart-tooltip {
+  border-color: var(--line-strong);
+  background: var(--surface-raised);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+  color: var(--ink);
+}
+
+.strategy-chart-key div,
+.capital-impact-panel,
+.market-tape dl div,
+.source-health dl div,
+.model-score dl div,
+th,
+td {
+  border-color: var(--line);
+}
+
+.overfit-validation-band,
+.validation-chart,
+.parameter-comparison,
+.parameter-comparison-row,
+.run-row,
+.empty-list,
+.side-split-card,
+.import-log,
+.connector-card,
+.data-list div,
+.empty-state,
+.readiness-row,
+.risk-control-card,
+.execution-status,
+.repo-status-grid article,
+.github-message {
+  border-color: var(--line);
+  background: var(--surface-raised);
+}
+
+.validation-chart,
+.parameter-comparison-row {
+  background: #1a2220;
+}
+
+.validation-empty {
+  border-color: var(--line-strong);
+}
+
+.parameter-heatmap-surface {
+  border-color: var(--line-strong);
+  background: #151b1a;
+}
+
+.parameter-comparison-row.selected {
+  border-color: rgba(217, 255, 86, 0.28);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.parameter-comparison-row i,
+.feature-bar {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.parameter-comparison-row b,
+.feature-bar i {
+  background: var(--teal);
+}
+
+.monte-carlo-path-chart svg {
+  border-color: var(--line);
+  background: linear-gradient(90deg, #111716, #171e1c);
+}
+
+dd,
+td,
+td strong,
+.stat-tile strong {
+  color: var(--ink);
+}
+
+tbody tr:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+tbody tr.selected-row {
+  background: rgba(70, 214, 180, 0.07);
+  box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.table-pill,
+.repo-pill,
+.risk-pill {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.table-pill.positive,
+.repo-pill.positive,
+.risk-pill.low {
+  background: rgba(70, 214, 180, 0.1);
+  color: var(--teal);
+}
+
+.table-pill.warning,
+.repo-pill.warning,
+.risk-pill.medium {
+  background: rgba(245, 187, 88, 0.1);
+  color: var(--warning-color);
+}
+
+.repo-pill.negative,
+.risk-pill.high {
+  background: rgba(255, 107, 114, 0.1);
+  color: var(--danger);
+}
+
+.score-ring {
+  border-color: rgba(70, 214, 180, 0.15);
+  border-top-color: var(--accent);
+}
+
+.file-button {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+code {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface-soft);
+  color: #aeb9b5;
+}
+
+.connector-card footer em,
+.risk-control-card svg {
+  color: var(--teal);
+}
+
+.empty-state svg,
+.execution-status svg,
+.repo-status-grid svg {
+  color: var(--accent);
+}
+
+.readiness-row span {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.risk-note-list {
+  border-color: var(--teal);
+}
+
+.github-message.positive svg {
+  color: var(--teal);
+}
+
+.github-message.warning svg {
+  color: var(--warning-color);
+}
+
+.github-message.negative svg {
+  color: var(--danger);
+}
+
+/* Structural visual pass: preserve placement, replace cards with hierarchy and rules. */
+.sidebar {
+  border-color: var(--line);
+  background: #0c1018;
+}
+
+.nav-list button:hover,
+.nav-list button.active {
+  border-color: transparent;
+  background: rgba(124, 156, 255, 0.1);
+  color: var(--ink);
+}
+
+.nav-list button.active {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.source-chip {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.dashboard {
+  background: transparent;
+}
+
+.metric-grid {
+  gap: 0;
+  border-block: 1px solid var(--line);
+  background: transparent;
+}
+
+.metric-card {
+  min-height: 116px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.metric-card:last-child {
+  border-right: 1px solid var(--line);
+}
+
+.metric-icon,
+.metric-card.positive .metric-icon,
+.metric-card.negative .metric-icon,
+.metric-card.warning .metric-icon {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.metric-card strong {
+  letter-spacing: -0.025em;
+}
+
+.panel {
+  padding-inline: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.section-heading {
+  padding-inline: 2px;
+}
+
+.section-heading h2 {
+  letter-spacing: -0.02em;
+}
+
+.ghost-button,
+.primary-button,
+.file-button,
+.nav-list button,
+.chart-title-strategy-control,
+.chart-button-group button,
+.select-control select,
+.commit-control input {
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.primary-button,
+.file-button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.primary-button:hover:not(:disabled),
+.file-button:hover {
+  border-color: #94adff;
+  background: #94adff;
+}
+
+.chart-title-strategy-swatch {
+  border-radius: 1px;
+}
+
+.stat-grid {
+  gap: 0;
+  border-block: 1px solid var(--line);
+}
+
+.stat-tile {
+  padding-inline: 14px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.stat-tile:last-child {
+  border-right: 0;
+}
+
+.overfit-validation-band {
+  padding-inline: 0;
+  border: 0;
+  border-block: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.overfit-chart-grid,
+.connector-grid,
+.risk-control-grid,
+.repo-status-grid {
+  gap: 0;
+}
+
+.validation-chart,
+.connector-card,
+.risk-control-card,
+.repo-status-grid article {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.validation-chart:last-child,
+.connector-card:last-child,
+.risk-control-card:last-child,
+.repo-status-grid article:last-child {
+  border-right: 0;
+}
+
+.parameter-comparison,
+.parameter-comparison-row {
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.parameter-comparison-row.selected {
+  border-color: rgba(124, 156, 255, 0.35);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.parameter-comparison-row b,
+.feature-bar i {
+  background: var(--accent);
+}
+
+.run-list,
+.readiness-grid,
+.data-list,
+.dirty-file-list {
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+
+.run-row,
+.readiness-row,
+.data-list div,
+.dirty-file-list code {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.side-split-primary-grid {
+  gap: 0;
+}
+
+.side-split-card {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.side-split-card:last-child {
+  border-right: 0;
+}
+
+.side-split-card.index-fallback {
+  border-top: 1px solid var(--line);
+}
+
+.schema-grid {
+  gap: 0;
+  border-block: 1px solid var(--line);
+}
+
+.schema-grid > div {
+  padding: 12px;
+  border-right: 1px solid var(--line);
+}
+
+.schema-grid > div:last-child {
+  border-right: 0;
+}
+
+.import-log,
+.empty-list,
+.empty-state,
+.execution-status,
+.github-message {
+  border-color: var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.risk-note-list {
+  border-color: var(--accent);
+}
+
+.table-pill,
+.repo-pill,
+.risk-pill {
+  border-radius: 4px;
+}
+
+.table-pill.positive,
+.repo-pill.positive,
+.risk-pill.low {
+  border-color: rgba(111, 200, 255, 0.2);
+  background: rgba(111, 200, 255, 0.08);
+}
+
+.score-ring {
+  border-color: rgba(124, 156, 255, 0.14);
+  border-top-color: var(--accent);
+}
+
+.feature-bar {
+  border-radius: 2px;
+}
+
+.readiness-row span {
+  background: rgba(124, 156, 255, 0.14);
+  color: #aec0ff;
+}
+
+.connector-card footer em,
+.risk-control-card svg,
+.github-message.positive svg {
+  color: var(--teal);
+}
+
+tbody tr.selected-row {
+  background: rgba(124, 156, 255, 0.07);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+code {
+  border-radius: 3px;
+}
+
+@media (max-width: 680px) {
+  .metric-grid {
+    gap: 0;
+  }
+
+  .metric-card {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .metric-card:last-child {
+    border-bottom: 0;
+  }
+
+  .validation-chart,
+  .connector-card,
+  .risk-control-card,
+  .repo-status-grid article,
+  .side-split-card,
+  .stat-tile {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* Final de-card pass: controls and data sit directly on the workspace. */
+.metric-grid {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.metric-card {
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+
+.source-chip {
+  padding-inline: 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ghost-button {
+  border-color: transparent;
+  background: transparent;
+}
+
+.ghost-button:hover:not(:disabled) {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.top-actions {
+  gap: 2px;
+}
+
+.chart-title-strategy-control {
+  padding-left: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.chart-title-strategy-control:hover,
+.chart-title-strategy-control:focus-within {
+  border-color: var(--accent);
+  background: transparent;
+  box-shadow: none;
+}
+
+.chart-button-group {
+  gap: 1px;
+}
+
+.chart-button-group button {
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+}
+
+.chart-button-group button:hover:not(:disabled) {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.smooth-chart-tooltip {
+  padding: 11px 13px;
+  border: 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 2px;
+  background: rgba(16, 19, 26, 0.96);
+  box-shadow: none;
+}
+
+.smooth-chart-area {
+  display: none;
+}
+
+.repo-pill,
+.risk-pill,
+.table-pill {
+  border: 0;
+  border-radius: 2px;
+}
+
+.import-log,
+.empty-list,
+.empty-state,
+.execution-status,
+.github-message {
+  border-inline: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.parameter-comparison-row,
+.parameter-comparison {
+  border-radius: 1px;
+}
