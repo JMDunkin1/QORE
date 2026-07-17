@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-07-17T09:15:59.060Z",
+  "status": "awaiting-post-freeze-data",
+  "freezeDigest": "7e4edf3498fdf12c2a37bbd2c4dcf6e6f7321121bfd698f87ab85254833e5568",
+  "frozenThrough": "2026-07-15",
+  "dataAvailableThrough": "2026-07-17",
+  "futureHoldoutStart": "2026-07-18",
+  "evaluatedThrough": "2026-07-15",
+  "selectionPerformed": false,
+  "frozenModelWritten": false,
+  "crops": [
+    {
+      "cropId": "soybeans",
+      "symbol": "ZS=F",
+      "evaluationRows": 0,
+      "frozenCandidates": [
+        "warm-wet-short-rglobal-lb5-p0_25-t0_25-c1"
+      ],
+      "metrics": {
+        "totalReturnPct": 0,
+        "benchmarkReturnPct": 0,
+        "edgePct": 0,
+        "relativeReturnPct": 0,
+        "excessInformationRatio": 0,
+        "cagrPct": 0,
+        "regressionAlphaPct": 0,
+        "sharpe": 0,
+        "maxDrawdownPct": 0,
+        "entries": 0,
+        "positionChanges": 0,
+        "annualEntries": 0,
+        "exposurePct": 0,
+        "turnover": 0,
+        "startDate": null,
+        "endDate": null
+      }
+    },
+    {
+      "cropId": "corn",
+      "symbol": "ZC=F",
+      "evaluationRows": 0,
+      "frozenCandidates": [
+        "warm-wet-short-rglobal-lb3-p0_25-t0_25-c3",
+        "hot-dry-long-rglobal-lb5-p0_75-t0_75-c0"
+      ],
+      "metrics": {
+        "totalReturnPct": 0,
+        "benchmarkReturnPct": 0,
+        "edgePct": 0,
+        "relativeReturnPct": 0,
+        "excessInformationRatio": 0,
+        "cagrPct": 0,
+        "regressionAlphaPct": 0,
+        "sharpe": 0,
+        "maxDrawdownPct": 0,
+        "entries": 0,
+        "positionChanges": 0,
+        "annualEntries": 0,
+        "exposurePct": 0,
+        "turnover": 0,
+        "startDate": null,
+        "endDate": null
+      }
+    }
+  ],
+  "portfolio": {
+    "evaluationRows": 0,
+    "metrics": {}
+  },
+  "output": "data/qore/research/strategy-agent-runs/crop-precipitation-hf/future-holdout-evaluation.json"
+}

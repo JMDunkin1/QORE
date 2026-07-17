@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QORE Refined Crop Precipitation Walk-Forward</title>
+<style>
+:root{--ink:#17211d;--muted:#637069;--paper:#f4f1e9;--card:#fffdf8;--line:#d7d3c7;--green:#1e6848;--red:#a44035;--amber:#9c6b16;--blue:#315d76}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:#17372d;color:#f9f6ee;padding:54px max(5vw,42px) 46px;border-bottom:6px solid #b89958}.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:12px;color:#d6c79e;font-weight:700}h1{font-family:Georgia,serif;font-size:clamp(38px,5vw,68px);line-height:1.02;max-width:980px;margin:10px 0 18px}header p{max-width:920px;color:#dfe7e2;font-size:17px;margin:0}.wrap{max-width:1500px;margin:auto;padding:34px max(3vw,24px) 70px}.warning{background:#fff4d9;border:1px solid #dfc17b;border-left:6px solid var(--amber);padding:16px 18px;margin-bottom:24px;border-radius:4px}.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:30px}.tile{background:var(--card);border:1px solid var(--line);padding:20px}.tile strong{display:block;font:34px Georgia,serif}.tile span{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.08em}.section{background:var(--card);border:1px solid var(--line);margin:20px 0;padding:24px}.section h2{font:28px Georgia,serif;margin:0 0 8px}.section>p{color:var(--muted);margin:0 0 20px;max-width:1050px}.table-wrap{overflow:auto;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;min-width:1180px;background:#fff}th{background:#ece8de;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#56615b;padding:12px 10px;position:sticky;top:0}td{padding:13px 10px;border-top:1px solid #e6e2d9;vertical-align:top}td small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.number{text-align:right;font-variant-numeric:tabular-nums}.positive{color:var(--green);font-weight:700}.negative{color:var(--red)}.rank{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#e8e3d7}.bucket{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}.bucket.a{background:#dcefe5;color:#155437}.bucket.b{background:#e5edf2;color:#254f67}.bucket.c{background:#f3ead3;color:#79530d}.bucket.reject{background:#f0dfdc;color:#83362f}.method{display:grid;grid-template-columns:1fr 1fr;gap:24px}.method h3{margin:0 0 8px;font-size:16px}.method ul{margin:0;padding-left:19px}.method li{margin:7px 0}.sources{list-style:none;padding:0!important}.sources li{display:grid;grid-template-columns:180px 1fr;padding:9px 0;border-bottom:1px solid #e6e2d9}.sources a{color:var(--blue);font-weight:700}.sources span{color:var(--muted)}footer{color:var(--muted);font-size:12px;margin-top:30px}.top-read{font-size:17px;color:var(--ink)!important}.top-read strong{color:var(--green)}
+@media(max-width:900px){.tiles{grid-template-columns:1fr 1fr}.method{grid-template-columns:1fr}header{padding-left:24px;padding-right:24px}}@media(max-width:560px){.tiles{grid-template-columns:1fr}.wrap{padding-left:12px;padding-right:12px}.section{padding:16px}}
+</style></head><body>
+<header><div class="eyebrow">QORE research · frozen six-month evaluation</div><h1>Refined crop precipitation walk-forward</h1><p>21,120 rules were optimized only through 2026-01-15. The frozen portfolio was then opened once on 2026-01-16–2026-07-15, with the same daily-target-weight 80% VOO / 20% QQQM fallback as NGAS All-Year Beta.</p></header>
+<main class="wrap">
+<div class="warning"><strong>Pseudo-walk-forward discovery evidence—not a live trading result.</strong> The date embargo is real, but NASA POWER precipitation is finalized rather than archived point-in-time weather data, and Yahoo futures are uncontrolled continuous proxies.</div>
+<div class="tiles"><div class="tile"><strong class="negative">-7.60%</strong><span>frozen strategy return</span></div><div class="tile"><strong>10.88%</strong><span>80/20 index fallback</span></div><div class="tile"><strong class="negative">-18.48%</strong><span>incremental edge</span></div><div class="tile"><strong class="negative">-17.55%</strong><span>maximum drawdown</span></div></div>
+<section class="section"><h2>First read</h2><p class="top-read">Before the six-month window was opened, the optimizer froze <strong>top-2-equal-weight</strong> using 2 crop lane(s): oats, cocoa. It returned <strong>-7.60%</strong> versus 10.88% for the fallback basket, an incremental -18.48 percentage points. The highest pre-walk-forward-ranked individual lane was Oats; its six-month result was -21.57% with -32.45 points of edge.</p></section>
+<section class="section"><h2>Pre-ranked crop board</h2><p>Rank order was frozen before January 16. Walk-forward columns are evaluation-only and were not used to select rules, allocations, crops, or portfolio breadth.</p><div class="table-wrap"><table><thead><tr><th>Frozen rank</th><th>Crop</th><th>Status</th><th>Selected rule</th><th>Validation edge</th><th>Walk-forward return</th><th>Walk-forward edge</th><th>Sharpe</th><th>Max drawdown</th><th>Trades</th></tr></thead><tbody>
+    <tr>
+      <td><span class="rank">1</span></td>
+      <td><strong>Oats</strong><small>ZO=F · exploratory</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Long broad dryness / short broad wetness<small>30d · z 0.35 · 10 sessions · 50% crop</small></td>
+      <td class="number positive">39.50%</td>
+      <td class="number negative">-21.57%</td>
+      <td class="number negative">-32.45%</td>
+      <td class="number">-2.05</td>
+      <td class="number negative">-28.72%</td>
+      <td class="number">2</td>
+    </tr>
+    <tr>
+      <td><span class="rank">2</span></td>
+      <td><strong>Cocoa</strong><small>CC=F · secondary</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Long crop-area drought stress<small>7d · z 0.35 · 3 sessions · 50% crop</small></td>
+      <td class="number positive">49.43%</td>
+      <td class="number positive">7.81%</td>
+      <td class="number negative">-3.07%</td>
+      <td class="number">0.73</td>
+      <td class="number negative">-19.32%</td>
+      <td class="number">8</td>
+    </tr>
+    <tr>
+      <td><span class="rank">3</span></td>
+      <td><strong>Frozen Concentrated Orange Juice</strong><small>OJ=F · diagnostic</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Long crop-area excess-rain stress<small>14d · z 0.5 · 10 sessions · 50% crop</small></td>
+      <td class="number positive">45.81%</td>
+      <td class="number negative">-3.10%</td>
+      <td class="number negative">-13.99%</td>
+      <td class="number">-0.17</td>
+      <td class="number negative">-12.23%</td>
+      <td class="number">3</td>
+    </tr>
+    <tr>
+      <td><span class="rank">4</span></td>
+      <td><strong>Arabica Coffee</strong><small>KC=F · secondary</small></td>
+      <td><span class="bucket c">C - screen flag only</span></td>
+      <td>Long broad dryness / short broad wetness<small>60d · z 1 · 20 sessions · 50% crop</small></td>
+      <td class="number positive">46.22%</td>
+      <td class="number positive">12.17%</td>
+      <td class="number positive">1.29%</td>
+      <td class="number">1.07</td>
+      <td class="number negative">-14.82%</td>
+      <td class="number">1</td>
+    </tr>
+    <tr>
+      <td><span class="rank">5</span></td>
+      <td><strong>Corn</strong><small>ZC=F · core</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Fade supply-adverse precipitation stress<small>7d · z 0.75 · 5 sessions · 50% crop</small></td>
+      <td class="number positive">21.50%</td>
+      <td class="number negative">-1.77%</td>
+      <td class="number negative">-11.82%</td>
+      <td class="number">-0.16</td>
+      <td class="number negative">-10.53%</td>
+      <td class="number">5</td>
+    </tr>
+    <tr>
+      <td><span class="rank">6</span></td>
+      <td><strong>Cotton</strong><small>CT=F · core</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Long broad dryness / short broad wetness<small>7d · z 1.5 · 3 sessions · 50% crop</small></td>
+      <td class="number positive">15.50%</td>
+      <td class="number positive">10.77%</td>
+      <td class="number negative">-0.11%</td>
+      <td class="number">1.43</td>
+      <td class="number negative">-9.26%</td>
+      <td class="number">1</td>
+    </tr>
+    <tr>
+      <td><span class="rank">7</span></td>
+      <td><strong>Chicago SRW Wheat</strong><small>ZW=F · core</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Fade supply-adverse precipitation stress<small>14d · z 0.75 · 3 sessions · 50% crop</small></td>
+      <td class="number positive">14.65%</td>
+      <td class="number positive">2.16%</td>
+      <td class="number negative">-8.72%</td>
+      <td class="number">0.34</td>
+      <td class="number negative">-9.75%</td>
+      <td class="number">6</td>
+    </tr>
+    <tr>
+      <td><span class="rank">8</span></td>
+      <td><strong>Rough Rice</strong><small>ZR=F · exploratory</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Fade supply-adverse precipitation stress<small>60d · z 0.35 · 5 sessions · 50% crop</small></td>
+      <td class="number positive">13.75%</td>
+      <td class="number positive">5.34%</td>
+      <td class="number negative">-5.54%</td>
+      <td class="number">0.76</td>
+      <td class="number negative">-9.46%</td>
+      <td class="number">1</td>
+    </tr>
+    <tr>
+      <td><span class="rank">9</span></td>
+      <td><strong>Sugar No. 11</strong><small>SB=F · secondary</small></td>
+      <td><span class="bucket c">C - screen flag only</span></td>
+      <td>Fade supply-adverse precipitation stress<small>14d · z 0.75 · 3 sessions · 35% crop</small></td>
+      <td class="number positive">11.71%</td>
+      <td class="number positive">9.40%</td>
+      <td class="number negative">-1.49%</td>
+      <td class="number">1.30</td>
+      <td class="number negative">-8.48%</td>
+      <td class="number">3</td>
+    </tr>
+    <tr>
+      <td><span class="rank">10</span></td>
+      <td><strong>Kansas HRW Wheat</strong><small>KE=F · core</small></td>
+      <td><span class="bucket reject">Reject</span></td>
+      <td>Fade supply-adverse precipitation stress<small>14d · z 0.5 · 3 sessions · 50% crop</small></td>
+      <td class="number positive">3.61%</td>
+      <td class="number negative">-2.05%</td>
+      <td class="number negative">-12.93%</td>
+      <td class="number">-0.17</td>
+      <td class="number negative">-10.86%</td>
+      <td class="number">1</td>
+    </tr>
+    <tr>
+      <td><span class="rank">11</span></td>
+      <td><strong>Soybeans</strong><small>ZS=F · core</small></td>
+      <td><span class="bucket c">C - screen flag only</span></td>
+      <td>Long crop-area excess-rain stress<small>30d · z 0.75 · 3 sessions · 50% crop</small></td>
+      <td class="number positive">0.25%</td>
+      <td class="number positive">12.92%</td>
+      <td class="number positive">2.88%</td>
+      <td class="number">1.67</td>
+      <td class="number negative">-9.46%</td>
+      <td class="number">1</td>
+    </tr></tbody></table></div></section>
+<section class="section"><h2>Fallback mechanics</h2><p class="top-read">On idle days the strategy is 100% invested in the 80% VOO / 20% QQQM basket. A 35% crop position leaves 65% in that basket. Daily return is the proportional index return plus the signed crop return, less crop-position turnover cost; the basket itself keeps the all-year strategy’s costless daily-target-weight assumption.</p></section>
+<section class="section"><h2>Isolation and method</h2><div class="method"><div><h3>Frozen before evaluation</h3><ul><li>Optimization ended 2026-01-15; the January 15-to-16 return belongs to walk-forward.</li><li>The selection ledger contains no walk-forward columns.</li><li>Candidate IDs, crop allocations, portfolio breadth, costs, input hashes, and code hash were sealed under digest <code>abe63b873326c3ec…</code>.</li><li>Open positions formed before the boundary carry naturally into the first walk-forward return.</li></ul></div><div><h3>Remaining limitations</h3><ul><li>Replace finalized precipitation with archived operational GEFS vintages and availability timestamps.</li><li>Replace Yahoo continuous proxies with individual contracts, controlled rolls, collateral yield, and tick-level costs.</li><li>Add prior-year acreage, point-in-time crop progress, soil moisture, irrigation, and evapotranspiration.</li><li>Do not retune this architecture in response to the six-month result; new rules need a new future holdout.</li></ul></div></div></section>
+<section class="section"><h2>Source ledger</h2><p>The data and biological hypotheses rely on official or primary sources. NASA POWER is a convenient global discovery layer, but its precipitation quality is not sufficient as the sole production dataset.</p><ul class="sources"><li><a href="https://power.larc.nasa.gov/docs/services/api/temporal/daily/">nasa-power-api</a><span>Global daily precipitation screening input</span></li><li><a href="https://www.fao.org/land-water/databases-and-software/crop-information/en/">fao-crop-water</a><span>Crop water and sensitive-stage hypotheses</span></li><li><a href="https://ipad.fas.usda.gov/cropexplorer/">usda-crop-explorer</a><span>Crop calendars and production-region cross-check</span></li><li><a href="https://www.cmegroup.com/trading/agricultural.html">cme-agriculture</a><span>Grain and oilseed instrument definitions</span></li><li><a href="https://www.ice.com/products/Futures-Options/Agriculture">ice-agriculture</a><span>Soft-commodity instrument definitions</span></li><li><a href="https://power.larc.nasa.gov/docs/methodology/meteorology/assessment/">NASA POWER precipitation assessment</a><span>Validation caveat for precipitation quality</span></li><li><a href="https://www.ncei.noaa.gov/products/weather-climate-models/global-ensemble-forecast">NOAA GEFS archive</a><span>Next-stage operational forecast-vintage source</span></li><li><a href="https://www.nass.usda.gov/Surveys/Guide_to_NASS_Surveys/Crop_Progress_and_Condition/index.php">USDA NASS Crop Progress</a><span>Next-stage point-in-time phenology clock</span></li></ul></section>
+<footer>Generated 2026-07-17T06:51:59.441Z · Frozen selection abe63b873326c3eca1f16ff4aefaebd3e4972de3184609750a293e854dfb2814 · Research-priority labels are not recommendations or approved positions.</footer>
+</main></body></html>

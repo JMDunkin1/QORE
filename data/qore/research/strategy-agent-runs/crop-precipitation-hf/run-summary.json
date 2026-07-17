@@ -1,0 +1,1349 @@
+{
+  "generatedAt": "2026-07-17T09:15:47.350Z",
+  "status": "rolling-pseudo-walk-forward-complete-future-holdout-frozen",
+  "freezeDigest": "7e4edf3498fdf12c2a37bbd2c4dcf6e6f7321121bfd698f87ab85254833e5568",
+  "futureHoldoutStart": "2026-07-18",
+  "data": {
+    "weatherStart": "1981-01-01",
+    "weatherEnd": "2026-07-15",
+    "availableThrough": "2026-07-17",
+    "weatherYears": 45.53319644079398,
+    "weatherSites": 20,
+    "weatherRows": 332640,
+    "crops": 2,
+    "marketRows": 46972,
+    "weatherVariables": [
+      "precipitationMm",
+      "temperatureC",
+      "maxTemperatureC"
+    ]
+  },
+  "search": {
+    "candidatesPerCrop": 3840,
+    "uniqueCandidatesByCrop": {
+      "soybeans": 3765,
+      "corn": 3741
+    },
+    "activeFamilies": [
+      {
+        "id": "hot-dry-long",
+        "label": "Hot and dry makes prices rise"
+      },
+      {
+        "id": "drought-long",
+        "label": "Drought makes prices rise"
+      },
+      {
+        "id": "cool-wet-short",
+        "label": "Cool and wet makes prices fall"
+      },
+      {
+        "id": "warm-wet-short",
+        "label": "Warm and wet makes prices fall"
+      }
+    ],
+    "photoHypothesis": {
+      "long": [
+        "hot-and-dry",
+        "drought"
+      ],
+      "short": [
+        "cool-and-wet",
+        "warm-and-wet"
+      ],
+      "fallback": "all other regimes use the index basket"
+    },
+    "optimizerObjectives": [
+      "nested five-year relative edge",
+      "excess-return information ratio",
+      "20 bps stressed-cost survival"
+    ],
+    "minimumAnnualEntries": 10,
+    "rollingTrainYears": 10,
+    "innerValidationYears": 5,
+    "overlayNotional": 0.35,
+    "regions": [
+      "global",
+      "us",
+      "brazil",
+      "argentina"
+    ],
+    "minimumAffectedProduction": 0.18,
+    "failClosedFallback": "zero crop overlay when no candidate passes; retain the full index basket",
+    "oosCore": "2010-01-01 through 2025-12-31",
+    "exposedDiagnostic": "2026-01-01 through 2026-07-15"
+  },
+  "crops": [
+    {
+      "cropId": "soybeans",
+      "crop": "Soybeans",
+      "symbol": "ZS=F",
+      "status": "Reject",
+      "core": {
+        "totalReturnPct": 833.34,
+        "benchmarkReturnPct": 837.33,
+        "edgePct": -3.99,
+        "relativeReturnPct": -0.43,
+        "excessInformationRatio": 0,
+        "cagrPct": 14.99,
+        "regressionAlphaPct": 0,
+        "sharpe": 0.88,
+        "maxDrawdownPct": -32.58,
+        "entries": 161,
+        "positionChanges": 421,
+        "annualEntries": 10.1,
+        "exposurePct": 6,
+        "turnover": 81.43,
+        "startDate": "2010-01-04",
+        "endDate": "2025-12-31"
+      },
+      "exposed2026": {
+        "totalReturnPct": 11.14,
+        "benchmarkReturnPct": 12.5,
+        "edgePct": -1.35,
+        "relativeReturnPct": -1.2,
+        "excessInformationRatio": -1.29,
+        "cagrPct": 22,
+        "regressionAlphaPct": -2.59,
+        "sharpe": 1.38,
+        "maxDrawdownPct": -11.04,
+        "entries": 7,
+        "positionChanges": 14,
+        "annualEntries": 13.2,
+        "exposurePct": 4.5,
+        "turnover": 4.67,
+        "startDate": "2026-01-02",
+        "endDate": "2026-07-15"
+      },
+      "exactEra": {
+        "totalReturnPct": 141.21,
+        "benchmarkReturnPct": 138.62,
+        "edgePct": 2.59,
+        "relativeReturnPct": 1.09,
+        "excessInformationRatio": 0.07,
+        "cagrPct": 16.55,
+        "regressionAlphaPct": 0.29,
+        "sharpe": 0.95,
+        "maxDrawdownPct": -22.77,
+        "entries": 77,
+        "positionChanges": 220,
+        "annualEntries": 13.4,
+        "exposurePct": 9.9,
+        "turnover": 43.05,
+        "startDate": "2020-10-14",
+        "endDate": "2026-07-15"
+      }
+    },
+    {
+      "cropId": "corn",
+      "crop": "Corn",
+      "symbol": "ZC=F",
+      "status": "C - historical challenger; future proof required",
+      "core": {
+        "totalReturnPct": 981,
+        "benchmarkReturnPct": 837.33,
+        "edgePct": 143.68,
+        "relativeReturnPct": 15.33,
+        "excessInformationRatio": 0.31,
+        "cagrPct": 16.05,
+        "regressionAlphaPct": 0.93,
+        "sharpe": 0.92,
+        "maxDrawdownPct": -32.22,
+        "entries": 213,
+        "positionChanges": 503,
+        "annualEntries": 13.3,
+        "exposurePct": 7.3,
+        "turnover": 90.53,
+        "startDate": "2010-01-04",
+        "endDate": "2025-12-31"
+      },
+      "exposed2026": {
+        "totalReturnPct": 12.6,
+        "benchmarkReturnPct": 12.5,
+        "edgePct": 0.11,
+        "relativeReturnPct": 0.09,
+        "excessInformationRatio": 0.07,
+        "cagrPct": 25.04,
+        "regressionAlphaPct": 0.32,
+        "sharpe": 1.55,
+        "maxDrawdownPct": -9.06,
+        "entries": 18,
+        "positionChanges": 48,
+        "annualEntries": 33.9,
+        "exposurePct": 12.3,
+        "turnover": 6.65,
+        "startDate": "2026-01-02",
+        "endDate": "2026-07-15"
+      },
+      "exactEra": {
+        "totalReturnPct": 188.05,
+        "benchmarkReturnPct": 138.62,
+        "edgePct": 49.44,
+        "relativeReturnPct": 20.72,
+        "excessInformationRatio": 0.91,
+        "cagrPct": 20.2,
+        "regressionAlphaPct": 3.37,
+        "sharpe": 1.12,
+        "maxDrawdownPct": -24.23,
+        "entries": 121,
+        "positionChanges": 309,
+        "annualEntries": 21,
+        "exposurePct": 9.7,
+        "turnover": 44.33,
+        "startDate": "2020-10-14",
+        "endDate": "2026-07-15"
+      }
+    }
+  ],
+  "portfolio": {
+    "core": {
+      "totalReturnPct": 906.83,
+      "benchmarkReturnPct": 837.33,
+      "edgePct": 69.5,
+      "relativeReturnPct": 7.41,
+      "excessInformationRatio": 0.22,
+      "cagrPct": 15.54,
+      "regressionAlphaPct": 0.47,
+      "sharpe": 0.9,
+      "maxDrawdownPct": -32.4,
+      "startDate": "2010-01-04",
+      "endDate": "2025-12-31"
+    },
+    "exposed": {
+      "totalReturnPct": 11.88,
+      "benchmarkReturnPct": 12.5,
+      "edgePct": -0.62,
+      "relativeReturnPct": -0.55,
+      "excessInformationRatio": -0.58,
+      "cagrPct": 23.53,
+      "regressionAlphaPct": -1.14,
+      "sharpe": 1.47,
+      "maxDrawdownPct": -9.88,
+      "startDate": "2026-01-02",
+      "endDate": "2026-07-15"
+    }
+  },
+  "foldRows": [
+    {
+      "cropId": "soybeans",
+      "testYear": 2010,
+      "trainStartYear": 2000,
+      "trainEndYear": 2009,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 16.09,
+      "benchmarkReturnPct": 16.09,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 16.3,
+      "regressionAlphaPct": 0,
+      "sharpe": 0.92,
+      "maxDrawdownPct": -15.67,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2010-01-04",
+      "endDate": "2010-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2011,
+      "trainStartYear": 2001,
+      "trainEndYear": 2010,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 2.26,
+      "benchmarkReturnPct": 2.26,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 2.28,
+      "regressionAlphaPct": 0,
+      "sharpe": 0.21,
+      "maxDrawdownPct": -17.51,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2011-01-03",
+      "endDate": "2011-12-30"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2012,
+      "trainStartYear": 2002,
+      "trainEndYear": 2011,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 16.45,
+      "benchmarkReturnPct": 16.45,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 16.56,
+      "regressionAlphaPct": 0,
+      "sharpe": 1.24,
+      "maxDrawdownPct": -10.01,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2012-01-03",
+      "endDate": "2012-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2013,
+      "trainStartYear": 2003,
+      "trainEndYear": 2012,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 33.19,
+      "benchmarkReturnPct": 33.19,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 33.43,
+      "regressionAlphaPct": 0,
+      "sharpe": 2.64,
+      "maxDrawdownPct": -5.6,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2013-01-02",
+      "endDate": "2013-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2014,
+      "trainStartYear": 2004,
+      "trainEndYear": 2013,
+      "selectedCandidates": [
+        "drought-long-rglobal-lb7-p0_5-c3",
+        "hot-dry-long-rbrazil-lb3-p0_5-t0_25-c0"
+      ],
+      "selectedDirectionHashes": [
+        "87c8d334b35a1ba15f490822ac4200167cf9db2f9c83b23aa069448815ab137c",
+        "419b93ebe008e278cebca5a4cd7a09274b1d53d4eadbc471b7fbb10ea5adc82a"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 15.07,
+      "benchmarkReturnPct": 14.61,
+      "edgePct": 0.45,
+      "relativeReturnPct": 0.39,
+      "excessInformationRatio": 0.13,
+      "cagrPct": 15.17,
+      "regressionAlphaPct": 0.16,
+      "sharpe": 1.19,
+      "maxDrawdownPct": -7.51,
+      "entries": 8,
+      "positionChanges": 35,
+      "annualEntries": 8,
+      "exposurePct": 9.8,
+      "turnover": 6.47,
+      "startDate": "2014-01-02",
+      "endDate": "2014-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2015,
+      "trainStartYear": 2005,
+      "trainEndYear": 2014,
+      "selectedCandidates": [
+        "hot-dry-long-rbrazil-lb3-p0_5-t0_25-c0",
+        "drought-long-rglobal-lb5-p0_5-c1"
+      ],
+      "selectedDirectionHashes": [
+        "419b93ebe008e278cebca5a4cd7a09274b1d53d4eadbc471b7fbb10ea5adc82a",
+        "3f299deff91ebeac08a7ead79faf3bc83bf5fc9aa4fb3681d44edf9d78a7a9f2"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 0.24,
+      "benchmarkReturnPct": 2.85,
+      "edgePct": -2.61,
+      "relativeReturnPct": -2.54,
+      "excessInformationRatio": -0.75,
+      "cagrPct": 0.24,
+      "regressionAlphaPct": -2.54,
+      "sharpe": 0.1,
+      "maxDrawdownPct": -12.36,
+      "entries": 16,
+      "positionChanges": 48,
+      "annualEntries": 16.1,
+      "exposurePct": 11,
+      "turnover": 8.75,
+      "startDate": "2015-01-02",
+      "endDate": "2015-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2016,
+      "trainStartYear": 2006,
+      "trainEndYear": 2015,
+      "selectedCandidates": [
+        "hot-dry-long-rbrazil-lb3-p0_5-t0_25-c0"
+      ],
+      "selectedDirectionHashes": [
+        "419b93ebe008e278cebca5a4cd7a09274b1d53d4eadbc471b7fbb10ea5adc82a"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge"
+      ],
+      "totalReturnPct": 10.75,
+      "benchmarkReturnPct": 11.04,
+      "edgePct": -0.3,
+      "relativeReturnPct": -0.27,
+      "excessInformationRatio": -0.1,
+      "cagrPct": 10.88,
+      "regressionAlphaPct": -0.45,
+      "sharpe": 0.81,
+      "maxDrawdownPct": -11.28,
+      "entries": 9,
+      "positionChanges": 18,
+      "annualEntries": 9.1,
+      "exposurePct": 5.9,
+      "turnover": 6.3,
+      "startDate": "2016-01-04",
+      "endDate": "2016-12-30"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2017,
+      "trainStartYear": 2007,
+      "trainEndYear": 2016,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb3-p0_25-t0_5-c0",
+        "cool-wet-short-rglobal-lb3-p0_25-t0_25-c1"
+      ],
+      "selectedDirectionHashes": [
+        "8ab28b1e8432f1fa8ec3341a92ae1b6e0ea107d766d8a2b2c4327e5186d042cc",
+        "b908b8cc6fec5443d92a4bb90175d3b08f0bdd771b1358d64abd71327e1b37a7"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 25.5,
+      "benchmarkReturnPct": 23.86,
+      "edgePct": 1.64,
+      "relativeReturnPct": 1.32,
+      "excessInformationRatio": 0.74,
+      "cagrPct": 25.92,
+      "regressionAlphaPct": 1.53,
+      "sharpe": 3.16,
+      "maxDrawdownPct": -2.62,
+      "entries": 28,
+      "positionChanges": 51,
+      "annualEntries": 28.4,
+      "exposurePct": 6.3,
+      "turnover": 9.8,
+      "startDate": "2017-01-03",
+      "endDate": "2017-12-29"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2018,
+      "trainStartYear": 2008,
+      "trainEndYear": 2017,
+      "selectedCandidates": [
+        "cool-wet-short-rglobal-lb3-p0_25-t0_5-c0",
+        "warm-wet-short-rglobal-lb3-p0_25-t0_25-c1"
+      ],
+      "selectedDirectionHashes": [
+        "ad2399858ec1107724dd23b4729f3fb3f8e73e293a311461bd19e4c5cea9fa09",
+        "9678a5dee889c25b90979855eb08bea09c10bd1249f98e0d2a15cede00f47253"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": -4.66,
+      "benchmarkReturnPct": -3.64,
+      "edgePct": -1.03,
+      "relativeReturnPct": -1.07,
+      "excessInformationRatio": -0.59,
+      "cagrPct": -4.69,
+      "regressionAlphaPct": -1.1,
+      "sharpe": -0.18,
+      "maxDrawdownPct": -20.44,
+      "entries": 17,
+      "positionChanges": 37,
+      "annualEntries": 17.1,
+      "exposurePct": 5,
+      "turnover": 7,
+      "startDate": "2018-01-02",
+      "endDate": "2018-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2019,
+      "trainStartYear": 2009,
+      "trainEndYear": 2018,
+      "selectedCandidates": [
+        "cool-wet-short-rglobal-lb3-p0_25-t0_5-c0",
+        "hot-dry-long-rglobal-lb3-p0_75-t0_5-c0"
+      ],
+      "selectedDirectionHashes": [
+        "ad2399858ec1107724dd23b4729f3fb3f8e73e293a311461bd19e4c5cea9fa09",
+        "08946498754a9768d198574c94b801b8116d5c3a670c1017e3d1e3d09782be60"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 32.13,
+      "benchmarkReturnPct": 32.77,
+      "edgePct": -0.65,
+      "relativeReturnPct": -0.49,
+      "excessInformationRatio": -0.59,
+      "cagrPct": 32.36,
+      "regressionAlphaPct": -0.66,
+      "sharpe": 2.17,
+      "maxDrawdownPct": -7.5,
+      "entries": 12,
+      "positionChanges": 24,
+      "annualEntries": 12.1,
+      "exposurePct": 3.3,
+      "turnover": 4.2,
+      "startDate": "2019-01-02",
+      "endDate": "2019-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2020,
+      "trainStartYear": 2010,
+      "trainEndYear": 2019,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 24.01,
+      "benchmarkReturnPct": 24.01,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 24.1,
+      "regressionAlphaPct": 0,
+      "sharpe": 0.81,
+      "maxDrawdownPct": -32.58,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2020-01-02",
+      "endDate": "2020-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2021,
+      "trainStartYear": 2011,
+      "trainEndYear": 2020,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb3-p0_25-t0_5-c1"
+      ],
+      "selectedDirectionHashes": [
+        "2bc4003d43c58e6c84cb0bcf149b85c814e8ce2345533ff669bde99bf6e14378"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge"
+      ],
+      "totalReturnPct": 31.98,
+      "benchmarkReturnPct": 28.61,
+      "edgePct": 3.37,
+      "relativeReturnPct": 2.62,
+      "excessInformationRatio": 0.54,
+      "cagrPct": 32.41,
+      "regressionAlphaPct": 2.41,
+      "sharpe": 1.97,
+      "maxDrawdownPct": -7.26,
+      "entries": 9,
+      "positionChanges": 18,
+      "annualEntries": 9.1,
+      "exposurePct": 15.8,
+      "turnover": 6.3,
+      "startDate": "2021-01-04",
+      "endDate": "2021-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2022,
+      "trainStartYear": 2012,
+      "trainEndYear": 2021,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb3-p0_75-t0_5-c0",
+        "drought-long-rglobal-lb7-p0_5-c0"
+      ],
+      "selectedDirectionHashes": [
+        "08946498754a9768d198574c94b801b8116d5c3a670c1017e3d1e3d09782be60",
+        "55d25d3976ebb9f06b20c669abae9e87973e8078fa4f08de989976aa9c275a0e"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": -15.37,
+      "benchmarkReturnPct": -21.2,
+      "edgePct": 5.83,
+      "relativeReturnPct": 7.4,
+      "excessInformationRatio": 1.54,
+      "cagrPct": -15.54,
+      "regressionAlphaPct": 6.79,
+      "sharpe": -0.53,
+      "maxDrawdownPct": -22.77,
+      "entries": 12,
+      "positionChanges": 45,
+      "annualEntries": 12.1,
+      "exposurePct": 9.7,
+      "turnover": 9.1,
+      "startDate": "2022-01-03",
+      "endDate": "2022-12-30"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2023,
+      "trainStartYear": 2013,
+      "trainEndYear": 2022,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb5-p0_75-t0_25-c1",
+        "drought-long-rglobal-lb5-p0_5-c0"
+      ],
+      "selectedDirectionHashes": [
+        "55132b2ecbcd58e62a5d2ee28fb2267341bfb55f70ac063792ca1acadb432602",
+        "3633a445d92fe7a41c8c2b38741c9c563c362b5b421fc1b7e0aa16779e5cf7df"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 26.08,
+      "benchmarkReturnPct": 31.67,
+      "edgePct": -5.58,
+      "relativeReturnPct": -4.24,
+      "excessInformationRatio": -1.25,
+      "cagrPct": 26.51,
+      "regressionAlphaPct": -4.78,
+      "sharpe": 1.69,
+      "maxDrawdownPct": -12.36,
+      "entries": 12,
+      "positionChanges": 40,
+      "annualEntries": 12.2,
+      "exposurePct": 12.7,
+      "turnover": 8.4,
+      "startDate": "2023-01-03",
+      "endDate": "2023-12-29"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2024,
+      "trainStartYear": 2014,
+      "trainEndYear": 2023,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb5-p0_25-t0_25-c1",
+        "drought-long-rglobal-lb3-p0_25-c0",
+        "hot-dry-long-rglobal-lb5-p0_75-t0_75-c0"
+      ],
+      "selectedDirectionHashes": [
+        "2068be98a9032b8c8ddda0f04f817d15b55975f849a67d5b60caf5d4bfb9a7ac",
+        "ac1614f6b8fdd020d18753c23f67cc585660050ff452143faeee7c7abe5f59d2",
+        "2b30d241b0ce837eea64008f01eca70d3ec2b9a7f73cc608ea2c6afeb18b0454"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 22.37,
+      "benchmarkReturnPct": 25.17,
+      "edgePct": -2.8,
+      "relativeReturnPct": -2.24,
+      "excessInformationRatio": -1.04,
+      "cagrPct": 22.45,
+      "regressionAlphaPct": -2.21,
+      "sharpe": 1.55,
+      "maxDrawdownPct": -10.27,
+      "entries": 20,
+      "positionChanges": 61,
+      "annualEntries": 20.1,
+      "exposurePct": 7.4,
+      "turnover": 8.28,
+      "startDate": "2024-01-02",
+      "endDate": "2024-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2025,
+      "trainStartYear": 2015,
+      "trainEndYear": 2024,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb5-p0_25-t0_25-c1",
+        "hot-dry-long-rglobal-lb5-p0_75-t0_25-c1",
+        "drought-long-rglobal-lb7-p0_5-c0"
+      ],
+      "selectedDirectionHashes": [
+        "2068be98a9032b8c8ddda0f04f817d15b55975f849a67d5b60caf5d4bfb9a7ac",
+        "55132b2ecbcd58e62a5d2ee28fb2267341bfb55f70ac063792ca1acadb432602",
+        "55d25d3976ebb9f06b20c669abae9e87973e8078fa4f08de989976aa9c275a0e"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 17.53,
+      "benchmarkReturnPct": 18.47,
+      "edgePct": -0.93,
+      "relativeReturnPct": -0.79,
+      "excessInformationRatio": -0.35,
+      "cagrPct": 17.65,
+      "regressionAlphaPct": -0.8,
+      "sharpe": 0.93,
+      "maxDrawdownPct": -20.5,
+      "entries": 15,
+      "positionChanges": 40,
+      "annualEntries": 15.1,
+      "exposurePct": 8.8,
+      "turnover": 5.6,
+      "startDate": "2025-01-02",
+      "endDate": "2025-12-31"
+    },
+    {
+      "cropId": "soybeans",
+      "testYear": 2026,
+      "trainStartYear": 2016,
+      "trainEndYear": 2025,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb5-p0_25-t0_25-c1"
+      ],
+      "selectedDirectionHashes": [
+        "2068be98a9032b8c8ddda0f04f817d15b55975f849a67d5b60caf5d4bfb9a7ac"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge"
+      ],
+      "totalReturnPct": 11.13,
+      "benchmarkReturnPct": 12.5,
+      "edgePct": -1.37,
+      "relativeReturnPct": -1.21,
+      "excessInformationRatio": -1.31,
+      "cagrPct": 21.98,
+      "regressionAlphaPct": -2.62,
+      "sharpe": 1.38,
+      "maxDrawdownPct": -11.04,
+      "entries": 7,
+      "positionChanges": 14,
+      "annualEntries": 13.2,
+      "exposurePct": 4.5,
+      "turnover": 4.9,
+      "startDate": "2026-01-02",
+      "endDate": "2026-07-15"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2010,
+      "trainStartYear": 2000,
+      "trainEndYear": 2009,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 16.09,
+      "benchmarkReturnPct": 16.09,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 16.3,
+      "regressionAlphaPct": 0,
+      "sharpe": 0.92,
+      "maxDrawdownPct": -15.67,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2010-01-04",
+      "endDate": "2010-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2011,
+      "trainStartYear": 2001,
+      "trainEndYear": 2010,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 2.26,
+      "benchmarkReturnPct": 2.26,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 2.28,
+      "regressionAlphaPct": 0,
+      "sharpe": 0.21,
+      "maxDrawdownPct": -17.51,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2011-01-03",
+      "endDate": "2011-12-30"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2012,
+      "trainStartYear": 2002,
+      "trainEndYear": 2011,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 16.45,
+      "benchmarkReturnPct": 16.45,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 16.56,
+      "regressionAlphaPct": 0,
+      "sharpe": 1.24,
+      "maxDrawdownPct": -10.01,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2012-01-03",
+      "endDate": "2012-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2013,
+      "trainStartYear": 2003,
+      "trainEndYear": 2012,
+      "selectedCandidates": [],
+      "selectedDirectionHashes": [],
+      "objectives": [],
+      "totalReturnPct": 33.19,
+      "benchmarkReturnPct": 33.19,
+      "edgePct": 0,
+      "relativeReturnPct": 0,
+      "excessInformationRatio": 0,
+      "cagrPct": 33.43,
+      "regressionAlphaPct": 0,
+      "sharpe": 2.64,
+      "maxDrawdownPct": -5.6,
+      "entries": 0,
+      "positionChanges": 0,
+      "annualEntries": 0,
+      "exposurePct": 0,
+      "turnover": 0,
+      "startDate": "2013-01-02",
+      "endDate": "2013-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2014,
+      "trainStartYear": 2004,
+      "trainEndYear": 2013,
+      "selectedCandidates": [
+        "drought-long-rglobal-lb7-p0_25-c0",
+        "hot-dry-long-rglobal-lb7-p0_5-t0_25-c1"
+      ],
+      "selectedDirectionHashes": [
+        "7c868615b83664660a3d38926033463f0485f684f27ed917ff075cccddfba5b6",
+        "fb1cf64815c4c0c644c43c889d4db4ee138e3fafa7670503acf48e8c42a26303"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 10.89,
+      "benchmarkReturnPct": 14.61,
+      "edgePct": -3.72,
+      "relativeReturnPct": -3.25,
+      "excessInformationRatio": -0.91,
+      "cagrPct": 10.96,
+      "regressionAlphaPct": -3.16,
+      "sharpe": 0.92,
+      "maxDrawdownPct": -7.67,
+      "entries": 11,
+      "positionChanges": 36,
+      "annualEntries": 11.1,
+      "exposurePct": 11.9,
+      "turnover": 6.82,
+      "startDate": "2014-01-02",
+      "endDate": "2014-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2015,
+      "trainStartYear": 2005,
+      "trainEndYear": 2014,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb5-p0_5-t0_5-c1",
+        "drought-long-rglobal-lb5-p0_25-c1"
+      ],
+      "selectedDirectionHashes": [
+        "0997e6f2b406fc2f27ee8b19476bdd92d4371a2f353803712754248732c53efa",
+        "98b980199112f877c04c1d0f0587fd63e2d05667d6092b5a1361bf99a1517297"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": -3.87,
+      "benchmarkReturnPct": 2.85,
+      "edgePct": -6.73,
+      "relativeReturnPct": -6.54,
+      "excessInformationRatio": -1.62,
+      "cagrPct": -3.89,
+      "regressionAlphaPct": -6.69,
+      "sharpe": -0.16,
+      "maxDrawdownPct": -13.68,
+      "entries": 15,
+      "positionChanges": 42,
+      "annualEntries": 15.1,
+      "exposurePct": 14.6,
+      "turnover": 8.22,
+      "startDate": "2015-01-02",
+      "endDate": "2015-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2016,
+      "trainStartYear": 2006,
+      "trainEndYear": 2015,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb3-p0_5-t0_25-c3",
+        "hot-dry-long-rglobal-lb5-p0_25-t0_75-c1"
+      ],
+      "selectedDirectionHashes": [
+        "6d5288636e069667f23715789cd29fc339fafd6076c7c7a9ac3e72fd23c843c4",
+        "17041af34be17ca44484cfdeb136d61c454dcf8a004b444546c41a2541b786ae"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 14.39,
+      "benchmarkReturnPct": 11.04,
+      "edgePct": 3.35,
+      "relativeReturnPct": 3.02,
+      "excessInformationRatio": 1.23,
+      "cagrPct": 14.57,
+      "regressionAlphaPct": 2.9,
+      "sharpe": 1.05,
+      "maxDrawdownPct": -11.3,
+      "entries": 16,
+      "positionChanges": 31,
+      "annualEntries": 16.2,
+      "exposurePct": 6.6,
+      "turnover": 5.6,
+      "startDate": "2016-01-04",
+      "endDate": "2016-12-30"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2017,
+      "trainStartYear": 2007,
+      "trainEndYear": 2016,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb3-p0_25-t0_25-c3",
+        "hot-dry-long-rglobal-lb5-p0_5-t0_75-c0"
+      ],
+      "selectedDirectionHashes": [
+        "24008d42a27b18699951a43ec6763daebf04829e4bde2efa12884508511fdf58",
+        "b18ecba3e59e6706ccef1e95ce48ce87a2e2db4a1a8ee8e758e35b3de75c0d7a"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 20.36,
+      "benchmarkReturnPct": 23.86,
+      "edgePct": -3.5,
+      "relativeReturnPct": -2.83,
+      "excessInformationRatio": -1.17,
+      "cagrPct": 20.69,
+      "regressionAlphaPct": -2.3,
+      "sharpe": 2.56,
+      "maxDrawdownPct": -3,
+      "entries": 22,
+      "positionChanges": 40,
+      "annualEntries": 22.3,
+      "exposurePct": 7,
+      "turnover": 7.87,
+      "startDate": "2017-01-03",
+      "endDate": "2017-12-29"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2018,
+      "trainStartYear": 2008,
+      "trainEndYear": 2017,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb3-p0_25-t0_25-c3"
+      ],
+      "selectedDirectionHashes": [
+        "24008d42a27b18699951a43ec6763daebf04829e4bde2efa12884508511fdf58"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge"
+      ],
+      "totalReturnPct": 0.68,
+      "benchmarkReturnPct": -3.64,
+      "edgePct": 4.31,
+      "relativeReturnPct": 4.48,
+      "excessInformationRatio": 1.29,
+      "cagrPct": 0.68,
+      "regressionAlphaPct": 4.45,
+      "sharpe": 0.13,
+      "maxDrawdownPct": -20.66,
+      "entries": 12,
+      "positionChanges": 24,
+      "annualEntries": 12.1,
+      "exposurePct": 10,
+      "turnover": 8.4,
+      "startDate": "2018-01-02",
+      "endDate": "2018-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2019,
+      "trainStartYear": 2009,
+      "trainEndYear": 2018,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb3-p0_5-t0_25-c3"
+      ],
+      "selectedDirectionHashes": [
+        "6d5288636e069667f23715789cd29fc339fafd6076c7c7a9ac3e72fd23c843c4"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge"
+      ],
+      "totalReturnPct": 35.06,
+      "benchmarkReturnPct": 32.77,
+      "edgePct": 2.29,
+      "relativeReturnPct": 1.72,
+      "excessInformationRatio": 0.51,
+      "cagrPct": 35.32,
+      "regressionAlphaPct": 2.12,
+      "sharpe": 2.31,
+      "maxDrawdownPct": -6.53,
+      "entries": 11,
+      "positionChanges": 21,
+      "annualEntries": 11.1,
+      "exposurePct": 10,
+      "turnover": 7.35,
+      "startDate": "2019-01-02",
+      "endDate": "2019-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2020,
+      "trainStartYear": 2010,
+      "trainEndYear": 2019,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb5-p0_5-t0_75-c1",
+        "warm-wet-short-rglobal-lb3-p0_25-t0_25-c3"
+      ],
+      "selectedDirectionHashes": [
+        "81952607e93396832061c99e41ef3aa095b34cd7792af52f73f8986149081fd0",
+        "24008d42a27b18699951a43ec6763daebf04829e4bde2efa12884508511fdf58"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 24.25,
+      "benchmarkReturnPct": 24.01,
+      "edgePct": 0.24,
+      "relativeReturnPct": 0.19,
+      "excessInformationRatio": 0.12,
+      "cagrPct": 24.34,
+      "regressionAlphaPct": 0.12,
+      "sharpe": 0.81,
+      "maxDrawdownPct": -32.22,
+      "entries": 25,
+      "positionChanges": 50,
+      "annualEntries": 25.1,
+      "exposurePct": 8,
+      "turnover": 8.92,
+      "startDate": "2020-01-02",
+      "endDate": "2020-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2021,
+      "trainStartYear": 2011,
+      "trainEndYear": 2020,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb5-p0_5-t0_25-c1",
+        "hot-dry-long-rglobal-lb5-p0_5-t0_75-c1",
+        "drought-long-rglobal-lb5-p0_25-c0"
+      ],
+      "selectedDirectionHashes": [
+        "53c2fd6b9108293d62484116334c5f4cffa6a96ba017cae39b95fc8170b52ba6",
+        "81952607e93396832061c99e41ef3aa095b34cd7792af52f73f8986149081fd0",
+        "85f2416af4dec93fb3e23a4e6524aac40d4eadbee79280ae4d9d4f8597dd0697"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 42.18,
+      "benchmarkReturnPct": 28.61,
+      "edgePct": 13.56,
+      "relativeReturnPct": 10.54,
+      "excessInformationRatio": 2.01,
+      "cagrPct": 42.77,
+      "regressionAlphaPct": 10.18,
+      "sharpe": 2.5,
+      "maxDrawdownPct": -6.29,
+      "entries": 17,
+      "positionChanges": 47,
+      "annualEntries": 17.2,
+      "exposurePct": 11.2,
+      "turnover": 6.53,
+      "startDate": "2021-01-04",
+      "endDate": "2021-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2022,
+      "trainStartYear": 2012,
+      "trainEndYear": 2021,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb5-p0_5-t0_25-c1",
+        "drought-long-rglobal-lb5-p0_25-c0",
+        "hot-dry-long-rglobal-lb5-p0_5-t0_75-c1"
+      ],
+      "selectedDirectionHashes": [
+        "53c2fd6b9108293d62484116334c5f4cffa6a96ba017cae39b95fc8170b52ba6",
+        "85f2416af4dec93fb3e23a4e6524aac40d4eadbee79280ae4d9d4f8597dd0697",
+        "81952607e93396832061c99e41ef3aa095b34cd7792af52f73f8986149081fd0"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": -16.22,
+      "benchmarkReturnPct": -21.2,
+      "edgePct": 4.97,
+      "relativeReturnPct": 6.31,
+      "excessInformationRatio": 1.69,
+      "cagrPct": -16.4,
+      "regressionAlphaPct": 6.21,
+      "sharpe": -0.56,
+      "maxDrawdownPct": -23.87,
+      "entries": 15,
+      "positionChanges": 52,
+      "annualEntries": 15.2,
+      "exposurePct": 10.9,
+      "turnover": 7,
+      "startDate": "2022-01-03",
+      "endDate": "2022-12-30"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2023,
+      "trainStartYear": 2013,
+      "trainEndYear": 2022,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb7-p0_5-t0_5-c0",
+        "drought-long-rglobal-lb7-p0_5-c0",
+        "warm-wet-short-rglobal-lb3-p0_25-t0_25-c3"
+      ],
+      "selectedDirectionHashes": [
+        "116678e11dd69f07c29df0f838e2db298e8f4902c1b8820e711d14236b1cd931",
+        "32cd46e61eb59e8a4c5b1c69bb827ac610cf5b1cf3f35cbaa3f7fa565d793587",
+        "24008d42a27b18699951a43ec6763daebf04829e4bde2efa12884508511fdf58"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 28.49,
+      "benchmarkReturnPct": 31.67,
+      "edgePct": -3.18,
+      "relativeReturnPct": -2.41,
+      "excessInformationRatio": -0.51,
+      "cagrPct": 28.96,
+      "regressionAlphaPct": -2.76,
+      "sharpe": 1.79,
+      "maxDrawdownPct": -10.93,
+      "entries": 20,
+      "positionChanges": 43,
+      "annualEntries": 20.3,
+      "exposurePct": 11,
+      "turnover": 7.12,
+      "startDate": "2023-01-03",
+      "endDate": "2023-12-29"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2024,
+      "trainStartYear": 2014,
+      "trainEndYear": 2023,
+      "selectedCandidates": [
+        "hot-dry-long-rglobal-lb5-p0_25-t0_75-c0",
+        "warm-wet-short-rglobal-lb7-p0_25-t0_25-c0",
+        "drought-long-rglobal-lb14-p0_5-c0"
+      ],
+      "selectedDirectionHashes": [
+        "37c6cf87fb31f8e3950fd709389c084aa1433336ae069d7f08dbe04478a454ee",
+        "6372ca829fe720039a2e11eb859a5e77e835dd01d1ac0e7b1308611dddb9a3d9",
+        "4095d2f5502af3434c704db316d0f9e97f97707072668c88fe64b419f7fbda48"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 25.75,
+      "benchmarkReturnPct": 25.17,
+      "edgePct": 0.58,
+      "relativeReturnPct": 0.46,
+      "excessInformationRatio": 0.19,
+      "cagrPct": 25.85,
+      "regressionAlphaPct": 0.66,
+      "sharpe": 1.75,
+      "maxDrawdownPct": -10.06,
+      "entries": 22,
+      "positionChanges": 52,
+      "annualEntries": 22.1,
+      "exposurePct": 8.3,
+      "turnover": 7.12,
+      "startDate": "2024-01-02",
+      "endDate": "2024-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2025,
+      "trainStartYear": 2015,
+      "trainEndYear": 2024,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb7-p0_25-t0_25-c0",
+        "hot-dry-long-rglobal-lb5-p0_75-t0_25-c0",
+        "drought-long-rglobal-lb7-p0_5-c0"
+      ],
+      "selectedDirectionHashes": [
+        "6372ca829fe720039a2e11eb859a5e77e835dd01d1ac0e7b1308611dddb9a3d9",
+        "e00131a84d6631ac3d26d754f4bf0bc5295a203f596989176a4564ea5768e2af",
+        "32cd46e61eb59e8a4c5b1c69bb827ac610cf5b1cf3f35cbaa3f7fa565d793587"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 23.09,
+      "benchmarkReturnPct": 18.47,
+      "edgePct": 4.63,
+      "relativeReturnPct": 3.9,
+      "excessInformationRatio": 1.63,
+      "cagrPct": 23.25,
+      "regressionAlphaPct": 3.95,
+      "sharpe": 1.17,
+      "maxDrawdownPct": -18.58,
+      "entries": 25,
+      "positionChanges": 59,
+      "annualEntries": 25.2,
+      "exposurePct": 7,
+      "turnover": 8.4,
+      "startDate": "2025-01-02",
+      "endDate": "2025-12-31"
+    },
+    {
+      "cropId": "corn",
+      "testYear": 2026,
+      "trainStartYear": 2016,
+      "trainEndYear": 2025,
+      "selectedCandidates": [
+        "warm-wet-short-rglobal-lb3-p0_25-t0_25-c1",
+        "drought-long-rglobal-lb7-p0_5-c0",
+        "hot-dry-long-rglobal-lb5-p0_75-t0_25-c0"
+      ],
+      "selectedDirectionHashes": [
+        "520eace13bbeec809e26c10756c234f3054ac7dae82cc24e5baf16c53e7bd31c",
+        "32cd46e61eb59e8a4c5b1c69bb827ac610cf5b1cf3f35cbaa3f7fa565d793587",
+        "e00131a84d6631ac3d26d754f4bf0bc5295a203f596989176a4564ea5768e2af"
+      ],
+      "objectives": [
+        "nested-robust-relative-edge",
+        "nested-diversifier",
+        "nested-diversifier"
+      ],
+      "totalReturnPct": 12.6,
+      "benchmarkReturnPct": 12.5,
+      "edgePct": 0.11,
+      "relativeReturnPct": 0.09,
+      "excessInformationRatio": 0.07,
+      "cagrPct": 25.04,
+      "regressionAlphaPct": 0.32,
+      "sharpe": 1.55,
+      "maxDrawdownPct": -9.06,
+      "entries": 18,
+      "positionChanges": 48,
+      "annualEntries": 33.9,
+      "exposurePct": 12.3,
+      "turnover": 6.65,
+      "startDate": "2026-01-02",
+      "endDate": "2026-07-15"
+    }
+  ],
+  "caveats": [
+    "The soybean/corn universe and photo-derived rules were specified with historical data already visible, so 2026 is exposed to development.",
+    "2010-2025 is a nested yearly pseudo-walk-forward: every outer year uses prior data only and candidate ranking uses a trailing inner-validation block, but the architecture itself was designed after earlier research.",
+    "The pre-QQQM benchmark is an 80/20 SPY/QQQ economic proxy; the exact fallback remains 80/20 VOO/QQQM when both exact components exist.",
+    "The basket remains fully invested while crop futures are an additive capped notional overlay.",
+    "NASA POWER is finalized MERRA-2 reanalysis and Yahoo futures are uncontrolled continuous proxies with no explicit roll or collateral model."
+  ],
+  "sources": [
+    {
+      "id": "user-photo-hypothesis",
+      "url": "local-user-supplied-image",
+      "role": "Defines the only active directional weather regimes"
+    },
+    {
+      "id": "nasa-power-api",
+      "url": "https://power.larc.nasa.gov/docs/services/api/temporal/daily/",
+      "role": "Daily precipitation and temperature history from 1981 to near real time"
+    },
+    {
+      "id": "nasa-power-parameters",
+      "url": "https://power.larc.nasa.gov/docs/tutorials/parameters/",
+      "role": "T2M and T2M_MAX parameter definitions"
+    },
+    {
+      "id": "exact-index-fallback",
+      "url": "data/qore/market/index-basket-config.json",
+      "role": "Exact 80% VOO / 20% QQQM fallback after QQQM inception"
+    }
+  ],
+  "outputs": {
+    "report": "data/qore/research/strategy-agent-runs/crop-precipitation-hf/report.html",
+    "runSummary": "data/qore/research/strategy-agent-runs/crop-precipitation-hf/run-summary.json",
+    "cropSummary": "data/qore/research/strategy-agent-runs/crop-precipitation-hf/crop-summary.csv",
+    "folds": "data/qore/research/strategy-agent-runs/crop-precipitation-hf/walk-forward-folds.csv",
+    "frozenModel": "data/qore/research/strategy-agent-runs/crop-precipitation-hf/frozen-model.json",
+    "frozenModelVersion": "data/qore/research/strategy-agent-runs/crop-precipitation-hf/freeze-versions/sealed-evaluation-protocol-v3.json"
+  }
+}

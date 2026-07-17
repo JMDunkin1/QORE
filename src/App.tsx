@@ -87,8 +87,7 @@ const strategyDetailLineMaxPoints = 80
 const millisecondsPerYear = 365.25 * 24 * 60 * 60 * 1000
 const benchmarkLabel = 'UNG buy/hold'
 const indexBenchmarkLabel = 'VOO/QQQM index basket'
-const researchRankReturnPct = (result: (typeof researchBacktestResults)[number]) =>
-  isMarkedQuoteReturnStrategy(result.strategy) ? result.metrics.totalReturnPct : result.metrics.cagrPct
+const researchRankReturnPct = (result: (typeof researchBacktestResults)[number]) => result.metrics.cagrPct
 const researchRankScore = (result: (typeof researchBacktestResults)[number]) => {
   const samplePenalty = result.metrics.tradeCount >= primaryRankMinTrades ? 0 : -10000
   const tradeCountCredit = Math.min(result.metrics.tradeCount, 100) * 0.03
@@ -207,7 +206,7 @@ type WebKitGestureEvent = Event & {
   scale?: number
 }
 type SplitEdgeName = 'train' | 'validation' | 'holdout' | 'current' | 'all'
-type WeatherSideSeason = 'winter' | 'summer' | 'all-year' | 'prediction'
+type WeatherSideSeason = 'winter' | 'summer' | 'all-year'
 type CurrentPaperScanFreshness = {
   isFresh?: boolean
   generatedDate?: string | null
@@ -371,12 +370,6 @@ const validationParameterDefinitions: readonly CandidateParameterDefinition[] = 
   },
   { label: 'Freshness gate', keys: ['followFreshnessPolicy'], order: ['fresh-follow-5d', 'fresh-follow-3d', 'none'] },
   { label: 'Demand gate', keys: ['heatingDemandPolicy'], order: ['none', 'hdd-follow-gate-6f', 'hdd-follow-tiered'] },
-  { label: 'Venue set', keys: ['venueSet'], nominal: true },
-  { label: 'YES band low', keys: ['minYesPriceCents'] },
-  { label: 'YES band high', keys: ['maxYesPriceCents'] },
-  { label: 'Min deadline', keys: ['minDaysToDeadline'] },
-  { label: 'Max deadline', keys: ['maxDaysToDeadline'] },
-  { label: 'Max 24h rise', keys: ['maxRecentRiseCents'] },
   { label: 'Long fade scale', keys: ['reversionLongScale'] },
   { label: 'Standalone fade', keys: ['standaloneReversionScale'] },
   { label: 'Overlay cap', keys: ['overlayCap'] },
@@ -387,13 +380,6 @@ const validationParameterDefinitions: readonly CandidateParameterDefinition[] = 
   { label: 'Fade hold', keys: ['reversionHoldDays', 'holdReversionDays'] },
   { label: 'Fresh heat', keys: ['freshHeatLookbackDays'] },
   { label: 'Storage heat tilt', keys: ['storageDeficitHeatMultiplier'] },
-  { label: 'Min edge', keys: ['minGrossEdgeCents'] },
-  { label: 'Max lockup', keys: ['maxHoldDays'] },
-  { label: 'Spacing', keys: ['minSpacingHours'] },
-  { label: 'Hold hours', keys: ['holdHours'] },
-  { label: 'Max exposure', keys: ['maxConcurrentExposurePct'] },
-  { label: 'Fee haircut', keys: ['feeHaircutCents'] },
-  { label: 'Capital canary', keys: ['capitalAllocationPct'] },
 ]
 
 const compactParameterLabels: Record<string, string> = {
@@ -418,9 +404,6 @@ const heatmapColorStops = [
 const monteCarloPalette = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#0891b2', '#ca8a04', '#db2777', '#111827']
 
 const weatherSideDefinitions: readonly WeatherSideDefinition[] = [
-  { id: 'time-ladder-package', label: 'Time-ladder package', seasons: ['prediction'], thesisKinds: ['time-ladder-package'] },
-  { id: 'cross-venue-rv', label: 'Cross-venue RV', seasons: ['prediction'], thesisKinds: ['cross-venue-rv'] },
-  { id: 'time-decay-fade', label: 'Time-decay fade', seasons: ['prediction'], thesisKinds: ['time-decay-fade'] },
   { id: 'cold-long', label: 'Cold-long', seasons: ['winter', 'all-year'], thesisKinds: ['cold-long'] },
   { id: 'warm-short', label: 'Warm-short', seasons: ['winter', 'all-year'], thesisKinds: ['warm-short'] },
   { id: 'summer-cold-short', label: 'Summer cold-short', seasons: ['summer', 'all-year'], thesisKinds: ['summer-cold-short'] },
@@ -928,7 +911,7 @@ function buildHeatmapSurfacePixels(plot: ParameterHeatmapPlot, columns = 17, row
 
 function splitMetricParamForStrategy(
   strategy: ResearchBacktestResult['strategy'] | null | undefined,
-  paramName: 'splitEdges' | 'splitAnnualEdges' | 'splitTotalReturns',
+  paramName: 'splitEdges' | 'splitAnnualEdges',
   split: SplitEdgeName,
 ) {
   const values = strategy?.params[paramName]
@@ -943,10 +926,6 @@ function splitEdgeForStrategy(strategy: ResearchBacktestResult['strategy'] | nul
 
 function splitAnnualEdgeForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined, split: SplitEdgeName) {
   return splitMetricParamForStrategy(strategy, 'splitAnnualEdges', split)
-}
-
-function splitTotalReturnForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined, split: SplitEdgeName) {
-  return splitMetricParamForStrategy(strategy, 'splitTotalReturns', split) ?? splitEdgeForStrategy(strategy, split)
 }
 
 function realityCheckForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): RealityCheckMetrics | null {
@@ -1093,60 +1072,10 @@ function historicalSizingImpactRows(backtest: ResearchBacktestResult | null) {
   })
 }
 
-function isPredictionMarketStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  return strategy?.family === 'prediction-time-ladder' || strategy?.family === 'prediction-cross-market' || strategy?.family === 'prediction-time-decay'
-}
-
-function isPredictionCrossMarketStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  return strategy?.family === 'prediction-cross-market' || strategy?.params.variant === 'cross-venue-rv'
-}
-
-function isPredictionTimeDecayStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  return strategy?.family === 'prediction-time-decay' || strategy?.params.variant === 'time-decay-fade'
-}
-
-function isMarkedQuoteReturnStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  return isPredictionCrossMarketStrategy(strategy) || isPredictionTimeDecayStrategy(strategy)
-}
-
-function recordString(value: unknown, key: string) {
-  if (!value || typeof value !== 'object') return null
-  const field = (value as Record<string, unknown>)[key]
-  return typeof field === 'string' && field ? field : null
-}
-
-function recordNumber(value: unknown, key: string) {
-  if (!value || typeof value !== 'object') return null
-  const parsed = Number((value as Record<string, unknown>)[key])
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function isoDatePart(value: string | null) {
-  return value?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? value
-}
-
-function tradeObservationDate(trade: ResearchTrade) {
-  return recordString(trade, 'entryTradeDate') ?? recordString(trade, 'signalDate') ?? isoDatePart(recordString(trade, 'observedAt'))
-}
-
-function tradePackageExpiryDate(trade: ResearchTrade) {
-  return recordString(trade, 'exitTradeDate') ?? recordString(trade, 'targetTradeDate') ?? recordString(trade, 'targetDate')
-}
-
-function dateWindowForValues(values: Array<string | null>) {
-  const dates = values.filter((value): value is string => !!value).sort()
-  return dates.length ? { startDate: dates[0], endDate: dates.at(-1)! } : null
-}
-
 function weatherSideSeasonForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined): WeatherSideSeason {
-  if (isPredictionMarketStrategy(strategy)) return 'prediction'
   if (strategy?.family === 'weather-summer') return 'summer'
   if (strategy?.family === 'weather-alpha') return 'winter'
   return 'all-year'
-}
-
-function hasIndexBenchmarkForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
-  return !isPredictionMarketStrategy(strategy)
 }
 
 function validationScopeForStrategy(strategy: ResearchBacktestResult['strategy'] | null | undefined) {
@@ -1176,10 +1105,7 @@ function tradeHasThesisKind(trade: ResearchTrade, thesisKind: string) {
 function sideStatsForTrades(trades: ResearchTrade[], weatherSeason: WeatherSideSeason) {
   return weatherSideDefinitions.filter((side) => !side.seasons || side.seasons.includes(weatherSeason)).map((side) => {
     const sideTrades = trades.filter((trade) => side.thesisKinds.some((thesisKind) => tradeHasThesisKind(trade, thesisKind)))
-    const totalReturnPct =
-      weatherSeason === 'prediction'
-        ? sideTrades.reduce((sum, trade) => sum + trade.netReturnPct, 0) / 100
-        : sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
+    const totalReturnPct = sideTrades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1) - 1
     const winRatePct = sideTrades.length
       ? (sideTrades.filter((trade) => trade.netReturnPct > 0).length / sideTrades.length) * 100
       : 0
@@ -1225,12 +1151,8 @@ function SideSplitCard({ side, className = '' }: { side: WeatherSideStats; class
 function strategyPerformanceChartSeries(
   strategyColor: string | undefined,
   showDetailLines: boolean,
-  options: { isPredictionMarket?: boolean; showBenchmarks?: boolean } = {},
 ): SmoothChartSeries<DashboardChartPoint>[] {
-  const showBenchmarks = options.showBenchmarks ?? true
-  const showAuxiliaryLines = showDetailLines && !options.isPredictionMarket
-  const benchmarkSeries: SmoothChartSeries<DashboardChartPoint>[] = showBenchmarks
-    ? [
+  const benchmarkSeries: SmoothChartSeries<DashboardChartPoint>[] = [
         {
           axis: 'left',
           color: '#7c3aed',
@@ -1252,7 +1174,6 @@ function strategyPerformanceChartSeries(
           valueFormatter: (value) => signedPercent(roundNumber(value)),
         },
       ]
-    : []
 
   return [
     {
@@ -1261,7 +1182,7 @@ function strategyPerformanceChartSeries(
       dataKey: 'activeTradeReturnPct',
       fillOpacity: 0.2,
       id: 'activeTradeReturnPct',
-      label: options.isPredictionMarket ? 'Modeled row P&L %' : 'Active leg return %',
+      label: 'Active leg return %',
       mode: 'bar',
       strokeOpacity: 0.3,
       valueFormatter: (value) => signedPercent(roundNumber(value)),
@@ -1271,7 +1192,7 @@ function strategyPerformanceChartSeries(
       color: '#2563eb',
       dataKey: 'equityPct',
       id: 'equityPct',
-      label: options.isPredictionMarket ? 'Cumulative modeled P&L %' : 'Equity %',
+      label: 'Equity %',
       mode: 'line',
       strokeWidth: 2.4,
       valueFormatter: (value) => signedPercent(roundNumber(value)),
@@ -1281,7 +1202,7 @@ function strategyPerformanceChartSeries(
       color: '#e11d48',
       dataKey: 'drawdownPct',
       id: 'drawdownPct',
-      label: options.isPredictionMarket ? 'Modeled drawdown %' : 'Drawdown %',
+      label: 'Drawdown %',
       strokeWidth: 2,
       valueFormatter: (value) => signedPercent(roundNumber(value)),
     },
@@ -1295,7 +1216,7 @@ function strategyPerformanceChartSeries(
       mode: 'step',
       strokeWidth: 2,
       valueFormatter: (value) => formatNumber(value),
-      visible: showAuxiliaryLines,
+      visible: showDetailLines,
     },
     {
       axis: 'right',
@@ -1307,7 +1228,7 @@ function strategyPerformanceChartSeries(
       mode: 'step',
       strokeWidth: 2,
       valueFormatter: (value) => formatNumber(value),
-      visible: showAuxiliaryLines,
+      visible: showDetailLines,
     },
   ]
 }
@@ -2071,12 +1992,7 @@ function OverfitValidationBand({ selectedBacktest }: { selectedBacktest: Researc
   const diagnostics = useMemo(() => strategyCandidateDiagnostics(selectedBacktest?.strategy), [selectedBacktest])
   const candidates = useMemo(() => candidateMetricRows(diagnostics), [diagnostics])
   const heatmapPlot = useMemo(() => buildParameterHeatmapPlot(candidates), [candidates])
-  const monteCarloTrades = useMemo(() => {
-    const trades = selectedBacktest?.trades ?? []
-    if (!isPredictionMarketStrategy(selectedBacktest?.strategy)) return trades
-    const holdoutTrades = trades.filter((trade) => (trade as { split?: string }).split === 'holdout')
-    return holdoutTrades.length ? holdoutTrades : trades
-  }, [selectedBacktest])
+  const monteCarloTrades = useMemo(() => selectedBacktest?.trades ?? [], [selectedBacktest])
   const monteCarloPlot = useMemo(
     () => buildMonteCarloStressPlot(monteCarloTrades),
     [monteCarloTrades],
@@ -2243,15 +2159,11 @@ function OverviewPerformancePanel({
   const clampedRange = useMemo(() => clampChartRange(range, chartData.length), [chartData.length, range])
   const visibleBounds = chartRangeDataBounds(clampedRange, chartData.length)
   const visibleChartData = chartData.slice(visibleBounds.startIndex, visibleBounds.endIndex + 1)
-  const selectedIsPredictionMarket = selectedBacktest ? isPredictionMarketStrategy(selectedBacktest.strategy) : false
-  const showDetailLines = !selectedIsPredictionMarket && visibleChartData.length <= strategyDetailLineMaxPoints
+  const showDetailLines = visibleChartData.length <= strategyDetailLineMaxPoints
   const series = useMemo<SmoothChartSeries<DashboardChartPoint>[]>(
     () =>
       selectedBacktest
-        ? strategyPerformanceChartSeries(selectedBacktest.strategy.color, showDetailLines, {
-            isPredictionMarket: isPredictionMarketStrategy(selectedBacktest.strategy),
-            showBenchmarks: hasIndexBenchmarkForStrategy(selectedBacktest.strategy),
-          })
+        ? strategyPerformanceChartSeries(selectedBacktest.strategy.color, showDetailLines)
         : marketOverviewChartSeries(),
     [selectedBacktest, showDetailLines],
   )
@@ -2294,14 +2206,14 @@ function OverviewPerformancePanel({
       />
       <div className="chart-frame tall">
         <SmoothZoomChart
-          breakLinesAfterDays={selectedBacktest && !selectedIsPredictionMarket ? sparseStrategyGapBreakDays : undefined}
+          breakLinesAfterDays={selectedBacktest ? sparseStrategyGapBreakDays : undefined}
           data={chartData}
           formatDate={formatShortDate}
           minWindow={minZoomWindow}
           onRangeChange={setRange}
           range={clampedRange}
           series={series}
-          xAxisMode={selectedIsPredictionMarket ? 'event' : 'time'}
+          xAxisMode="time"
         />
         {!chartData.length && (
           <ChartEmptyOverlay
@@ -2405,15 +2317,6 @@ function App() {
     () =>
       new Map<string, { returnPct: number | null; edgePct: number | null }>(
         leaderboard.map((result) => {
-          if (!hasIndexBenchmarkForStrategy(result.strategy)) {
-            return [
-              result.strategy.id,
-              {
-                returnPct: null,
-                edgePct: null,
-              },
-            ] as const
-          }
           const dates = [result.researchMetrics.firstEntry, result.researchMetrics.lastExit].filter((date): date is string => !!date)
           const benchmarkStartDate =
             result.researchMetrics.firstEntry ||
@@ -2436,7 +2339,6 @@ function App() {
     [leaderboard],
   )
   const benchmarkByDate = useMemo(() => {
-    if (selectedBacktest && !hasIndexBenchmarkForStrategy(selectedBacktest.strategy)) return new Map<string, number | null>()
     const dates = selectedBacktest ? selectedBacktest.curve.map((point) => point.date) : joinedRows.map((point) => point.date)
     const benchmarkStartDate =
       selectedBacktest?.researchMetrics.firstEntry ||
@@ -2447,7 +2349,6 @@ function App() {
     return benchmarkPctByDate(selectedBacktest ? benchmarkMarketBars : market, dates, benchmarkStartDate)
   }, [joinedRows, market, selectedBacktest])
   const indexBenchmarkByDate = useMemo(() => {
-    if (selectedBacktest && !hasIndexBenchmarkForStrategy(selectedBacktest.strategy)) return new Map<string, number | null>()
     const dates = selectedBacktest ? selectedBacktest.curve.map((point) => point.date) : joinedRows.map((point) => point.date)
     const benchmarkStartDate =
       selectedBacktest?.researchMetrics.firstEntry ||
@@ -2512,11 +2413,10 @@ function App() {
     selected: result.strategy.id === selectedStrategyId,
   }))
   const selectedStrategyItem = strategyStripItems.find((strategy) => strategy.selected) ?? strategyStripItems[0] ?? null
-  const selectedHasIndexBenchmark = hasIndexBenchmarkForStrategy(selectedBacktest?.strategy)
   const selectedMetricWindowStartDate = selectedBacktest?.researchMetrics.firstEntry
   const selectedMetricWindowEndDate = selectedBacktest?.researchMetrics.lastExit
   const selectedIndexBenchmarkWindowValues =
-    selectedBacktest && selectedHasIndexBenchmark
+    selectedBacktest
       ? [
           ...benchmarkPctByDate(
             indexBenchmarkMarketBars,
@@ -2526,7 +2426,7 @@ function App() {
         ]
       : []
   const selectedIndexBenchmarkReturnPct =
-    selectedBacktest && selectedHasIndexBenchmark ? relativeBenchmarkReturn(selectedIndexBenchmarkWindowValues) : null
+    selectedBacktest ? relativeBenchmarkReturn(selectedIndexBenchmarkWindowValues) : null
   const selectedIndexBenchmarkAnnualReturnPct =
     selectedBacktest && selectedIndexBenchmarkReturnPct !== null
       ? annualizedReturnPct(selectedIndexBenchmarkReturnPct, selectedMetricWindowStartDate, selectedMetricWindowEndDate)
@@ -2538,86 +2438,32 @@ function App() {
   const selectedIsCurrentPaperScan = isCurrentPaperScanStrategy(selectedBacktest?.strategy)
   const selectedCurrentPaperScanFreshness = currentPaperScanFreshnessForStrategy(selectedBacktest?.strategy)
   const selectedCurrentPaperScanDate = currentPaperScanDateLabel(selectedCurrentPaperScanFreshness)
-  const selectedIsPredictionMarket = isPredictionMarketStrategy(selectedBacktest?.strategy)
-  const selectedIsPredictionCrossMarket = isPredictionCrossMarketStrategy(selectedBacktest?.strategy)
-  const selectedIsPredictionTimeDecay = isPredictionTimeDecayStrategy(selectedBacktest?.strategy)
-  const selectedUsesMarkedQuoteReturns = isMarkedQuoteReturnStrategy(selectedBacktest?.strategy)
   const selectedHoldoutTotalEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
   const selectedHoldoutAnnualEdgePct = splitAnnualEdgeForStrategy(selectedBacktest?.strategy, 'holdout')
-  const selectedHoldoutTotalReturnPct = selectedUsesMarkedQuoteReturns
-    ? splitTotalReturnForStrategy(selectedBacktest?.strategy, 'holdout')
-    : selectedHoldoutTotalEdgePct
   const selectedCurrentScanEdgePct = splitEdgeForStrategy(selectedBacktest?.strategy, 'current')
-  const selectedCurrentScanTotalReturnPct = selectedUsesMarkedQuoteReturns
-    ? splitTotalReturnForStrategy(selectedBacktest?.strategy, 'current')
-    : selectedCurrentScanEdgePct
-  const selectedPredictionObservationWindow = selectedIsPredictionMarket
-    ? dateWindowForValues((selectedBacktest?.trades ?? []).map(tradeObservationDate))
-    : null
-  const selectedPredictionPackageExpiryWindow = selectedIsPredictionMarket && !selectedUsesMarkedQuoteReturns
-    ? dateWindowForValues((selectedBacktest?.trades ?? []).map(tradePackageExpiryDate))
-    : null
-  const selectedPredictionDataAudit = selectedIsPredictionMarket ? selectedBacktest?.strategy.params.dataAudit : null
-  const selectedPredictionHistoricalObservations = recordNumber(selectedPredictionDataAudit, 'historicalObservations')
-  const selectedPredictionPairsSucceeded = recordNumber(selectedPredictionDataAudit, 'historicalPairsSucceeded')
-  const selectedPredictionPairsRequested = recordNumber(selectedPredictionDataAudit, 'historicalPairsRequested')
-  const selectedPredictionReturnDetailLabel = selectedUsesMarkedQuoteReturns ? 'marked quote return' : 'modeled package return'
-  const selectedPerformanceCardLabel = selectedUsesMarkedQuoteReturns
-    ? 'Marked quote total return'
-    : selectedIsPredictionMarket
-      ? 'Modeled package return'
-      : 'Average yearly return'
+  const selectedPerformanceCardLabel = 'Average yearly return'
   const selectedPerformanceCardValuePct = selectedBacktest
-    ? selectedIsPredictionMarket
-      ? selectedBacktest.metrics.totalReturnPct
-      : selectedBacktest.metrics.cagrPct
+    ? selectedBacktest.metrics.cagrPct
     : topResearchStrategy
-      ? isMarkedQuoteReturnStrategy(topResearchStrategy)
-        ? topResearchStrategy.metrics.totalReturnPct
-        : topResearchStrategy.metrics.cagrPct
+      ? topResearchStrategy.metrics.cagrPct
       : null
-  const selectedPredictionExpiryDetail = selectedPredictionPackageExpiryWindow
-    ? `; last package expiry ${formatShortDate(selectedPredictionPackageExpiryWindow.endDate)}`
-    : ''
   const selectedPerformanceCardDetail = selectedBacktest
-    ? selectedIsPredictionMarket
-      ? selectedPredictionObservationWindow
-        ? `${formatNumber(selectedBacktest.metrics.tradeCount, 0)} rows observed ${formatShortDate(selectedPredictionObservationWindow.startDate)} to ${formatShortDate(selectedPredictionObservationWindow.endDate)}${selectedPredictionExpiryDetail}`
-        : `${signedPercent(selectedBacktest.metrics.totalReturnPct)} ${selectedPredictionReturnDetailLabel}; rows remain unsettled`
-      : `${signedPercent(selectedBacktest.metrics.totalReturnPct)} total from ${formatShortDate(selectedBacktest.researchMetrics.firstEntry)} to ${formatShortDate(selectedBacktest.researchMetrics.lastExit)}`
+    ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} total from ${formatShortDate(selectedBacktest.researchMetrics.firstEntry)} to ${formatShortDate(selectedBacktest.researchMetrics.lastExit)}`
     : topResearchStrategy
       ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} total research baseline`
       : 'No research strategies loaded'
-  const selectedValidationCardLabel = selectedIsCurrentPaperScan
-    ? 'Paper scan'
-    : selectedIsPredictionCrossMarket
-      ? 'Three-month quote holdout'
-      : selectedIsPredictionTimeDecay
-        ? 'Two-month quote holdout'
-      : selectedIsPredictionMarket
-        ? 'Holdout package return'
-        : 'Annual holdout'
+  const selectedValidationCardLabel = selectedIsCurrentPaperScan ? 'Paper scan' : 'Annual holdout'
   const selectedValidationCardValuePct = selectedIsCurrentPaperScan
-    ? selectedCurrentScanTotalReturnPct
-    : selectedIsPredictionMarket
-      ? selectedHoldoutTotalReturnPct
-      : selectedHoldoutAnnualEdgePct
+    ? selectedCurrentScanEdgePct
+    : selectedHoldoutAnnualEdgePct
   const selectedValidationCardDetail = selectedIsCurrentPaperScan
     ? selectedCurrentPaperScanFreshness?.isFresh === false
       ? selectedCurrentPaperScanDate
         ? `Stale paper scan from ${selectedCurrentPaperScanDate}; refresh before treating as current`
         : 'Stale paper scan; refresh before treating as current'
-      : selectedCurrentScanTotalReturnPct === null
+      : selectedCurrentScanEdgePct === null
       ? 'Current scan has no selected paper rows'
-        : selectedIsPredictionCrossMarket
-          ? 'Current top-of-book total; no historical holdout split'
-          : `Current top-of-book scan; no historical holdout split`
-    : selectedIsPredictionMarket
-      ? selectedHoldoutTotalReturnPct === null
-        ? 'No holdout split for selected strategy'
-        : selectedHoldoutAnnualEdgePct === null
-          ? 'Report-only holdout split'
-          : `Report-only split; ${signedPercent(selectedHoldoutAnnualEdgePct)} annualized`
+        : 'Current paper scan; no historical holdout split'
     : selectedHoldoutAnnualEdgePct === null
       ? 'No holdout split for selected strategy'
       : selectedHoldoutTotalEdgePct === null
@@ -2883,18 +2729,16 @@ function App() {
           />
           <MetricCard
             icon={LineChartIcon}
-            label={selectedIsPredictionMarket ? 'Benchmark edge' : 'Annualized alpha'}
-            value={selectedIsPredictionMarket || selectedIndexBenchmarkAnnualEdgePct === null ? '-' : signedPercent(selectedIndexBenchmarkAnnualEdgePct)}
+            label="Annualized alpha"
+            value={selectedIndexBenchmarkAnnualEdgePct === null ? '-' : signedPercent(selectedIndexBenchmarkAnnualEdgePct)}
             detail={
-              selectedIsPredictionMarket
-                ? 'No index benchmark for unsettled prediction quote rows'
-                : !selectedBacktest
+              !selectedBacktest
                 ? 'Needs a selected strategy window'
                 : selectedIndexBenchmarkAnnualReturnPct === null
                   ? 'No benchmark edge modeled for this strategy'
                   : `${indexBenchmarkLabel} ${signedPercent(selectedIndexBenchmarkAnnualReturnPct)} yearly over same window`
             }
-            tone={selectedIsPredictionMarket || selectedIndexBenchmarkAnnualEdgePct === null ? 'warning' : classForSigned(selectedIndexBenchmarkAnnualEdgePct)}
+            tone={selectedIndexBenchmarkAnnualEdgePct === null ? 'warning' : classForSigned(selectedIndexBenchmarkAnnualEdgePct)}
           />
           <MetricCard
             icon={Gauge}
@@ -2905,72 +2749,48 @@ function App() {
           />
           <MetricCard
             icon={Activity}
-            label={selectedIsPredictionMarket ? 'Quote-edge status' : 'Sharpe / Sortino'}
+            label="Sharpe / Sortino"
             value={
-              selectedIsPredictionMarket
-                ? 'Unsettled'
-                : selectedBacktest
+              selectedBacktest
                 ? `${formatNumber(selectedBacktest.metrics.sharpe)} / ${formatNumber(selectedBacktest.metrics.sortino)}`
                 : topResearchStrategy
                   ? `${formatNumber(topResearchStrategy.metrics.sharpe)} / ${formatNumber(topResearchStrategy.metrics.sortino)}`
                   : '- / -'
             }
             detail={
-              selectedIsPredictionMarket && selectedBacktest
-                ? `${formatNumber(selectedBacktest.metrics.tradeCount, 0)} ${selectedUsesMarkedQuoteReturns ? 'marked quote rows' : 'modeled package entries'}; realized win/loss waits for settlement`
-                : selectedBacktest
-                ? selectedIsPredictionCrossMarket
-                  ? `${signedPercent(selectedBacktest.metrics.totalReturnPct)} marked quote total, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% annual vol`
-                  : `${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% annual vol`
+              selectedBacktest
+                ? `${signedPercent(selectedBacktest.metrics.cagrPct)} CAGR, ${formatNumber(selectedBacktest.metrics.annualVolPct)}% annual vol`
                 : topResearchStrategy
-                  ? isPredictionCrossMarketStrategy(topResearchStrategy)
-                    ? `${signedPercent(topResearchStrategy.metrics.totalReturnPct)} marked quote total in research baseline`
-                    : `${signedPercent(topResearchStrategy.metrics.cagrPct)} CAGR in research baseline`
+                  ? `${signedPercent(topResearchStrategy.metrics.cagrPct)} CAGR in research baseline`
                   : 'Ready for real strategy metrics'
             }
-            tone={selectedIsPredictionMarket ? 'warning' : (selectedBacktest?.metrics.sharpe ?? topResearchStrategy?.metrics.sharpe ?? 0) > 1 ? 'positive' : 'neutral'}
+            tone={(selectedBacktest?.metrics.sharpe ?? topResearchStrategy?.metrics.sharpe ?? 0) > 1 ? 'positive' : 'neutral'}
           />
           <MetricCard
             icon={ShieldCheck}
-            label={selectedIsPredictionMarket ? 'Capital lockup' : 'Max drawdown'}
+            label="Max drawdown"
             value={
-              selectedIsPredictionMarket && selectedBacktest
-                ? `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`
-                : selectedBacktest
+              selectedBacktest
                   ? signedPercent(selectedBacktest.metrics.maxDrawdownPct)
                   : topResearchStrategy
                     ? signedPercent(topResearchStrategy.metrics.maxDrawdownPct)
                     : '-'
             }
             detail={
-              selectedIsPredictionMarket && selectedBacktest
-                ? `${formatNumber(selectedBacktest.researchMetrics.averageHoldDays, 0)}d avg modeled lockup; no settled drawdown yet`
-                : selectedBacktest
+              selectedBacktest
                   ? `${formatNumber(selectedBacktest.metrics.var95Pct)}% return-row VaR 95`
                   : topResearchStrategy
                     ? `${topResearchStrategy.metrics.tradeCount} optimized return rows`
                     : 'No risk path until a strategy runs'
             }
-            tone={selectedIsPredictionMarket ? 'warning' : (selectedBacktest?.metrics.maxDrawdownPct ?? topResearchStrategy?.metrics.maxDrawdownPct ?? 0) < -15 ? 'negative' : 'positive'}
+            tone={(selectedBacktest?.metrics.maxDrawdownPct ?? topResearchStrategy?.metrics.maxDrawdownPct ?? 0) < -15 ? 'negative' : 'positive'}
           />
           <MetricCard
             icon={CloudSun}
-            label={selectedIsPredictionMarket ? 'Data coverage' : 'Weather accuracy'}
-            value={
-              selectedIsPredictionMarket
-                ? selectedPredictionHistoricalObservations === null
-                  ? '-'
-                  : formatCompact(selectedPredictionHistoricalObservations)
-                : `${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%`
-            }
-            detail={
-              selectedIsPredictionMarket
-                ? selectedPredictionPairsRequested === null
-                  ? 'Quote-observation artifact loaded; settlement outcomes pending'
-                  : `${formatNumber(selectedPredictionPairsSucceeded ?? selectedPredictionPairsRequested, 0)} of ${formatNumber(selectedPredictionPairsRequested, 0)} historical pairs loaded`
-                : `${weatherMetrics.metricLabel} MAE ${formatNumber(weatherMetrics.mae)}${weatherMetrics.unitLabel} | ${formatCompact(weatherMetrics.rowCount)} scored rows`
-            }
-            tone={selectedIsPredictionMarket ? 'positive' : weatherMetrics && weatherMetrics.directionalAccuracyPct > 60 ? 'positive' : 'warning'}
+            label="Weather accuracy"
+            value={`${formatNumber(weatherMetrics.directionalAccuracyPct, 1)}%`}
+            detail={`${weatherMetrics.metricLabel} MAE ${formatNumber(weatherMetrics.mae)}${weatherMetrics.unitLabel} | ${formatCompact(weatherMetrics.rowCount)} scored rows`}
+            tone={weatherMetrics && weatherMetrics.directionalAccuracyPct > 60 ? 'positive' : 'warning'}
           />
         </section>
 
@@ -3010,13 +2830,9 @@ function App() {
                         const indexBenchmarkSummary = indexBenchmarkSummaryByStrategyId.get(result.strategy.id)
                         const indexBenchmarkReturnPct = indexBenchmarkSummary?.returnPct
                         const isCurrentPaperScan = isCurrentPaperScanStrategy(result.strategy)
-                        const isPredictionMarket = isPredictionMarketStrategy(result.strategy)
-                        const usesMarkedQuoteReturns = isMarkedQuoteReturnStrategy(result.strategy)
                         const validationEdgePct = isCurrentPaperScan
-                          ? splitTotalReturnForStrategy(result.strategy, 'current')
-                          : usesMarkedQuoteReturns
-                            ? splitTotalReturnForStrategy(result.strategy, 'holdout')
-                            : splitAnnualEdgeForStrategy(result.strategy, 'holdout')
+                          ? splitEdgeForStrategy(result.strategy, 'current')
+                          : splitAnnualEdgeForStrategy(result.strategy, 'holdout')
                         return (
                           <tr
                             key={result.strategy.id}
@@ -3034,11 +2850,9 @@ function App() {
                             <td className={validationEdgePct === null ? undefined : classForSigned(validationEdgePct)}>
                               {validationEdgePct === null ? '-' : signedPercent(validationEdgePct)}
                             </td>
-                            <td>{isPredictionMarket ? 'N/A' : formatNumber(result.metrics.sharpe)}</td>
-                            <td className={isPredictionMarket ? undefined : 'negative'}>
-                              {isPredictionMarket ? 'Unsettled' : signedPercent(result.metrics.maxDrawdownPct)}
-                            </td>
-                            <td>{isPredictionMarket ? 'N/A' : `${formatNumber(result.metrics.winRatePct, 1)}%`}</td>
+                            <td>{formatNumber(result.metrics.sharpe)}</td>
+                            <td className="negative">{signedPercent(result.metrics.maxDrawdownPct)}</td>
+                            <td>{formatNumber(result.metrics.winRatePct, 1)}%</td>
                             <td>{result.metrics.tradeCount}</td>
                             <td>
                               <span className={`table-pill ${sampleStatus.tone}`}>{sampleStatus.label}</span>
@@ -3128,22 +2942,7 @@ function App() {
 
               <div className="stat-grid backtest-stat-grid">
                 {(selectedBacktest
-                  ? selectedIsPredictionMarket
-                    ? [
-                        ['Modeled rows', formatNumber(selectedBacktest.metrics.tradeCount, 0), 'One open package per pair'],
-                        ['Settled win rate', 'N/A', 'No settled outcome rows yet'],
-                        [
-                          'P-value',
-                          selectedRealityCheck
-                            ? formatPValue(selectedRealityCheck.pValue, selectedRealityCheck.minimumResolvablePValue)
-                            : '-',
-                          primaryPValueDetail(selectedRealityCheck),
-                        ],
-                        ['Capital lockup', `${formatNumber(selectedBacktest.metrics.exposurePct, 1)}%`, 'Average modeled exposure'],
-                        ['Turnover', formatNumber(selectedBacktest.metrics.turnover), 'Modeled entry count'],
-                        ['CVaR 95', 'N/A', 'Needs settlement outcomes'],
-                      ]
-                    : [
+                  ? [
                       ['Win rate', `${formatNumber(selectedBacktest.metrics.winRatePct, 1)}%`, 'Positive return rows'],
                       ['Profit factor', formatNumber(selectedBacktest.metrics.profitFactor), 'Gross wins / losses'],
                       [
