@@ -1,0 +1,433 @@
+{
+  "generatedAt": "2026-07-17T09:15:47.350Z",
+  "freezeDigest": "7e4edf3498fdf12c2a37bbd2c4dcf6e6f7321121bfd698f87ab85254833e5568",
+  "strategyId": "crop-weather-photo-soy-corn-v5",
+  "freezeVersion": "sealed-evaluation-protocol-v3",
+  "frozenThrough": "2026-07-15",
+  "dataAvailableThrough": "2026-07-17",
+  "futureHoldoutStart": "2026-07-18",
+  "signalLagDays": 2,
+  "oneWayCostBps": 5,
+  "overlayNotional": 0.35,
+  "exactFallback": {
+    "symbol": "US-INDEX-BASKET",
+    "label": "80/20 VOO/QQQM target-weight US index ETF basket",
+    "methodology": "Daily target-weight return stream. The synthetic symbol is research provenance only; live adapters must route the ETF component legs.",
+    "rebalance": "daily-target-weight",
+    "components": [
+      {
+        "symbol": "VOO",
+        "label": "Vanguard S&P 500 ETF",
+        "targetWeight": 0.8,
+        "role": "Core S&P 500 exposure"
+      },
+      {
+        "symbol": "QQQM",
+        "label": "Invesco NASDAQ 100 ETF",
+        "targetWeight": 0.2,
+        "role": "Modest Nasdaq-100 growth tilt"
+      }
+    ]
+  },
+  "proxyFallback": {
+    "symbol": "US-INDEX-BASKET-PROXY",
+    "label": "80/20 SPY/QQQ pre-QQQM research proxy",
+    "rebalance": "daily-target-weight",
+    "components": [
+      {
+        "symbol": "SPY",
+        "label": "SPDR S&P 500 ETF Trust",
+        "targetWeight": 0.8
+      },
+      {
+        "symbol": "QQQ",
+        "label": "Invesco QQQ Trust",
+        "targetWeight": 0.2
+      }
+    ]
+  },
+  "collectionContract": {
+    "startDate": "1981-01-01",
+    "endDate": "2026-07-15",
+    "configFile": "config/crop-weather-soy-corn.json",
+    "weatherSource": "NASA POWER daily PRECTOTCORR, T2M, and T2M_MAX, UTC, 1981-present",
+    "marketSource": "Yahoo chart API continuous futures proxy",
+    "note": "NASA POWER finalized precipitation and temperature are lagged discovery inputs, not historical forecast vintages. Yahoo continuous futures are preliminary price proxies, not contract-level roll backtests."
+  },
+  "selectedCrops": [
+    {
+      "cropId": "soybeans",
+      "symbol": "ZS=F",
+      "finalTrainingStartYear": 2016,
+      "finalTrainingEnd": "2026-07-15",
+      "ensemble": [
+        {
+          "objective": "nested-robust-relative-edge",
+          "directionHash": "2068be98a9032b8c8ddda0f04f817d15b55975f849a67d5b60caf5d4bfb9a7ac",
+          "candidate": {
+            "id": "warm-wet-short-rglobal-lb5-p0_25-t0_25-c1",
+            "family": "warm-wet-short",
+            "familyLabel": "Warm and wet makes prices fall",
+            "region": "global",
+            "lookback": 5,
+            "precipitationThreshold": 0.25,
+            "temperatureThreshold": 0.25,
+            "carry": 1
+          },
+          "validationStartYear": 2022,
+          "trainingMetrics": {
+            "totalReturnPct": 94.45,
+            "benchmarkReturnPct": 73.08,
+            "edgePct": 21.37,
+            "relativeReturnPct": 12.35,
+            "excessInformationRatio": 0.74,
+            "cagrPct": 15.82,
+            "regressionAlphaPct": 2.64,
+            "sharpe": 0.88,
+            "maxDrawdownPct": -28.26,
+            "entries": 49,
+            "positionChanges": 97,
+            "annualEntries": 10.8,
+            "exposurePct": 6.6,
+            "turnover": 33.95,
+            "startDate": "2022-01-03",
+            "endDate": "2026-07-15"
+          },
+          "stressedCostMetrics": {
+            "totalReturnPct": 84.78,
+            "benchmarkReturnPct": 73.08,
+            "edgePct": 11.7,
+            "relativeReturnPct": 6.76,
+            "excessInformationRatio": 0.42,
+            "cagrPct": 14.52,
+            "regressionAlphaPct": 1.5,
+            "sharpe": 0.82,
+            "maxDrawdownPct": -28.41,
+            "entries": 49,
+            "positionChanges": 97,
+            "annualEntries": 10.8,
+            "exposurePct": 6.6,
+            "turnover": 33.95,
+            "startDate": "2022-01-03",
+            "endDate": "2026-07-15"
+          }
+        }
+      ]
+    },
+    {
+      "cropId": "corn",
+      "symbol": "ZC=F",
+      "finalTrainingStartYear": 2016,
+      "finalTrainingEnd": "2026-07-15",
+      "ensemble": [
+        {
+          "objective": "nested-robust-relative-edge",
+          "directionHash": "24008d42a27b18699951a43ec6763daebf04829e4bde2efa12884508511fdf58",
+          "candidate": {
+            "id": "warm-wet-short-rglobal-lb3-p0_25-t0_25-c3",
+            "family": "warm-wet-short",
+            "familyLabel": "Warm and wet makes prices fall",
+            "region": "global",
+            "lookback": 3,
+            "precipitationThreshold": 0.25,
+            "temperatureThreshold": 0.25,
+            "carry": 3
+          },
+          "validationStartYear": 2022,
+          "trainingMetrics": {
+            "totalReturnPct": 114.32,
+            "benchmarkReturnPct": 73.08,
+            "edgePct": 41.24,
+            "relativeReturnPct": 23.83,
+            "excessInformationRatio": 0.8,
+            "cagrPct": 18.33,
+            "regressionAlphaPct": 4.73,
+            "sharpe": 0.96,
+            "maxDrawdownPct": -27.61,
+            "entries": 54,
+            "positionChanges": 107,
+            "annualEntries": 11.9,
+            "exposurePct": 12.9,
+            "turnover": 37.45,
+            "startDate": "2022-01-03",
+            "endDate": "2026-07-15"
+          },
+          "stressedCostMetrics": {
+            "totalReturnPct": 102.63,
+            "benchmarkReturnPct": 73.08,
+            "edgePct": 29.55,
+            "relativeReturnPct": 17.07,
+            "excessInformationRatio": 0.6,
+            "cagrPct": 16.88,
+            "regressionAlphaPct": 3.49,
+            "sharpe": 0.89,
+            "maxDrawdownPct": -27.99,
+            "entries": 54,
+            "positionChanges": 107,
+            "annualEntries": 11.9,
+            "exposurePct": 12.9,
+            "turnover": 37.45,
+            "startDate": "2022-01-03",
+            "endDate": "2026-07-15"
+          }
+        },
+        {
+          "objective": "nested-diversifier",
+          "directionHash": "b7ed723f50e365bb9f4e4ef6b2db06c692b67890415ee42dc692094091bbc06a",
+          "candidate": {
+            "id": "hot-dry-long-rglobal-lb5-p0_75-t0_75-c0",
+            "family": "hot-dry-long",
+            "familyLabel": "Hot and dry makes prices rise",
+            "region": "global",
+            "lookback": 5,
+            "precipitationThreshold": 0.75,
+            "temperatureThreshold": 0.75,
+            "carry": 0
+          },
+          "validationStartYear": 2022,
+          "trainingMetrics": {
+            "totalReturnPct": 98,
+            "benchmarkReturnPct": 73.08,
+            "edgePct": 24.92,
+            "relativeReturnPct": 14.4,
+            "excessInformationRatio": 0.78,
+            "cagrPct": 16.28,
+            "regressionAlphaPct": 3.14,
+            "sharpe": 0.91,
+            "maxDrawdownPct": -22.38,
+            "entries": 63,
+            "positionChanges": 127,
+            "annualEntries": 13.9,
+            "exposurePct": 8.5,
+            "turnover": 44.45,
+            "startDate": "2022-01-03",
+            "endDate": "2026-07-15"
+          },
+          "stressedCostMetrics": {
+            "totalReturnPct": 85.22,
+            "benchmarkReturnPct": 73.08,
+            "edgePct": 12.14,
+            "relativeReturnPct": 7.01,
+            "excessInformationRatio": 0.4,
+            "cagrPct": 14.58,
+            "regressionAlphaPct": 1.65,
+            "sharpe": 0.83,
+            "maxDrawdownPct": -22.99,
+            "entries": 63,
+            "positionChanges": 127,
+            "annualEntries": 13.9,
+            "exposurePct": 8.5,
+            "turnover": 44.45,
+            "startDate": "2022-01-03",
+            "endDate": "2026-07-15"
+          }
+        }
+      ]
+    }
+  ],
+  "inputHashes": {
+    "files": {
+      "config/crop-weather-soy-corn.json": "b199cb524658a4a1908c7482af310cb686b756eb649dc1e1030871206bdd865f",
+      "data/qore/weather/crop-precipitation-hf/collection-manifest.json": "92db5af1752adb806a8d72e5e75afd7272aae35c67012c0a026a4a6c65a4441f",
+      "data/qore/market/index-basket-config.json": "7119fbd61803add8a7bb2773e0fe28b5cda11ae294b1efed7937c600869553cc",
+      "data/qore/market/yahoo/US-INDEX-BASKET-qore-market.csv": "5ad896695ced389d5a821e86e5b9a70beacaa971b3d4bdd39ab03fc13ed48dd4",
+      "data/qore/market/yahoo/US-INDEX-BASKET-PROXY-qore-market.csv": "c0ccd7558076bf832d84a00e52970941dd74c8ceb9791864f7908b5a5c2dba05",
+      "data/qore/market/yahoo/ZS-F-daily.csv": "59568a4890f30200e06870734f2d53f8e6f4600980f36d0a8722296837089770",
+      "data/qore/market/yahoo/ZC-F-daily.csv": "86eaea59ce4053d6fc3b555d76dc2a9f71fc6a276ccbde7e1adce52a0661695d",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-iowa.csv": "c02fb350d41664528dcbaaed520cac4d24f5780afe6d5b06425f89df8d121a7a",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-illinois.csv": "9511637406d290eed1656b34274716393274290dab0ac012b3d7279cc38bdfa4",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-indiana.csv": "5d3043d1db1310135c73e0ee3dd5c9939687aa9e3be859e64413d5e2a53b00ea",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-nebraska.csv": "11cab9b4fe5679bbbda91e8a2bbc7870514a8590a09e974963a9d23f0b3b7e3f",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-minnesota.csv": "659292e36f84affac48f3e3c8719ba00977501d4479963b47c32e1a97afa8c4d",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-mato-grosso.csv": "5ca6164ac7fa1319523616aafcbace2a4992bf6ff77a2e291466da8a5da628e9",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-parana.csv": "d33142374e36a7abc7cd90ddc8a7e4883d787c2f176294528029fdabd3782a5c",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-rio-grande.csv": "01c747051bc3d0832011f02d354542cd55616dc96f835ca09863a569d28f36d3",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-cordoba.csv": "33ebb3b6c70f29ad479786230e5268a53dc55c9609ee7a21b3c463950e5e0138",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-buenos-aires.csv": "a0e84f8eea173b09be204bdf84b607a95188c4940845d01e3e564aa90e6a8bda",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-iowa.csv": "074b64bd9f328b354620d12fba2b82261623f6389c18c3a0ec6daf099d862881",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-illinois.csv": "79405671cb1afe393fcf6b128ca0438fc72a593186b05cad29714730097a8283",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-nebraska.csv": "d8eb7c0382d5cb09ecba0013f6ec2c5ebb3b84abb3bb6b1eaed267a66d9a48bd",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-minnesota.csv": "45a89b422cb27fc81f109f38405b2bbea8fafba3b86f4bf66554defb167c2867",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-indiana.csv": "6aa923c5d52d9346cb2a8af66a16f669c6efc9bfbcfe48102f070a0034d4751e",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-mato-grosso.csv": "4b74291a349dd620a4b0f6e37ecd673480f3cfd6ba5c9ca1178e1cf31b3ee54b",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-parana.csv": "94aab561590279722b4ab29187fdea0f2b31ec2c71a8ee0d717a2a4ab8ec9f5a",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-goias.csv": "7049c9d562214cc85c5ff24267f62f31ec3a8023c9ea4753b56a19280de1b077",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-cordoba.csv": "5c67930b8e1f74ed45988f97ce4ca0fe19c386440b9225dcfd504863b42eb1e9",
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-buenos-aires.csv": "69958ab9d884af324c4c2405b0f9ca4488b456b7c8554cccb419194f0b6d2e22"
+    },
+    "combined": "51e254832952eb482d2c633020348091560d659cd04ac4b44ffd5f3251650a7f",
+    "appendOnlyPrefixes": {
+      "data/qore/market/yahoo/US-INDEX-BASKET-qore-market.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-16",
+        "mutableTailRows": 1,
+        "bytes": 161872,
+        "sha256": "dc983e526ae4e45d38853fe9e721656a470a5cec1a7a153051cfb7af66a648bd"
+      },
+      "data/qore/market/yahoo/US-INDEX-BASKET-PROXY-qore-market.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-16",
+        "mutableTailRows": 1,
+        "bytes": 812609,
+        "sha256": "dca0b155a6425b47e55dc3b47348889f27adb09a21b7e5d32c17d58d1dd402af"
+      },
+      "data/qore/market/yahoo/ZS-F-daily.csv": {
+        "through": "2026-07-16",
+        "observedThrough": "2026-07-17",
+        "mutableTailRows": 1,
+        "bytes": 606078,
+        "sha256": "93b133776ccc938748d68a599ee79c73192fe70b8c541209e35beeece3e54693"
+      },
+      "data/qore/market/yahoo/ZC-F-daily.csv": {
+        "through": "2026-07-16",
+        "observedThrough": "2026-07-17",
+        "mutableTailRows": 1,
+        "bytes": 598428,
+        "sha256": "5db03954bdd618aac7ee1749d9f3a94e0a578fed230e95c4600f7ecb3132f7e2"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-iowa.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1656559,
+        "sha256": "c02fb350d41664528dcbaaed520cac4d24f5780afe6d5b06425f89df8d121a7a"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-illinois.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1687279,
+        "sha256": "9511637406d290eed1656b34274716393274290dab0ac012b3d7279cc38bdfa4"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-indiana.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1673541,
+        "sha256": "5d3043d1db1310135c73e0ee3dd5c9939687aa9e3be859e64413d5e2a53b00ea"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-nebraska.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1719093,
+        "sha256": "11cab9b4fe5679bbbda91e8a2bbc7870514a8590a09e974963a9d23f0b3b7e3f"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-minnesota.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1709161,
+        "sha256": "659292e36f84affac48f3e3c8719ba00977501d4479963b47c32e1a97afa8c4d"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-mato-grosso.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1796568,
+        "sha256": "5ca6164ac7fa1319523616aafcbace2a4992bf6ff77a2e291466da8a5da628e9"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-parana.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1749453,
+        "sha256": "d33142374e36a7abc7cd90ddc8a7e4883d787c2f176294528029fdabd3782a5c"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-rio-grande.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1780856,
+        "sha256": "01c747051bc3d0832011f02d354542cd55616dc96f835ca09863a569d28f36d3"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-cordoba.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1714654,
+        "sha256": "33ebb3b6c70f29ad479786230e5268a53dc55c9609ee7a21b3c463950e5e0138"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-soy-buenos-aires.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1766845,
+        "sha256": "a0e84f8eea173b09be204bdf84b607a95188c4940845d01e3e564aa90e6a8bda"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-iowa.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1606663,
+        "sha256": "074b64bd9f328b354620d12fba2b82261623f6389c18c3a0ec6daf099d862881"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-illinois.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1637383,
+        "sha256": "79405671cb1afe393fcf6b128ca0438fc72a593186b05cad29714730097a8283"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-nebraska.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1669197,
+        "sha256": "d8eb7c0382d5cb09ecba0013f6ec2c5ebb3b84abb3bb6b1eaed267a66d9a48bd"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-minnesota.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1659265,
+        "sha256": "45a89b422cb27fc81f109f38405b2bbea8fafba3b86f4bf66554defb167c2867"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-indiana.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1623645,
+        "sha256": "6aa923c5d52d9346cb2a8af66a16f669c6efc9bfbcfe48102f070a0034d4751e"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-mato-grosso.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1746672,
+        "sha256": "4b74291a349dd620a4b0f6e37ecd673480f3cfd6ba5c9ca1178e1cf31b3ee54b"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-parana.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1699557,
+        "sha256": "94aab561590279722b4ab29187fdea0f2b31ec2c71a8ee0d717a2a4ab8ec9f5a"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-goias.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1611743,
+        "sha256": "7049c9d562214cc85c5ff24267f62f31ec3a8023c9ea4753b56a19280de1b077"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-cordoba.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1664758,
+        "sha256": "5c67930b8e1f74ed45988f97ce4ca0fe19c386440b9225dcfd504863b42eb1e9"
+      },
+      "data/qore/weather/crop-precipitation-hf/actuals/hf-corn-buenos-aires.csv": {
+        "through": "2026-07-15",
+        "observedThrough": "2026-07-15",
+        "mutableTailRows": 0,
+        "bytes": 1716949,
+        "sha256": "69958ab9d884af324c4c2405b0f9ca4488b456b7c8554cccb419194f0b6d2e22"
+      }
+    },
+    "optimizer": "ca817a478b40211135ee7154d87e4e44c0a346aa79533cc0d2bc4cfe5ac6c782",
+    "evaluator": "9c6dfae06d5840384a0c46e9990fa570117492c61a05b459a9d938c74df7b780",
+    "collector": "f19394454f1616bcfa777f50c6c74032234a45e678d1310768eeb95ebd087736"
+  }
+}

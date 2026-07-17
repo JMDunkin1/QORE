@@ -165,21 +165,6 @@ export const realDataCatalog = {
       path: 'weather/events',
       detail: 'Actual event windows and derived market joins for the thesis window.',
     },
-    {
-      label: 'Prediction time-ladder',
-      path: 'research/strategy-agent-runs/prediction-time-ladder',
-      detail: 'Kalshi and Polymarket date-threshold scans, same-venue deadline-ladder pairs, Kalshi candle support observations, candidate diagnostics, and selected paper rows.',
-    },
-    {
-      label: 'Prediction cross-market RV',
-      path: 'research/strategy-agent-runs/prediction-cross-market-rv',
-      detail: 'Kalshi/Polymarket cross-venue relative-value paper scan, including SPX/SPY threshold-curve comparisons and targeted comparable-market rows.',
-    },
-    {
-      label: 'Prediction time-decay',
-      path: 'research/strategy-agent-runs/prediction-time-decay',
-      detail: 'Kalshi and Polymarket time-bound market scans, hourly quote/proxy history, two-month hidden holdout diagnostics, and short-horizon YES-fade paper rows.',
-    },
   ] satisfies SupportDatasetSummary[],
 }
 
