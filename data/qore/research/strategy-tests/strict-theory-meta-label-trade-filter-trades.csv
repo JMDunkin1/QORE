@@ -1,7 +1,0 @@
-strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,thesisKind,leadDays,direction,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,grossReturnPct,netReturnPct,rank
-strict-theory-meta-label-trade-filter,strict-theory,2025-12-07,2025-12-15,2025-12-08,2025-12-15,graphcastgfs,rumor,cold-long,8,long,-17.608,1,1,0,11,-17.383,-17.447,2.59115
-strict-theory-meta-label-trade-filter,strict-theory,2026-01-19,2026-01-26,2026-01-20,2026-01-26,gem-global,rumor,cold-long,7,long,-25.792,1,1,0,18,19.823,19.759,4.80444
-strict-theory-meta-label-trade-filter,strict-theory,2026-02-01,2026-02-11,2026-02-02,2026-02-11,aigfs,rumor,warm-short,10,short,10.981,0.651,0,0.651,7,-2.928,-2.992,1.37104
-strict-theory-meta-label-trade-filter,strict-theory,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,rumor,warm-short,10,short,12.472,0.632,0,0.632,9,-4.306,-4.37,1.89897
-strict-theory-meta-label-trade-filter,strict-theory,2026-03-01,2026-03-10,2026-03-02,2026-03-10,gfs,rumor,warm-short,9,short,22.098,1,0,1,17,2.314,2.25,3.89201
-strict-theory-meta-label-trade-filter,strict-theory,2026-03-21,2026-03-31,2026-03-23,2026-03-31,gfs,rumor,warm-short,10,short,15.987,0.906,0,0.906,10,0.064,0,3.17431

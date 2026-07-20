@@ -1,0 +1,129 @@
+const PRODUCTION_MODE = 'selected-contract-live-source-set-00z'
+
+const CONTRACTS = {
+  summer: {
+    componentStrategyId: 'ngas-summer-alpha',
+    requiredSources: ['gfs', 'gefs-mean'],
+    collectedSources: ['gfs', 'gefs-mean'],
+    requiredLeads: [7],
+    thesesByWindow: {
+      'weather-follow': new Set(['summer-heat-long', 'summer-cold-short']),
+      'weather-reversion': new Set(['reversion-long', 'reversion-short']),
+    },
+  },
+  winter: {
+    componentStrategyId: 'ngas-winter-alpha',
+    requiredSources: ['gfs', 'gefs-mean', 'aigfs'],
+    collectedSources: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
+    requiredLeads: [1, 2, 3, 7, 8, 9, 10],
+    thesesByWindow: {
+      'weather-follow': new Set(['cold-long', 'warm-short']),
+      'weather-reversion': new Set(['reversion-long', 'reversion-short']),
+    },
+  },
+}
+
+const LONG_THESES = new Set(['summer-heat-long', 'cold-long', 'reversion-long'])
+const SHORT_THESES = new Set(['summer-cold-short', 'warm-short', 'reversion-short'])
+
+function exactArray(actual, expected) {
+  return (
+    Array.isArray(actual)
+    && actual.length === expected.length
+    && actual.every((value, index) => value === expected[index])
+  )
+}
+
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) return null
+  const parsed = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? parsed : null
+}
+
+function addDays(dateText, count) {
+  return new Date(Date.parse(`${dateText}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10)
+}
+
+function seasonForInferenceDate(dateText) {
+  const month = Number(dateText.slice(5, 7))
+  const leadMonth = Number(addDays(dateText, 7).slice(5, 7))
+  return (month >= 5 && month <= 9) || (leadMonth >= 5 && leadMonth <= 9) ? 'summer' : 'winter'
+}
+
+export function liveInferenceProvenanceBlocks(signalHandoff, asOf = new Date()) {
+  const blocks = []
+  const inference = signalHandoff?.inference
+  const intent = signalHandoff?.intent
+  const today = asOf.toISOString().slice(0, 10)
+  const intentTargetDate = validDate(intent?.targetDate)
+  const inferenceTargetDate = validDate(inference?.targetDate)
+  if (!intentTargetDate || intent?.targetDate !== today) {
+    blocks.push(`intent targetDate must be the current UTC date ${today}`)
+  }
+  if (!inferenceTargetDate || inference?.targetDate !== intent?.targetDate) {
+    blocks.push('inference targetDate must be valid and exactly match intent targetDate')
+  }
+
+  const season = seasonForInferenceDate(today)
+  const contract = CONTRACTS[season]
+  if (inference?.season !== season) blocks.push(`inference season must equal ${season} for target date ${today}`)
+  if (inference?.mode !== PRODUCTION_MODE) {
+    blocks.push(`inference mode must equal ${PRODUCTION_MODE}`)
+  }
+  const validation = inference?.forecastValidation
+  if (validation?.runHourUtc !== '00') blocks.push('forecast runHourUtc must equal 00')
+  if (!exactArray(validation?.requiredSources, contract.requiredSources)) {
+    blocks.push(`requiredSources must equal the reviewed ${season} selected-contract source set`)
+  }
+  if (!exactArray(validation?.collectedSources, contract.collectedSources)) {
+    blocks.push(`collectedSources must equal the reviewed ${season} selected-contract collection set`)
+  }
+  if (!exactArray(validation?.requiredLeads, contract.requiredLeads)) {
+    blocks.push(`requiredLeads must equal the reviewed ${season} selected-contract lead set`)
+  }
+  const scoreRowCount = Number(validation?.scoreRowCount)
+  const minimumRows = contract.requiredSources.length * contract.requiredLeads.length
+  if (!Number.isInteger(scoreRowCount) || scoreRowCount < minimumRows) {
+    blocks.push(`scoreRowCount must be an integer of at least ${minimumRows} for a complete common issue set`)
+  }
+
+  const componentStrategyId = inference?.componentStrategyId
+  const windowId = inference?.windowId
+  const thesisKind = inference?.thesisKind
+  const gasPosition = Number(intent?.gasPosition)
+  if (componentStrategyId === 'index-fallback') {
+    if (windowId !== 'index-fallback' || thesisKind !== 'index-fallback' || gasPosition !== 0) {
+      blocks.push('index-fallback provenance requires index-fallback window/thesis and zero gasPosition')
+    }
+  } else if (componentStrategyId !== contract.componentStrategyId) {
+    blocks.push(`componentStrategyId must equal ${contract.componentStrategyId} or index-fallback for ${season}`)
+  } else {
+    const allowedTheses = contract.thesesByWindow[windowId]
+    if (!allowedTheses?.has(thesisKind)) {
+      blocks.push(`${contract.componentStrategyId} windowId/thesisKind is not a reviewed ${season} target combination`)
+    }
+    if (!Number.isFinite(gasPosition) || gasPosition === 0) {
+      blocks.push(`${contract.componentStrategyId} provenance requires a nonzero intent gasPosition`)
+    } else if (LONG_THESES.has(thesisKind) && gasPosition <= 0) {
+      blocks.push(`${thesisKind} provenance requires intent gasPosition greater than zero`)
+    } else if (SHORT_THESES.has(thesisKind) && gasPosition >= 0) {
+      blocks.push(`${thesisKind} provenance requires intent gasPosition less than zero`)
+    }
+  }
+
+  const issueDate = validDate(validation?.latestCommonIssueDate)
+  const issueAgeDays = Number(validation?.issueAgeDays)
+  if (!issueDate) {
+    blocks.push('latestCommonIssueDate must be a valid date')
+  } else {
+    const computedAgeDays = (Date.parse(`${today}T00:00:00Z`) - issueDate.getTime()) / 86400000
+    if (
+      !Number.isFinite(issueAgeDays)
+      || issueAgeDays < 0
+      || Math.abs(issueAgeDays - computedAgeDays) > 0.01
+    ) {
+      blocks.push('issueAgeDays must coherently match latestCommonIssueDate')
+    }
+  }
+  return blocks
+}

@@ -19,6 +19,12 @@ function parseEnvLine(line) {
 }
 
 export function loadLocalEnv(repoDir = process.cwd()) {
+  const testEnvironment = String(process.env.NODE_ENV ?? '').toLowerCase() === 'test'
+  const explicitlyAllowedInTests = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.QORE_LOAD_LOCAL_ENV_IN_TEST ?? '').toLowerCase(),
+  )
+  if (testEnvironment && !explicitlyAllowedInTests) return
+
   const inheritedKeys = new Set(Object.keys(process.env))
 
   for (const fileName of ['.env', '.env.local']) {

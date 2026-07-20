@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-15T22:43:20.288Z",
+  "generatedAt": "2026-07-20T07:41:27.180Z",
   "strategyId": "ngas-all-year-beta",
   "displayName": "NGAS All-Year Beta",
   "data": {
@@ -25,6 +25,26 @@
     "selectionPolicy": "No independent all-year optimization. The artifact freezes the exact Summer/Winter material-row selector into its own ledger.",
     "signalTiming": "Component source rows keep their source-lane timing contracts; this artifact only selects one already-validated daily source row per entry date.",
     "overfitControl": "No all-year holdout rows are used for selection. The p-value is a direct centered circular block bootstrap on the generated all-year active-edge return stream.",
+    "researchInstruments": {
+      "summer": {
+        "componentStrategyId": "ngas-summer-alpha",
+        "gasSymbol": "NG=F",
+        "contract": "Yahoo continuous front-month natural-gas futures proxy"
+      },
+      "winter": {
+        "componentStrategyId": "ngas-winter-alpha",
+        "gasSymbol": "UNG",
+        "contract": "Yahoo UNG ETF historical series"
+      },
+      "indexFallback": {
+        "symbol": "US-INDEX-BASKET",
+        "contract": "Configured target-weight VOO/QQQM close-to-close series"
+      }
+    },
+    "executionInstrument": {
+      "gasSymbol": "UNG",
+      "contract": "Alpaca equity/ETF execution"
+    },
     "maxDrawdownPromotionFloorPct": -20
   },
   "selected": {
@@ -352,6 +372,7 @@
   },
   "outputFiles": {
     "selectedTrades": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+    "displayCurve": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/display-curve.csv",
     "candidateSummary": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/candidate-summary.csv",
     "runSummary": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json"
   },

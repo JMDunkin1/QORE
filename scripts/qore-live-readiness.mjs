@@ -5,6 +5,9 @@ import path from 'node:path'
 import process from 'node:process'
 import { spawnSync } from 'node:child_process'
 import { loadLocalEnv } from './local-env.mjs'
+import { inspectGitWorkingTree } from './lib/qore-git-state.mjs'
+import { liveInferenceProvenanceBlocks } from './lib/qore-live-inference-provenance.mjs'
+import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
@@ -14,7 +17,7 @@ const jsonOutput = rawArgs.includes('--json')
 const localOnly = rawArgs.includes('--local-only')
 const supervisorPrestart = rawArgs.includes('--supervisor-prestart')
 const mode = normalizeMode(argValue('--mode') ?? process.env.QORE_BROKER_MODE ?? 'dry-run')
-const weatherStateDir = path.resolve(process.env.QORE_LIVE_WEATHER_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-weather'))
+const { stateDir: weatherStateDir } = resolveLiveWeatherPaths(repoDir)
 const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(weatherStateDir, 'signal-intent-reconcile.json'))
 const maxSignalAgeDays = 1
 const checks = []
@@ -39,7 +42,7 @@ function truthy(value) {
 function signalFreshness(signalHandoff) {
   const issueDate = signalHandoff?.inference?.forecastValidation?.latestCommonIssueDate
   const targetDate = signalHandoff?.intent?.targetDate
-  const freshnessDate = issueDate ?? targetDate
+  const freshnessDate = mode === 'dry-run' ? issueDate ?? targetDate : issueDate
   const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(freshnessDate ?? ''))
     ? new Date(`${freshnessDate}T00:00:00Z`)
     : null
@@ -51,7 +54,7 @@ function signalFreshness(signalHandoff) {
   return {
     ageDays,
     freshnessDate,
-    source: issueDate ? 'validated inference issue date' : 'target date',
+    source: issueDate ? 'validated inference issue date' : mode === 'dry-run' ? 'target date' : 'validated inference issue date',
     stale: signalHandoff?.stale === true || ageDays === null || ageDays < 0 || ageDays > maxSignalAgeDays,
   }
 }
@@ -85,50 +88,18 @@ function checkEnvFile(fileName) {
   return true
 }
 
-const generatedArtifactPrefixes = [
-  'data/qore/fundamentals/eia/',
-  'data/qore/market/yahoo/',
-  'data/qore/research/',
-  'data/qore/runs/',
-  'data/qore/weather/',
-]
-
-function isGeneratedArtifactPath(filePath) {
-  if (filePath === 'data/qore/dataset-manifest.json') return true
-  return generatedArtifactPrefixes.some((prefix) => filePath.startsWith(prefix)) && /\.(?:csv|json)$/.test(filePath)
-}
-
-function changedPathsFromStatus(output) {
-  const records = output.split('\0')
-  const changedPaths = []
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index]
-    if (!record) continue
-    const status = record.slice(0, 2)
-    changedPaths.push(record.slice(3))
-    if (status.includes('R') || status.includes('C')) {
-      const sourcePath = records[index + 1]
-      if (sourcePath) changedPaths.push(sourcePath)
-      index += 1
-    }
-  }
-  return [...new Set(changedPaths.filter(Boolean))]
-}
-
 function checkGitState() {
-  const status = command('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'])
-  if (status.status !== 0) {
-    add('git-state', 'Git working tree', 'block', status.stderr.trim() || 'Could not read Git working tree state.')
-  } else if (status.stdout.trim()) {
-    const changedPaths = changedPathsFromStatus(status.stdout)
-    const codeOrConfigPaths = changedPaths.filter((filePath) => !isGeneratedArtifactPath(filePath))
+  const state = inspectGitWorkingTree(repoDir)
+  if (!state.readable) {
+    add('git-state', 'Git working tree', 'block', state.error)
+  } else if (state.changedPaths.length) {
     add(
       'git-state',
       'Git working tree',
-      mode === 'live' && codeOrConfigPaths.length ? 'block' : 'warn',
-      codeOrConfigPaths.length
-        ? `Working tree has ${codeOrConfigPaths.length} code/config change(s) and ${changedPaths.length - codeOrConfigPaths.length} generated data change(s); deploy a reviewed commit for reproducible operation.`
-        : `Working tree contains ${changedPaths.length} generated data artifact change(s), which is expected after a live refresh.`,
+      mode === 'live' && state.codeOrConfigPaths.length ? 'block' : 'warn',
+      state.codeOrConfigPaths.length
+        ? `Working tree has ${state.codeOrConfigPaths.length} code/config change(s) and ${state.generatedArtifactPaths.length} generated data change(s); deploy a reviewed commit for reproducible operation.`
+        : `Working tree contains ${state.generatedArtifactPaths.length} generated data artifact change(s), which is expected after a live refresh.`,
     )
   } else {
     add('git-state', 'Git working tree', 'pass', 'Working tree is clean.')
@@ -206,16 +177,23 @@ if (!supervisorPrestart && dataManifest) {
 }
 
 const signalHandoff = readJson(signalIntentPath)
-if (!supervisorPrestart && signalHandoff?.inference?.validated === true && signalHandoff.inference.liveForecastAppliedToTarget === true) {
+const inferenceProvenanceBlocks = liveInferenceProvenanceBlocks(signalHandoff)
+if (
+  !supervisorPrestart
+  && signalHandoff?.inference?.strategyId === 'ngas-all-year-beta'
+  && signalHandoff.inference.validated === true
+  && signalHandoff.inference.liveForecastAppliedToTarget === true
+  && (mode === 'dry-run' || inferenceProvenanceBlocks.length === 0)
+) {
   add('live-strategy-inference', 'Current forecast strategy inference', 'pass', 'The current validated forecast was applied to the target-weight inference.')
 } else if (!supervisorPrestart) {
   add(
     'live-strategy-inference',
     'Current forecast strategy inference',
-    mode === 'live' ? 'block' : 'warn',
+    mode === 'dry-run' ? 'warn' : 'block',
     signalHandoff
-      ? `The configured signal handoff does not contain validated live inference (${path.relative(repoDir, signalIntentPath)}). Real-money mode remains blocked.`
-      : `The configured signal handoff is missing or malformed (${path.relative(repoDir, signalIntentPath)}). Real-money mode remains blocked.`,
+      ? `The configured signal handoff does not contain validated production live inference (${path.relative(repoDir, signalIntentPath)}): ${inferenceProvenanceBlocks.join('; ') || 'identity/validation flags are incomplete'}. Paper/live routing remains blocked.`
+      : `The configured signal handoff is missing or malformed (${path.relative(repoDir, signalIntentPath)}). Paper/live routing remains blocked.`,
   )
 }
 
@@ -224,9 +202,11 @@ if (!supervisorPrestart) {
   add(
     'live-strategy-freshness',
     'Current forecast strategy freshness',
-    currentSignalFreshness.stale ? (mode === 'live' ? 'block' : 'warn') : 'pass',
+    currentSignalFreshness.stale ? (mode === 'dry-run' ? 'warn' : 'block') : 'pass',
     currentSignalFreshness.ageDays === null
-      ? 'The signal handoff has no valid validated inference issue date or target date.'
+      ? mode === 'dry-run'
+        ? 'The signal handoff has no valid validated inference issue date or target date.'
+        : 'The signal handoff has no valid validated inference issue date.'
       : `${currentSignalFreshness.source} ${currentSignalFreshness.freshnessDate} is ${currentSignalFreshness.ageDays.toFixed(1)} calendar day(s) old; cap is ${maxSignalAgeDays} day.`,
   )
 }
@@ -326,9 +306,9 @@ if (!localOnly && mode !== 'dry-run' && apiKey && secretKey) {
     const rawAccount = status.rawAccount ?? {}
     const accountReady =
       rawAccount.status === 'ACTIVE' &&
-      rawAccount.tradingBlocked !== true &&
-      rawAccount.accountBlocked !== true &&
-      rawAccount.tradeSuspendedByUser !== true
+      rawAccount.tradingBlocked === false &&
+      rawAccount.accountBlocked === false &&
+      rawAccount.tradeSuspendedByUser === false
     add(
       'broker-account-status',
       'Alpaca account status',

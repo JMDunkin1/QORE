@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { loadLocalEnv } from './local-env.mjs'
+import { omitApiKeyFields, redactSecretText } from './lib/secret-redaction.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
@@ -68,12 +69,8 @@ const forecastModels = [
 const marketSymbols = [
   { symbol: 'UNG', label: 'United States Natural Gas Fund', period1: 1176903000 },
   { symbol: 'NG=F', label: 'Yahoo continuous front-month natural gas future', period1: 967608000 },
-  { symbol: 'SPY', label: 'SPDR S&P 500 ETF Trust', period1: 728265600, persistRawJson: false },
   { symbol: 'VOO', label: 'Vanguard S&P 500 ETF', period1: 1283990400, persistRawJson: false },
-  { symbol: 'DIA', label: 'SPDR Dow Jones Industrial Average ETF Trust', period1: 852076800, persistRawJson: false },
-  { symbol: 'QQQ', label: 'Invesco QQQ Trust', period1: 921024000, persistRawJson: false },
   { symbol: 'QQQM', label: 'Invesco NASDAQ 100 ETF', period1: 1602547200, persistRawJson: false },
-  { symbol: 'IWM', label: 'iShares Russell 2000 ETF', period1: 959904000, persistRawJson: false },
 ]
 
 function csvEscape(value) {
@@ -173,7 +170,8 @@ async function ensureDir(dir) {
   await mkdir(dir, { recursive: true })
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, options = {}) {
+  const redactSecrets = options.redactSecrets ?? []
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -183,11 +181,13 @@ async function fetchJson(url) {
     })
     const text = await response.text()
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${text.slice(0, 180)}`)
+      const safeText = redactSecrets.length ? redactSecretText(text, redactSecrets) : text
+      throw new Error(`HTTP ${response.status}: ${safeText.slice(0, 180)}`)
     }
     const json = JSON.parse(text)
     if (json?.error) {
-      throw new Error(json.reason ?? JSON.stringify(json.error))
+      const detail = json.reason ?? JSON.stringify(json.error)
+      throw new Error(redactSecrets.length ? redactSecretText(detail, redactSecrets) : detail)
     }
     return json
   } finally {
@@ -435,7 +435,7 @@ async function collectEiaStorage(manifest) {
   url.searchParams.set('length', '5000')
 
   try {
-    const json = await fetchJson(url)
+    const json = omitApiKeyFields(await fetchJson(url, { redactSecrets: [eiaApiKey] }), [eiaApiKey])
     const rows = (json.response?.data ?? [])
       .map((row) => ({
         date: row.period,
@@ -460,12 +460,13 @@ async function collectEiaStorage(manifest) {
     console.log(`eia storage ok: ${rows.length} rows`)
     return rows
   } catch (error) {
+    const safeError = redactSecretText(error.message, [eiaApiKey])
     manifest.fundamentals.eiaStorage.push({
       status: 'failed',
-      error: error.message,
-      url: url.toString().replace(eiaApiKey, 'REDACTED'),
+      error: safeError,
+      url: redactSecretText(url, [eiaApiKey]),
     })
-    console.warn(`eia storage failed: ${error.message}`)
+    console.warn(`eia storage failed: ${safeError}`)
     return []
   }
 }
@@ -649,7 +650,7 @@ async function buildActualArcticBlastEvents(manifest) {
   if (skipNasaPower) {
     manifest.weather.actualArcticBlastEvents.push({
       status: 'skipped',
-      reason: 'QORE_SKIP_NASA_POWER is enabled; keeping existing actual arctic blast event files.',
+      reason: 'QORE_SKIP_NASA_POWER is enabled; keeping the existing natural-gas daily weather file.',
     })
     return
   }
@@ -701,87 +702,7 @@ async function buildActualArcticBlastEvents(manifest) {
       }
     })
 
-  function eventRowsFor(dayRows, prefix) {
-    const events = []
-    let current = null
-
-    for (const row of dayRows) {
-      if (!row.qualifies) {
-        if (current) events.push(current)
-        current = null
-        continue
-      }
-
-      if (!current) {
-        current = {
-          eventId: `${prefix}-${events.length + 1}`,
-          startDate: row.date,
-          endDate: row.date,
-          peakDate: row.date,
-          minWeightedAnomalyF: row.weightedAnomalyF,
-          maxCoveragePct: row.coveragePct,
-          qualifyingDays: 1,
-          source: 'NASA POWER actual anomaly basket',
-        }
-        continue
-      }
-
-      current.endDate = row.date
-      current.qualifyingDays += 1
-      if (row.weightedAnomalyF < current.minWeightedAnomalyF) {
-        current.minWeightedAnomalyF = row.weightedAnomalyF
-        current.peakDate = row.date
-      }
-      current.maxCoveragePct = Math.max(current.maxCoveragePct, row.coveragePct)
-    }
-
-    if (current) events.push(current)
-    return events
-  }
-
-  const events = eventRowsFor(dailyRows, 'actual-cold')
-  const heatingEvents = eventRowsFor(
-    dailyRows.map((row) => ({
-      ...row,
-      qualifies: row.qualifies && row.heatingSeason,
-    })),
-    'actual-heating-cold',
-  )
-
-  function windowRowsFor(events) {
-    return events.flatMap((event) => [
-      {
-        eventId: event.eventId,
-        windowId: 'rumor',
-        startDate: addDays(event.startDate, -10),
-        endDate: addDays(event.startDate, -7),
-        tradeQuestion: 'Did broad 7-10 day forecast cold bid UNG before the event?',
-      },
-      {
-        eventId: event.eventId,
-        windowId: 'selloff',
-        startDate: addDays(event.startDate, -3),
-        endDate: addDays(event.startDate, -1),
-        tradeQuestion: 'Did UNG fade in the 1-3 day buy-the-rumor/sell-the-news window?',
-      },
-      {
-        eventId: event.eventId,
-        windowId: 'event',
-        startDate: event.startDate,
-        endDate: event.endDate,
-        tradeQuestion: 'What happened while the actual cold event was present?',
-      },
-    ])
-  }
-
-  const windows = windowRowsFor(events)
-  const heatingWindows = windowRowsFor(heatingEvents)
-
   const dailyPath = path.join(eventDir, `arctic-blast-actual-daily-${startDate}-${endDate}.csv`)
-  const eventsPath = path.join(eventDir, `arctic-blast-actual-events-${startDate}-${endDate}.csv`)
-  const windowsPath = path.join(eventDir, `arctic-blast-trade-windows-${startDate}-${endDate}.csv`)
-  const heatingEventsPath = path.join(eventDir, `arctic-blast-heating-season-events-${startDate}-${endDate}.csv`)
-  const heatingWindowsPath = path.join(eventDir, `arctic-blast-heating-season-trade-windows-${startDate}-${endDate}.csv`)
   await writeCsv(dailyPath, dailyRows, [
     'date',
     'weightedAnomalyF',
@@ -793,38 +714,12 @@ async function buildActualArcticBlastEvents(manifest) {
     'qualifies',
     'source',
   ])
-  await writeCsv(eventsPath, events, [
-    'eventId',
-    'startDate',
-    'endDate',
-    'peakDate',
-    'minWeightedAnomalyF',
-    'maxCoveragePct',
-    'qualifyingDays',
-    'source',
-  ])
-  await writeCsv(windowsPath, windows, ['eventId', 'windowId', 'startDate', 'endDate', 'tradeQuestion'])
-  await writeCsv(heatingEventsPath, heatingEvents, [
-    'eventId',
-    'startDate',
-    'endDate',
-    'peakDate',
-    'minWeightedAnomalyF',
-    'maxCoveragePct',
-    'qualifyingDays',
-    'source',
-  ])
-  await writeCsv(heatingWindowsPath, heatingWindows, ['eventId', 'windowId', 'startDate', 'endDate', 'tradeQuestion'])
   manifest.weather.actualArcticBlastEvents.push({
     status: 'ok',
     dailyRows: dailyRows.length,
-    eventRows: events.length,
-    windowRows: windows.length,
-    heatingSeasonEventRows: heatingEvents.length,
-    heatingSeasonWindowRows: heatingWindows.length,
-    files: [dailyPath, eventsPath, windowsPath, heatingEventsPath, heatingWindowsPath].map((file) => path.relative(repoDir, file)),
+    files: [path.relative(repoDir, dailyPath)],
   })
-  console.log(`actual arctic events ok: ${events.length} events, ${heatingEvents.length} heating-season events`)
+  console.log(`natural-gas daily weather ok: ${dailyRows.length} rows`)
 }
 
 async function collectNormals(manifest) {
@@ -1077,7 +972,7 @@ async function maybeReadPreviousManifest() {
 }
 
 async function main() {
-  const profile = process.env.QORE_COLLECT_PROFILE ?? 'arctic-blast-history'
+  const profile = process.env.QORE_COLLECT_PROFILE ?? 'ngas-all-year'
   const previousManifest = await maybeReadPreviousManifest()
   const defaultSharedDataRoot = path.join(repoDir, 'data', 'qore')
   const sharedDataRoot = path.resolve(dataRoot) === path.resolve(defaultSharedDataRoot)

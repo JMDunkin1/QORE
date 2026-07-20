@@ -16,17 +16,17 @@ const repoDir = process.cwd()
 loadLocalEnv(repoDir)
 
 const dataRoot = process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore')
-const outputRoot = process.env.QORE_GFS_OUTPUT_ROOT ?? dataRoot
+const outputRoot = path.resolve(process.env.QORE_GFS_OUTPUT_ROOT ?? dataRoot)
 const forecastSource = process.env.QORE_FORECAST_SOURCE ?? 'gfs'
 const latestCompleteDate = addDays(new Date().toISOString().slice(0, 10), -1)
-const startDate = process.env.QORE_GFS_CALENDAR_START ?? process.env.QORE_TEST_START ?? '2021-01-01'
-const endDate = process.env.QORE_GFS_CALENDAR_END ?? process.env.QORE_TEST_END ?? latestCompleteDate
-const issueEndDate = process.env.QORE_GFS_CALENDAR_ISSUE_END ?? endDate
-const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
-const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
-const runHour = process.env.QORE_GFS_RUN_HOUR ?? '00'
-const leadDays = listFromEnv('QORE_GFS_LEAD_DAYS', [1, 2, 3, 7, 8, 9, 10]).map(Number)
-const validHoursUtc = listFromEnv('QORE_GFS_VALID_HOURS', [0]).map(Number)
+const startDate = validatedDate(process.env.QORE_GFS_CALENDAR_START ?? process.env.QORE_TEST_START ?? '2021-01-01', 'calendar start')
+const endDate = validatedDate(process.env.QORE_GFS_CALENDAR_END ?? process.env.QORE_TEST_END ?? latestCompleteDate, 'calendar end')
+const issueEndDate = validatedDate(process.env.QORE_GFS_CALENDAR_ISSUE_END ?? endDate, 'calendar issue end')
+const normalStartDate = validatedDate(process.env.QORE_NORMAL_START ?? '1991-01-01', 'normal start')
+const normalEndDate = validatedDate(process.env.QORE_NORMAL_END ?? '2020-12-31', 'normal end')
+const runHour = validatedRunHour(process.env.QORE_GFS_RUN_HOUR ?? '00')
+const leadDays = validatedIntegerList(listFromEnv('QORE_GFS_LEAD_DAYS', [1, 2, 3, 7, 8, 9, 10]), 'lead days', 0, 100)
+const validHoursUtc = validatedIntegerList(listFromEnv('QORE_GFS_VALID_HOURS', [0]), 'valid hours', 0, 23)
 const coolingSeasonOnly = truthy(process.env.QORE_GFS_COOLING_SEASON_ONLY)
 const heatingSeasonOnly = truthy(process.env.QORE_GFS_HEATING_SEASON_ONLY ?? (coolingSeasonOnly ? 'false' : 'true'))
 const resume = truthy(process.env.QORE_GFS_RESUME)
@@ -38,6 +38,11 @@ const timeoutMs = Number(process.env.QORE_FETCH_TIMEOUT_MS ?? 30000)
 if (heatingSeasonOnly && coolingSeasonOnly) {
   throw new Error('Set only one seasonal calendar filter: QORE_GFS_HEATING_SEASON_ONLY or QORE_GFS_COOLING_SEASON_ONLY.')
 }
+if (startDate > endDate) throw new Error('QORE GFS calendar start must not be after calendar end.')
+if (issueEndDate < startDate || issueEndDate > endDate) {
+  throw new Error('QORE GFS calendar issue end must be between calendar start and calendar end.')
+}
+if (normalStartDate > normalEndDate) throw new Error('QORE normal start must not be after normal end.')
 
 const arcticBlastThresholds = {
   coldAnomalyF: -8,
@@ -147,20 +152,23 @@ const sourceConfigs = {
     openMeteoModel: 'gem_global',
   },
 }
-const sourceConfig = sourceConfigs[forecastSource]
+const sourceConfig = Object.hasOwn(sourceConfigs, forecastSource) ? sourceConfigs[forecastSource] : null
 if (!sourceConfig) {
   throw new Error(`Unsupported QORE_FORECAST_SOURCE=${forecastSource}. Expected one of: ${Object.keys(sourceConfigs).join(', ')}`)
 }
 const rangeLabel = `${startDate}-${endDate}`
 const validHourLabel = validHoursUtc.join('-')
 const leadLabel = leadDays.join('-')
-const baseName =
-  process.env.QORE_GFS_OUTPUT_BASENAME ??
-  `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
-const anomalyPath = path.join(outputRoot, 'weather', sourceConfig.weatherDir, `${baseName}-location-anomalies.csv`)
-const scorePath = path.join(outputRoot, 'research', `${baseName}-signal-scores.csv`)
-const returnsPath = path.join(outputRoot, 'research', `${baseName}-signal-returns.csv`)
-const manifestPath = path.join(outputRoot, 'weather', sourceConfig.weatherDir, `${baseName}-manifest.json`)
+const defaultBaseName = `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
+const baseName = validatedOutputBasename(
+  truthy(process.env.QORE_GFS_FORCE_DEFAULT_OUTPUT_BASENAME)
+    ? defaultBaseName
+    : process.env.QORE_GFS_OUTPUT_BASENAME ?? defaultBaseName,
+)
+const anomalyPath = resolveOutputPath('weather', sourceConfig.weatherDir, `${baseName}-location-anomalies.csv`)
+const scorePath = resolveOutputPath('research', `${baseName}-signal-scores.csv`)
+const returnsPath = resolveOutputPath('research', `${baseName}-signal-returns.csv`)
+const manifestPath = resolveOutputPath('weather', sourceConfig.weatherDir, `${baseName}-manifest.json`)
 
 const anomalyHeaders = [
   'issueDate',
@@ -226,6 +234,56 @@ function listFromEnv(key, fallback) {
   const value = process.env[key]
   if (!value) return fallback
   return value.split(',').map((part) => part.trim()).filter(Boolean)
+}
+
+function validatedDate(value, label) {
+  const text = String(value ?? '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`QORE GFS ${label} must be a valid YYYY-MM-DD date.`)
+  const parsed = new Date(`${text}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+    throw new Error(`QORE GFS ${label} must be a valid YYYY-MM-DD date.`)
+  }
+  return text
+}
+
+function validatedRunHour(value) {
+  const text = String(value ?? '')
+  if (!/^\d{2}$/.test(text) || Number(text) < 0 || Number(text) > 23) {
+    throw new Error('QORE_GFS_RUN_HOUR must be a two-digit UTC hour from 00 through 23.')
+  }
+  return text
+}
+
+function validatedIntegerList(values, label, min, max) {
+  const parsed = values.map(Number)
+  if (!parsed.length || parsed.some((value) => !Number.isInteger(value) || value < min || value > max)) {
+    throw new Error(`QORE GFS ${label} must contain only integers from ${min} through ${max}.`)
+  }
+  return parsed
+}
+
+function validatedOutputBasename(value) {
+  const text = String(value ?? '')
+  if (
+    !text ||
+    text.length > 220 ||
+    text === '.' ||
+    text === '..' ||
+    path.basename(text) !== text ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(text)
+  ) {
+    throw new Error('QORE_GFS_OUTPUT_BASENAME must be a single safe filename component.')
+  }
+  return text
+}
+
+function resolveOutputPath(...segments) {
+  const filePath = path.resolve(outputRoot, ...segments)
+  const relativePath = path.relative(outputRoot, filePath)
+  if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+    throw new Error('QORE GFS output path must remain beneath QORE_GFS_OUTPUT_ROOT.')
+  }
+  return filePath
 }
 
 function truthy(value) {

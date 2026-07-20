@@ -7,6 +7,8 @@ import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
 import { nominalEiaStorageReleaseAt } from './lib/eia-release-time.mjs'
+import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
+import { omitApiKeyFields, redactSecretText } from './lib/secret-redaction.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
@@ -40,7 +42,12 @@ const normalStartDate = process.env.QORE_NORMAL_START ?? '1991-01-01'
 const normalEndDate = process.env.QORE_NORMAL_END ?? '2020-12-31'
 const liveModels = settingList('QORE_LIVE_WEATHER_MODELS', 'models', ['ecmwf_ifs025', 'gfs_global'])
 const liveCadenceSettings = liveWeatherSettings.liveCadences ?? liveWeatherSettings.additionalLiveCadences ?? {}
-const stateDir = path.resolve(process.env.QORE_LIVE_WEATHER_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-weather'))
+const { stateDir, operatorStatePath, operatorStateSource } = resolveLiveWeatherPaths(repoDir)
+const legacyOperatorStateFile = selectedProfile.cadences?.riskAndKillSwitchState?.operatorStateFile
+  ?? liveCadenceSettings.riskAndKillSwitchState?.operatorStateFile
+if (legacyOperatorStateFile !== undefined) {
+  console.error('QORE warning: ignored deprecated riskAndKillSwitchState.operatorStateFile; use QORE_LIVE_OPERATOR_STATE_FILE or QORE_LIVE_WEATHER_STATE_DIR.')
+}
 const statusPath = path.resolve(process.env.QORE_LIVE_WEATHER_STATUS_FILE ?? path.join(stateDir, 'status.json'))
 const snapshotPath = path.resolve(process.env.QORE_LIVE_WEATHER_SNAPSHOT_FILE ?? path.join(stateDir, 'current-weather-snapshot.json'))
 const scoreCsvPath = path.resolve(process.env.QORE_LIVE_WEATHER_SCORE_CSV ?? path.join(stateDir, 'current-weather-scores.csv'))
@@ -56,15 +63,17 @@ const eiaStoragePath = path.resolve(process.env.QORE_LIVE_EIA_STORAGE_FILE ?? pa
 const locationsPath = path.join(repoDir, 'data', 'qore', 'weather', 'locations.csv')
 const indexBasketConfigPath = path.join(repoDir, 'data', 'qore', 'market', 'index-basket-config.json')
 const localEiaStoragePath = path.join(repoDir, 'data', 'qore', 'fundamentals', 'eia', 'working-gas-storage-lower48-weekly.csv')
-const comparisonSummaryPath = path.join(
-  repoDir,
-  'data',
-  'qore',
-  'research',
-  'strategy-agent-runs',
-  'ngas-live-weather-refresh',
-  'comparison-summary.json',
+const comparisonInputPath = path.resolve(
+  process.env.QORE_NGAS_LIVE_WEATHER_REFRESH_INPUT_FILE ??
+    path.join(repoDir, 'data', 'qore', 'research', 'strategy-agent-runs', 'ngas-all-year-beta', 'selected-trades.csv'),
 )
+const comparisonOutputDir = path.resolve(
+  process.env.QORE_NGAS_LIVE_WEATHER_REFRESH_OUTPUT_DIR ??
+    path.join(repoDir, '.local', 'qore', 'ngas-live-weather-refresh'),
+)
+const comparisonSummaryPath = path.join(comparisonOutputDir, 'comparison-summary.json')
+const forecastCalendarOutputRoot = path.join(stateDir, 'forecast-calendar')
+const forecastCalendarSources = new Set(['gfs', 'gefs-mean', 'graphcastgfs', 'aigfs', 'ecmwf-ifs', 'ecmwf-aifs', 'gem-global'])
 
 let lastPerformanceRunAt = null
 let lastForecastCalendarRunAt = null
@@ -180,6 +189,86 @@ function round(value, digits = 3) {
 function numericValue(value, fallback = 0) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function strictFiniteNumber(value, label) {
+  if (value === null || value === undefined || value === '') {
+    throw new Error(`Validated live inference ${label} is missing or non-finite.`)
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) throw new Error(`Validated live inference ${label} is missing or non-finite.`)
+  return parsed
+}
+
+function strictDate(value, label) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) {
+    throw new Error(`Validated live inference ${label} must be a valid YYYY-MM-DD date.`)
+  }
+  const parsed = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new Error(`Validated live inference ${label} must be a valid YYYY-MM-DD date.`)
+  }
+  return value
+}
+
+function forecastCalendarDate(value, label) {
+  const text = String(value ?? '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw new Error(`Live forecast calendar ${label} must be a valid YYYY-MM-DD date.`)
+  }
+  const parsed = new Date(`${text}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+    throw new Error(`Live forecast calendar ${label} must be a valid YYYY-MM-DD date.`)
+  }
+  return text
+}
+
+function forecastCalendarRunHour(value) {
+  const text = String(value ?? '')
+  if (!/^\d{2}$/.test(text) || Number(text) < 0 || Number(text) > 23) {
+    throw new Error('Live forecast calendar run hours must be two-digit UTC hours from 00 through 23.')
+  }
+  return text
+}
+
+function forecastCalendarSource(value) {
+  const text = String(value ?? '')
+  if (!forecastCalendarSources.has(text)) throw new Error(`Unsupported live forecast calendar source: ${text || 'empty'}.`)
+  return text
+}
+
+function validatedLiveTargetContract(target, inference) {
+  if (inference?.strategyId !== 'ngas-all-year-beta' || target?.strategyId !== 'ngas-all-year-beta') {
+    throw new Error('Validated live inference and target strategyId must equal ngas-all-year-beta.')
+  }
+  const gasPosition = strictFiniteNumber(target?.gasPosition, 'target.gasPosition')
+  const indexFraction = strictFiniteNumber(target?.indexFraction, 'target.indexFraction')
+  const cashFraction = strictFiniteNumber(target?.cashFraction, 'target.cashFraction')
+  const confidence = strictFiniteNumber(target?.confidence, 'target.confidence')
+  if (gasPosition < -1 || gasPosition > 1) throw new Error('Validated live inference target.gasPosition must be between -1 and 1.')
+  if (indexFraction < 0 || indexFraction > 1) throw new Error('Validated live inference target.indexFraction must be between 0 and 1.')
+  if (cashFraction < 0 || cashFraction > 1) throw new Error('Validated live inference target.cashFraction must be between 0 and 1.')
+  if (confidence < 0 || confidence > 1) throw new Error('Validated live inference target.confidence must be between 0 and 1.')
+  const allocationTotal = Math.abs(gasPosition) + indexFraction + cashFraction
+  if (Math.abs(allocationTotal - 1) > 0.001) {
+    throw new Error(
+      `Validated live inference target weights are out of contract: abs(gasPosition) + indexFraction + cashFraction must equal 1 (received ${round(allocationTotal, 6)}).`,
+    )
+  }
+  const direction = gasPosition > 0 ? 'long' : gasPosition < 0 ? 'short' : 'flat'
+  if (target?.direction !== direction) {
+    throw new Error(`Validated live inference target.direction must be ${direction} when gasPosition is ${gasPosition}.`)
+  }
+  return {
+    gasPosition,
+    indexFraction,
+    cashFraction,
+    confidence,
+    direction,
+    signalDate: strictDate(target?.signalDate, 'target.signalDate'),
+    targetDate: strictDate(target?.targetDate, 'target.targetDate'),
+    validatedIssueDate: strictDate(inference?.forecastValidation?.latestCommonIssueDate, 'forecastValidation.latestCommonIssueDate'),
+  }
 }
 
 function relative(filePath) {
@@ -323,7 +412,8 @@ function normalMeansByMonthDay(locationId) {
   )
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, options = {}) {
+  const redactSecrets = options.redactSecrets ?? []
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs)
   try {
@@ -332,9 +422,15 @@ async function fetchJson(url) {
       signal: controller.signal,
     })
     const text = await response.text()
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 180)}`)
+    if (!response.ok) {
+      const safeText = redactSecrets.length ? redactSecretText(text, redactSecrets) : text
+      throw new Error(`HTTP ${response.status}: ${safeText.slice(0, 180)}`)
+    }
     const json = JSON.parse(text)
-    if (json?.error) throw new Error(json.reason ?? JSON.stringify(json.error))
+    if (json?.error) {
+      const detail = json.reason ?? JSON.stringify(json.error)
+      throw new Error(redactSecrets.length ? redactSecretText(detail, redactSecrets) : detail)
+    }
     return json
   } finally {
     clearTimeout(timeout)
@@ -733,7 +829,7 @@ async function collectBrokerAccountAndPositions() {
     },
     notes: sourceSnapshot
       ? ['Broker/account state is being read from the separate Alpaca reconciler snapshot. This weather service does not submit orders itself.']
-      : ['No Alpaca reconciler snapshot is present yet. Run npm run broker:alpaca:status to populate the configured snapshot file.'],
+      : ['No Alpaca reconciler snapshot is present yet. Run npm run broker:status to populate the configured snapshot file.'],
     files: {
       snapshot: relative(brokerAccountPath),
     },
@@ -758,26 +854,32 @@ function storageInferenceIsCoherent(inference, eia) {
 
 async function collectRiskAndKillSwitchState() {
   const generatedAt = new Date().toISOString()
-  const operatorStateFile = jobSettingPath('riskAndKillSwitchState', 'operatorStateFile', '.local/qore/live-weather/operator-state.json')
-  const operatorFile = await readJsonIfExists(operatorStateFile)
+  const operatorFile = await readJsonIfExists(operatorStatePath)
   const market = latestJobOutputs.marketReferencePrices
   const broker = latestJobOutputs.brokerAccountAndPositions
   const weather = latestJobOutputs.currentWeather
   const eia = latestJobOutputs.eiaStorageReleaseWindow
   const inference = latestJobOutputs.strategyInference ?? (await readJsonIfExists(liveInferencePath))
   const storageContextCoherent = storageInferenceIsCoherent(inference, eia)
-  const operator = {
-    killSwitchEngaged: operatorFile?.killSwitchEngaged ?? truthy(process.env.QORE_KILL_SWITCH_ENGAGED),
-    venueOpen: operatorFile?.venueOpen ?? isUsEquityMarketOpen(),
-    manualApproval: operatorFile?.manualApproval ?? false,
-    source: operatorFile ? 'operator-state-file' : 'derived-defaults',
-  }
+  const operatorStateValid = typeof operatorFile?.killSwitchEngaged === 'boolean'
+  const operator = operatorStateValid
+    ? {
+        killSwitchEngaged: operatorFile.killSwitchEngaged,
+        venueOpen: operatorFile?.venueOpen ?? isUsEquityMarketOpen(),
+        manualApproval: operatorFile?.manualApproval ?? false,
+        source: 'operator-state-file',
+      }
+    : null
+  const operatorBlock = operatorFile
+    ? 'Operator state is invalid; killSwitchEngaged must be boolean.'
+    : `Operator state is missing at ${relative(operatorStatePath)}; explicitly engage or clear the kill switch before paper/live routing.`
   const snapshot = {
     generatedAt,
     serviceId: 'qore-live-risk-and-kill-switch-state',
     liveRoutingEnabled: Boolean(broker?.liveRoutingEnabled),
-    operatorStateFile: relative(operatorStateFile),
+    operatorStateFile: relative(operatorStatePath),
     operator,
+    blockedReasons: operatorStateValid ? [] : [operatorBlock],
     account: broker?.account ?? null,
     market: market
       ? {
@@ -789,8 +891,8 @@ async function collectRiskAndKillSwitchState() {
     weather: weather?.riskContext ?? null,
     storage: storageContextCoherent ? eia.riskContext : null,
     readiness: {
-      killSwitchClear: !operator.killSwitchEngaged,
-      venueOpen: operator.venueOpen,
+      killSwitchClear: operatorStateValid ? !operator.killSwitchEngaged : null,
+      venueOpen: operator?.venueOpen ?? null,
       accountContextPresent: Boolean(broker?.account),
       marketContextPresent: Boolean(market?.referencePrices && Object.keys(market.referencePrices).length),
       weatherContextPresent: Boolean(weather?.riskContext),
@@ -816,11 +918,16 @@ async function reconcileSignalIntent() {
     throw new Error(`Live strategy inference storage input does not match polled EIA release ${eia.latestStorage.date}.`)
   }
   const latest = inference.target
-  const gasPosition = numericValue(latest.gasPosition, 0)
-  const indexFraction = numericValue(latest.indexFraction, Math.max(0, 1 - Math.abs(gasPosition)))
-  const cashFraction = numericValue(latest.cashFraction, Math.max(0, 1 - indexFraction - Math.abs(gasPosition)))
-  const signalDate = latest.signalDate
-  const validatedIssueDate = inference.forecastValidation.latestCommonIssueDate
+  const {
+    gasPosition,
+    indexFraction,
+    cashFraction,
+    confidence,
+    direction,
+    signalDate,
+    targetDate,
+    validatedIssueDate,
+  } = validatedLiveTargetContract(latest, inference)
   const signalAgeDays = validatedIssueDate
     ? Math.max(0, (Date.parse(`${generatedAt.slice(0, 10)}T00:00:00Z`) - Date.parse(`${validatedIssueDate}T00:00:00Z`)) / 86400000)
     : null
@@ -829,10 +936,10 @@ async function reconcileSignalIntent() {
     strategyName: 'NGAS All-Year Beta',
     generatedAt,
     signalDate,
-    targetDate: latest.targetDate,
+    targetDate,
     instrument: 'UNG',
-    direction: gasPosition > 0 ? 'long' : gasPosition < 0 ? 'short' : 'flat',
-    confidence: numericValue(latest.confidence, 0),
+    direction,
+    confidence,
     expectedReturnPct: 0,
     indexFraction: round(indexFraction, 4),
     gasPosition: round(gasPosition, 4),
@@ -853,7 +960,10 @@ async function reconcileSignalIntent() {
     signalAgeDays: signalAgeDays === null ? null : round(signalAgeDays, 2),
     intent,
     inference: {
+      strategyId: inference.strategyId,
       mode: inference.inferenceMode,
+      season: inference.season,
+      targetDate: latest.targetDate,
       liveForecastAppliedToTarget: true,
       validated: true,
       forecastValidation: inference.forecastValidation,
@@ -903,7 +1013,7 @@ async function collectEiaStorageReleaseWindow() {
       url.searchParams.set('sort[0][direction]', 'desc')
       url.searchParams.set('offset', '0')
       url.searchParams.set('length', '12')
-      const json = await fetchJson(url)
+      const json = omitApiKeyFields(await fetchJson(url, { redactSecrets: [eiaApiKey] }), [eiaApiKey])
       liveRows = (json.response?.data ?? [])
         .map((row) => ({
           date: row.period,
@@ -915,7 +1025,7 @@ async function collectEiaStorageReleaseWindow() {
         }))
         .filter((row) => row.date && Number.isFinite(row.storageBcf))
     } catch (error) {
-      liveError = error.message
+      liveError = redactSecretText(error.message, [eiaApiKey])
     }
   }
 
@@ -966,14 +1076,16 @@ async function collectEiaStorageReleaseWindow() {
 function runCommand(label, command, commandArgs, options = {}) {
   const startedAt = new Date()
   const maxOutputChars = 6000
+  const childEnv = {
+    ...process.env,
+    ...(options.env ?? {}),
+  }
+  for (const key of options.unsetEnv ?? []) delete childEnv[key]
 
   return new Promise((resolve) => {
     const child = spawn(command, commandArgs, {
       cwd: repoDir,
-      env: {
-        ...process.env,
-        ...(options.env ?? {}),
-      },
+      env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
@@ -1018,21 +1130,25 @@ async function maybeRunForecastCalendar() {
 
   const today = new Date().toISOString().slice(0, 10)
   const lookbackDays = numberEnv('QORE_LIVE_WEATHER_GFS_LOOKBACK_DAYS', 1)
-  const startDate = process.env.QORE_LIVE_WEATHER_GFS_START ?? addDays(today, -lookbackDays)
-  const endDate = process.env.QORE_LIVE_WEATHER_GFS_END ?? today
-  const runHours = listEnv('QORE_LIVE_WEATHER_GFS_RUN_HOURS', ['00', '06', '12', '18'])
-  const forecastSources = listEnv('QORE_LIVE_WEATHER_GFS_SOURCES', ['gfs', 'gefs-mean'])
+  const startDate = forecastCalendarDate(process.env.QORE_LIVE_WEATHER_GFS_START ?? addDays(today, -lookbackDays), 'start')
+  const endDate = forecastCalendarDate(process.env.QORE_LIVE_WEATHER_GFS_END ?? today, 'end')
+  if (startDate > endDate) throw new Error('Live forecast calendar start must not be after end.')
+  const runHours = listEnv('QORE_LIVE_WEATHER_GFS_RUN_HOURS', ['00', '06', '12', '18']).map(forecastCalendarRunHour)
+  const forecastSources = listEnv('QORE_LIVE_WEATHER_GFS_SOURCES', ['gfs', 'gefs-mean']).map(forecastCalendarSource)
   const commands = []
 
   for (const forecastSource of forecastSources) {
     for (const runHour of runHours) {
       commands.push(
         await runCommand(`forecast-calendar:${forecastSource}:${runHour}z`, process.execPath, ['scripts/build-gfs-forecast-calendar.mjs'], {
+          unsetEnv: ['QORE_GFS_OUTPUT_BASENAME'],
           env: {
             QORE_FORECAST_SOURCE: forecastSource,
             QORE_GFS_RUN_HOUR: runHour,
             QORE_GFS_CALENDAR_START: startDate,
             QORE_GFS_CALENDAR_END: endDate,
+            QORE_GFS_OUTPUT_ROOT: forecastCalendarOutputRoot,
+            QORE_GFS_FORCE_DEFAULT_OUTPUT_BASENAME: '1',
             QORE_GFS_RESUME: '1',
             QORE_GFS_ALLOW_PARTIAL: '1',
             QORE_FETCH_TIMEOUT_MS: String(numberEnv('QORE_LIVE_WEATHER_GFS_FETCH_TIMEOUT_MS', 30_000)),
@@ -1052,7 +1168,12 @@ async function maybeRunPerformanceTest() {
 
   const result = await runCommand('ngas-live-weather-refresh-comparison', process.execPath, [
     'scripts/test-ngas-live-weather-refresh.mjs',
-  ])
+  ], {
+    env: {
+      QORE_NGAS_LIVE_WEATHER_REFRESH_INPUT_FILE: comparisonInputPath,
+      QORE_NGAS_LIVE_WEATHER_REFRESH_OUTPUT_DIR: comparisonOutputDir,
+    },
+  })
   lastPerformanceRunAt = new Date().toISOString()
   return result
 }
@@ -1296,7 +1417,13 @@ async function runCycle() {
       fetchTimeoutMs,
       performanceIntervalMs,
       forecastCalendarIntervalMs,
+      forecastCalendarOutputRoot: relative(forecastCalendarOutputRoot),
       stateDir: relative(stateDir),
+      operatorState: {
+        file: relative(operatorStatePath),
+        source: operatorStateSource,
+        ignoredLegacyCadenceFile: legacyOperatorStateFile ?? null,
+      },
     },
     cadencePlan: {
       currentWeather: {

@@ -4,13 +4,13 @@ import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
+import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
 
 const command = process.argv[2] ?? 'status'
-const stateDir = path.resolve(process.env.QORE_LIVE_WEATHER_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-weather'))
-const operatorStatePath = path.resolve(process.env.QORE_LIVE_OPERATOR_STATE_FILE ?? path.join(stateDir, 'operator-state.json'))
+const { operatorStatePath } = resolveLiveWeatherPaths(repoDir)
 
 async function readState() {
   if (!existsSync(operatorStatePath)) return null
@@ -53,14 +53,20 @@ if (command === 'engage') {
   throw new Error('Use status, engage, or clear.')
 }
 
+const stateValid = typeof state?.killSwitchEngaged === 'boolean'
+
 console.log(
   JSON.stringify(
     {
       serviceId: 'qore-live-kill-switch',
       file: path.relative(repoDir, operatorStatePath),
-      killSwitchEngaged: state?.killSwitchEngaged ?? false,
+      killSwitchEngaged: stateValid ? state.killSwitchEngaged : null,
+      stateValid,
+      blocked: !stateValid || state.killSwitchEngaged,
       updatedAt: state?.updatedAt ?? null,
-      reason: state?.reason ?? 'No operator-state file exists; derived default is clear.',
+      reason: stateValid
+        ? state?.reason ?? (state.killSwitchEngaged ? 'Operator kill switch is engaged.' : 'Operator explicitly cleared the kill switch.')
+        : state ? 'Operator-state file is invalid; killSwitchEngaged must be boolean.' : 'Operator-state file is missing; kill-switch state is UNKNOWN.',
     },
     null,
     2,

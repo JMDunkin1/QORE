@@ -27,7 +27,13 @@
       "maxDailyLossPct": 12,
       "maxTrailingDrawdownPct": 25,
       "maxAllowedSpreadBps": 75,
-      "maxQuoteAgeMinutes": 5
+      "maxQuoteAgeMinutes": 5,
+      "maxQuoteFutureSkewSeconds": 5,
+      "maxClockAgeSeconds": 30,
+      "maxClockFutureSkewSeconds": 5,
+      "alpacaRequestTimeoutMs": 15000,
+      "maxRiskSnapshotAgeSeconds": 900,
+      "maxRiskSnapshotFutureSkewSeconds": 30
     },
     "liveRequiredEnv": {
       "QORE_BROKER_MODE": "live",
@@ -45,8 +51,12 @@
     "marketReference": ".local/qore/live-weather/market-reference-prices.json",
     "riskState": ".local/qore/live-weather/risk-and-kill-switch-state.json",
     "brokerSnapshot": ".local/qore/broker/account-snapshot.json",
+    "brokerAccountStatus": ".local/qore/broker/account-status.json",
     "brokerStatus": ".local/qore/broker/status.json",
+    "brokerLock": ".local/qore/broker/operation.lock",
+    "brokerRiskLedger": ".local/qore/broker/risk-ledger.json",
     "orderLog": ".local/qore/broker/orders.jsonl",
-    "supervisorStatus": ".local/qore/live-trading-supervisor/status.json"
+    "supervisorStatus": ".local/qore/live-trading-supervisor/status.json",
+    "supervisorLock": ".local/qore/live-trading-supervisor/supervisor.lock"
   }
 }
