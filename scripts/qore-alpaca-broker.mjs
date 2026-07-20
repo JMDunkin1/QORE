@@ -486,7 +486,7 @@ async function alpacaDataRequest(endpoint) {
 async function getAlpacaLatestQuotes(symbols) {
   const uniqueSymbols = [...new Set(symbols)].filter((symbol) => alpacaLiveRiskPolicy.allowedInstruments.has(symbol))
   if (!uniqueSymbols.length) {
-    return { generatedAt: new Date().toISOString(), feed: alpacaMarketDataFeed, rows: [], referencePrices: {}, spreadsBps: {} }
+    return { generatedAt: currentTime().toISOString(), feed: alpacaMarketDataFeed, rows: [], referencePrices: {}, spreadsBps: {} }
   }
   const params = new URLSearchParams({ symbols: uniqueSymbols.join(','), feed: alpacaMarketDataFeed })
   const payload = await alpacaDataRequest(`/v2/stocks/quotes/latest?${params}`)
@@ -508,7 +508,7 @@ async function getAlpacaLatestQuotes(symbols) {
     }
   })
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: currentTime().toISOString(),
     source: 'Alpaca latest stock quotes',
     feed: alpacaMarketDataFeed,
     rows,
