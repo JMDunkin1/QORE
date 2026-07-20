@@ -39,7 +39,7 @@ function dashboardUrl(dashboard) {
 
 function allowedOrigins(dashboard) {
   return (
-    process.env.QORE_GIT_SERVICE_ALLOWED_ORIGINS ??
+    process.env.QORE_DASHBOARD_SERVICE_ALLOWED_ORIGINS ??
     `http://${dashboard.host}:${dashboard.port},http://localhost:${dashboard.port},http://127.0.0.1:${dashboard.port}`
   )
 }
@@ -179,7 +179,7 @@ function startServer(dashboard) {
     detached: true,
     env: {
       ...process.env,
-      QORE_GIT_SERVICE_ALLOWED_ORIGINS: allowedOrigins(dashboard),
+      QORE_DASHBOARD_SERVICE_ALLOWED_ORIGINS: allowedOrigins(dashboard),
     },
     shell: process.platform === 'win32',
     stdio: ['ignore', logFd, logFd],

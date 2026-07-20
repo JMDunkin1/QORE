@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-07-20T07:41:26.841Z",
+  "method": "Forecast anomaly rows joined to eastern-CONUS NASA POWER actual anomalies by target date",
+  "sourceCount": 7,
+  "rowCount": 18368,
+  "maeF": 4.47,
+  "rmseF": 7.67,
+  "biasF": 2.79,
+  "r2": -0.161,
+  "directionalAccuracyPct": 81.6,
+  "coldRecallPct": 49.4,
+  "coldEventThresholdF": -8
+}

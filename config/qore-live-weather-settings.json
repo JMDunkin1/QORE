@@ -111,7 +111,6 @@
       "enabled": true,
       "intervalMs": 1000,
       "slider": { "minMs": 1000, "maxMs": 60000, "stepMs": 1000 },
-      "operatorStateFile": ".local/qore/live-weather/operator-state.json",
       "reason": "Kill switch, daily-loss, drawdown, and operator-state checks are cheap and should be read on every live cycle."
     },
     "signalIntentReconcile": {

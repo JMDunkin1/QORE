@@ -15,6 +15,11 @@ dist-ssr
 output/
 *.local
 
+# Local credentials and operator overrides
+.env
+.env.*
+!.env.live.example
+
 # Keep generated research reports/notes out of the repo narrative.
 data/qore/**/*.md
 

@@ -1,5 +1,0 @@
-strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,thesisKind,leadDays,direction,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,grossReturnPct,netReturnPct,rank
-strict-theory-elastic-net-expected-return,strict-theory,2026-01-19,2026-01-26,2026-01-20,2026-01-26,gem-global,rumor,cold-long,7,long,-25.792,1,1,0,18,19.887,19.823,3.02636
-strict-theory-elastic-net-expected-return,strict-theory,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,rumor,warm-short,10,short,12.472,0.632,0,0.632,9,4.37,4.306,1.08558
-strict-theory-elastic-net-expected-return,strict-theory,2026-02-28,2026-03-09,2026-03-02,2026-03-09,gfs,rumor,warm-short,9,short,15.013,0.962,0,0.962,10,-2.583,-2.647,3.41469
-strict-theory-elastic-net-expected-return,strict-theory,2026-03-21,2026-03-31,2026-03-23,2026-03-31,aigfs,rumor,warm-short,10,short,12.207,0.849,0,0.849,9,0,-0.064,6.47181

@@ -31,9 +31,11 @@ export type SmoothChartSeries<TPoint extends SmoothChartPoint> = {
 }
 
 type SmoothZoomChartProps<TPoint extends SmoothChartPoint> = {
+  ariaLabel: string
   data: TPoint[]
   breakLinesAfterDays?: number
-  formatDate: (value: string | undefined) => string
+  formatAxisDate: (value: string | undefined, visibleSpanDays: number) => string
+  formatTooltipDate: (value: string | undefined) => string
   minWindow: number
   range: SmoothChartRange
   series: Array<SmoothChartSeries<TPoint>>
@@ -401,9 +403,11 @@ function areaPath<TPoint extends SmoothChartPoint>(
 }
 
 export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
+  ariaLabel,
   breakLinesAfterDays,
   data,
-  formatDate,
+  formatAxisDate,
+  formatTooltipDate,
   minWindow,
   onRangeChange,
   range,
@@ -466,6 +470,7 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
     return [min - pad, max + pad] as const
   }, [bounds.endIndex, bounds.startIndex, pointXValues, xAxisMode])
   const xValueSpan = Math.max(xDomain[1] - xDomain[0], 1)
+  const visibleSpanDays = xAxisMode === 'time' ? xValueSpan / dayMs : 0
   const xScaleValue = useCallback(
     (value: number) => plot.left + ((value - xDomain[0]) / xValueSpan) * plot.width,
     [plot.left, plot.width, xDomain, xValueSpan],
@@ -643,7 +648,7 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
       onMouseLeave={() => setHoverIndex(null)}
       onMouseMove={(event) => handlePointerMove(event.clientX, event.clientY)}
     >
-      <svg className="smooth-chart-svg" role="img" viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+      <svg className="smooth-chart-svg" role="img" aria-label={ariaLabel} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
         <defs>
           <clipPath id={clipId}>
             <rect x={plot.left} y={plot.top} width={plot.width} height={plot.height} />
@@ -674,7 +679,7 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
           <g key={`x-${tick.key}`} className="smooth-chart-x-tick">
             <line x1={xScaleValue(tick.value)} x2={xScaleValue(tick.value)} y1={plot.bottom} y2={plot.bottom + 5} />
             <text x={xScaleValue(tick.value)} y={plot.bottom + 20} textAnchor="middle">
-              {formatDate(tick.date)}
+              {formatAxisDate(tick.date, visibleSpanDays)}
             </text>
           </g>
         ))}
@@ -788,7 +793,7 @@ export function SmoothZoomChart<TPoint extends SmoothChartPoint>({
             top: plot.top + 12,
           }}
         >
-          <strong>{formatDate(hoveredPoint.date)}</strong>
+          <strong>{formatTooltipDate(hoveredPoint.date)}</strong>
           {activeSeries.map((entry) => {
             const value = finiteValue(hoveredPoint[entry.dataKey])
             if (value === null) return null

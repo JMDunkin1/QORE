@@ -1,48 +1,32 @@
-# QORE Live Trading Broker Setup
+# Alpaca Paper and Live Setup
 
-## Recommendation
+QORE's current broker adapter routes `UNG`, `VOO`, and `QQQM` through an Alpaca **Trading API** account. It deliberately refuses `NG`, `MNG`, and `QG` futures. Use a dedicated Alpaca account if you want Command's portfolio history to represent QORE alone; deposits, manual trades, and unrelated positions affect the account-level curve.
 
-Create an Alpaca Trading API brokerage account for QORE's current live path.
+Start in dry-run, then paper. Live routing is a separate reviewed decision.
 
-Use Alpaca because QORE currently routes only ETF legs:
+## Credentials
 
-- `UNG` for the natural-gas proxy overlay.
-- `VOO` and `QQQM` for the `US-INDEX-BASKET` fallback basket.
-- No `NG`, `MNG`, or `QG` futures orders are routed by this adapter.
-
-If you want exact all-year replication, the account needs margin/short capability because the checked-in all-year ledger includes negative `UNG` exposure. If you do not enable shorting, QORE will block negative `UNG` targets rather than silently changing the strategy.
-
-Interactive Brokers is the better future account only if QORE graduates to true futures routing. That would need separate contract-month selection, expiry, roll, margin, delivery-risk, and futures order handling before any money route is acceptable.
-
-## Account To Create
-
-Open an Alpaca Trading API account, not a Broker API account.
-
-For a US user, choose an individual taxable brokerage account unless you have a specific tax/account-structure reason to do otherwise. Fund it only after the dry-run and paper checks show the expected target weights.
-
-## Credential Handoff
-
-Put real values in `.env.local`; do not edit the example file with secrets. If `.env.local` already exists, merge these values into it instead of overwriting it.
+Copy the template without putting secrets in the example file:
 
 ```bash
 test -f .env.local || cp .env.live.example .env.local
 chmod 600 .env.local
 ```
 
-Paper mode:
+Paper configuration:
 
-```bash
+```dotenv
 QORE_BROKER_MODE=paper
 APCA_API_KEY_ID=...
 APCA_API_SECRET_KEY=...
 QORE_PAPER_ORDER_ROUTING_ENABLED=1
 ```
 
-Paper mode is hard-bound to `https://paper-api.alpaca.markets`. QORE rejects order submission if `QORE_ALPACA_BASE_URL` or `APCA_API_BASE_URL` points anywhere else, so an environment override cannot silently route a paper process to the live venue.
+Paper mode is hard-bound to `https://paper-api.alpaca.markets`; live mode is hard-bound to `https://api.alpaca.markets`; market data is hard-bound to `https://data.alpaca.markets`. QORE validates all configured endpoints before sending credentials and rejects redirects.
 
-Live mode:
+Live configuration requires every confirmation below:
 
-```bash
+```dotenv
 QORE_BROKER_MODE=live
 APCA_API_KEY_ID=...
 APCA_API_SECRET_KEY=...
@@ -51,164 +35,160 @@ QORE_LIVE_ORDER_ROUTING_ENABLED=1
 QORE_CONFIRM_LIVE_TRADING=I_UNDERSTAND_THIS_CAN_LOSE_MONEY
 ```
 
-Exact negative `UNG` legs:
+Exact all-year replication may require negative `UNG` exposure. Use a margin/short-capable account and opt in only after checking borrow behavior:
 
-```bash
+```dotenv
 QORE_ALPACA_ALLOW_SHORTS=1
+QORE_ALPACA_ALLOW_HARD_TO_BORROW=0
 ```
 
-Leave `QORE_ALPACA_ALLOW_HARD_TO_BORROW=0` unless you intentionally want QORE to allow hard-to-borrow locate workflows. By default, hard-to-borrow `UNG` blocks.
+Alpaca does not support fractional short sales, so negative `UNG` targets use whole shares. QORE blocks a target when the account cannot short, Alpaca reports `UNG` unshortable, or it is hard-to-borrow without explicit permission.
 
-Keep a nonzero cash buffer for market-order slippage. The checked-in default is `QORE_LIVE_MIN_CASH_BUFFER_PCT=2`, so an ordinary target-weight reconcile does not intentionally consume the account's final dollars or create a small margin debit.
+Review the sizing and risk defaults in `.env.live.example` and `config/qore-live-broker-settings.json`. Keep a cash buffer. Open-order replacement is disabled by default; enabling it replaces a matching order only after Alpaca confirms that exact order is terminally canceled with zero filled quantity and the position remains unchanged.
 
-QORE also applies a `QORE_LIVE_REBALANCE_DEADBAND_PCT=0.25` equity-relative deadband in addition to the absolute minimum order size. This prevents the minute-level reconciler from submitting tiny orders solely because prices moved a few basis points after the prior fill.
+### First-time risk-ledger bootstrap
 
-Alpaca does not support fractional short-sale orders. QORE therefore forces whole-share quantities for negative `UNG` targets, while long ETF orders can still use fractional quantities.
-
-By default, QORE skips symbols that already have open Alpaca orders. Set `QORE_ALPACA_REPLACE_OPEN_ORDERS=1` only when the reconciler should cancel matching open orders, verify no matching open order remains, and then submit the replacement delta. Cancel, verify, or submit failures make the reconcile command exit nonzero.
-
-## Commands
-
-Refresh the live handoff files once:
+Paper and live reconciliation require an existing risk ledger bound to the current Alpaca account and broker mode. QORE never silently creates or resets that trailing-drawdown baseline. For a first deployment or an intentional mode/account change, engage the kill switch and run the explicit no-order bootstrap:
 
 ```bash
-npm run live:prepare
+npm run trade:prepare
+npm run kill:engage -- --reason="risk-ledger bootstrap"
+QORE_CONFIRM_RISK_LEDGER_BOOTSTRAP=I_UNDERSTAND_THIS_RESETS_THE_TRAILING_DRAWDOWN_BASELINE \
+  node scripts/qore-alpaca-broker.mjs --mode=paper --preflight-only --bootstrap-risk-ledger --json
 ```
 
-`live:prepare` refreshes market, EIA, and NASA inputs; rebuilds Summer, Winter, and All-Year artifacts; collects complete NOAA GFS/GEFS 00z inputs for the selected live contract; and writes current strategy, weather, and risk handoffs without invoking the broker. Historical Open-Meteo backfills are deliberately excluded from the unattended path because they are research inputs and can exhaust the free minutely request quota.
+The command writes the current equity as the high-water mark, submits no orders, and remains blocked because the kill switch is engaged. Inspect `.local/qore/broker/risk-ledger.json`, then clear the kill switch through the reviewed command below. Repeat with `--mode=live` only when intentionally promoting that account to live operation. Do not persist the bootstrap confirmation in `.env.local`.
 
-Then run the fail-closed readiness audit. It checks the Node version, runtime files, secret-file permissions, Git state, routing confirmations, Alpaca account status, Alpaca's authoritative market clock, current signal/risk gates, and Alpaca bid/ask access without placing an order:
+## Safe promotion sequence
+
+Refresh current operational handoffs without calling the broker reconciler:
 
 ```bash
-npm run live:readiness
+npm run trade:prepare
 ```
 
-Check broker connectivity and write the account snapshot:
+This refreshes or verifies current weather, market references, EIA storage state, validated GFS/GEFS all-year inference, signal intent, and risk state on their configured cadences. It does **not** retrain the checked-in strategy or submit an order.
+
+Then run the no-order checks and dry-run plan:
 
 ```bash
-npm run broker:alpaca:status
+npm run trade:readiness
+npm run broker:status
+npm run broker:dry-run
 ```
 
-Dry-run the rebalance plan:
+`trade:readiness` checks the runtime, required files, secret permissions, Git state, credentials and routing confirmations, signal freshness, validated inference, Alpaca account/clock/quotes, and current pre-trade gates without placing an order.
+
+Only after inspecting the plan, submit to paper:
 
 ```bash
-npm run broker:alpaca:dry-run
+npm run broker:paper
 ```
 
-Submit to Alpaca paper:
+Accumulate non-overlapping paper evidence before considering live. For a live promotion, stop the supervisor, update `.env.local`, rerun readiness, run one explicit live reconcile, inspect Alpaca and `.local/qore/broker/status.json`, then restart supervision:
 
 ```bash
-npm run broker:alpaca:paper
+npm run broker:live
 ```
 
-Submit to Alpaca live:
+## Continuous operation
+
+One supervised pass:
 
 ```bash
-npm run broker:alpaca:live
+npm run trade:once
 ```
 
-Run the unattended supervisor:
+Long-running supervisor:
 
 ```bash
-npm run live:trade
+npm run trade:run
 ```
 
-The supervisor refreshes research data, regenerates Summer/Winter/All-Year artifacts, refreshes live weather/market/risk handoff files, and then runs the Alpaca reconciler on cadence. It launches every job with the same absolute Node binary as the service, so operation after logout or reboot does not depend on an interactive-shell `npm` path.
+The supervisor runs the live weather/inference handoff and then the broker reconciler. Failed upstream work stops that pass before broker work. It contains each job and its descendants in a process group, uses bounded TERM-to-KILL shutdown before releasing its single-process lock, and writes status under `.local/qore/live-trading-supervisor/`.
 
-## Live Strategy Inference
+The standalone weather/inference service is available as `npm run trade:weather`; use `npm run trade:weather:once` for a one-cycle diagnostic and `npm run trade:infer` for direct selected-contract inference.
 
-The broker target is inferred from persistent NOAA GFS and GEFS mean 00z forecast history. The live engine reuses the frozen Summer and Winter signal thresholds, source-family requirements, confidence scoring, follow/fade timing, Summer heat freshness and storage sizing, and Winter storage/HDD/volatility blend rules. The All-Year selector then uses the material Summer row, else the material Winter row, else the index fallback. Open-Meteo remains a separate risk-context feed and cannot set the target.
+## Linux user service
 
-The engine requires a complete common GFS/GEFS issue set no more than two calendar days old and writes `.local/qore/live-inference/all-year-target.json` atomically. `npm run live:readiness` reports this as `Current forecast strategy inference`; the Alpaca broker independently requires `liveForecastAppliedToTarget=true` on every live reconcile, so a failed or stale inference cannot be bypassed by skipping readiness. `npm run test:live-inference` checks scoring parity against the frozen historical Summer and Winter forecast-follow ledgers.
-
-## Linux VPS Service
-
-Use a dedicated, unprivileged Linux user. From a clean clone of the reviewed commit:
+Use a dedicated unprivileged Linux user and a reviewed, clean commit:
 
 ```bash
 npm ci
 test -f .env.local || cp .env.live.example .env.local
 chmod 600 .env.local
+npm run trade:prepare
+npm run trade:readiness
+npm run broker:dry-run
+npm run broker:paper
 ```
 
-Keep `QORE_BROKER_MODE=paper` through the first deployment. Then run:
-
-```bash
-npm run live:prepare
-npm run live:readiness
-npm run broker:alpaca:status
-npm run broker:alpaca:dry-run
-npm run broker:alpaca:paper
-```
-
-On Linux, keep the hardware clock in UTC and enable the user manager across logout/reboot:
+Keep the host clock synchronized and enable the user manager across logout/reboot:
 
 ```bash
 sudo timedatectl set-local-rtc 0
 sudo loginctl enable-linger "$USER"
 ```
 
-Install the user-level systemd service only after those checks pass:
+Install and inspect the user-level service only after paper checks pass:
 
 ```bash
-npm run install:linux-service
+npm run service:install:linux
 systemctl --user start qore-live-trading.service
 systemctl --user status qore-live-trading.service
 journalctl --user -u qore-live-trading.service -f
 ```
 
-The service restarts after failures, uses a single-process lock, terminates its active child on shutdown, retries failed upstream jobs before allowing downstream broker work, and writes runtime state under `.local/qore/` with a restrictive umask. Its process timezone is pinned to UTC and every start requires the static local readiness checks—including NTP synchronization—to pass. Data-refresh and signal-freshness checks are deferred until the supervisor refreshes that state, so a stale-state reboot can recover without operator intervention.
+## Emergency stop
 
-Before changing from paper to live, stop the service, change the four live-mode values in `.env.local`, rerun `npm run live:readiness`, run one explicit `npm run broker:alpaca:live`, inspect the resulting broker status and Alpaca activity, and only then restart the service.
-
-## Emergency Stop
-
-Engage the QORE kill switch without stopping the VPS service:
+Engage the operator kill switch:
 
 ```bash
-npm run live:kill-switch:engage -- --reason="operator emergency stop"
-npm run live:kill-switch:status
+npm run kill:engage -- --reason="operator emergency stop"
+npm run kill:status
 ```
 
-The broker reads this operator file directly on every reconcile. It blocks new QORE submissions; it does not cancel already-open Alpaca orders or liquidate positions. Handle those in Alpaca if an immediate cancel/exit is required.
+This blocks new QORE submissions. It does not cancel existing Alpaca orders or liquidate positions; use Alpaca directly if an immediate cancel or exit is required.
 
-Clearing the stop is deliberately explicit:
+The kill-switch command, weather risk generation, broker, readiness preflight, and Command dashboard all resolve one canonical file. `QORE_LIVE_OPERATOR_STATE_FILE` has explicit precedence; when it is unset, the path is `operator-state.json` under `QORE_LIVE_WEATHER_STATE_DIR`. Weather cadence configuration cannot override this safety path.
+
+Clear it only after review:
 
 ```bash
-npm run live:kill-switch:clear -- --confirm=RESUME_TRADING --reason="review complete"
+npm run kill:clear -- --confirm=RESUME_TRADING --reason="review complete"
 ```
 
-## What QORE Checks Before Orders
+## Fail-closed order gates
 
-QORE blocks live orders when:
+QORE blocks submission when any required state is stale, missing, malformed, or unsafe, including:
 
-- The signal intent is stale.
-- The validated GFS/GEFS forecast set is missing or is not applied to the target.
-- The kill switch is engaged.
-- The venue is closed and outside-market queuing is not enabled.
-- Account, market, weather, or storage risk context is missing.
-- A required reference price is missing.
-- Alpaca's latest bid/ask is missing, crossed, stale, or wider than the spread cap.
-- The Alpaca account is not `ACTIVE`, or is blocked or user-suspended.
-- Daily loss, trailing drawdown, or target gross exposure breaches the configured cap.
-- The target would short `UNG` and shorting is not enabled.
-- Alpaca reports `UNG` is not shortable or is hard-to-borrow without explicit permission.
-- The live confirmation environment variables are absent.
+- validated GFS/GEFS inference is absent or not applied to the target;
+- signal intent is stale;
+- the explicit operator-state file is missing, malformed, or has the kill switch engaged;
+- the generated risk snapshot is missing, invalid, future-dated beyond tolerance, or older than the configured 15-minute default cap;
+- the Alpaca venue is closed or its market clock cannot be verified;
+- Alpaca account, market, weather, storage, price, or quote state is unavailable;
+- the account is inactive, blocked, or suspended;
+- the quote is crossed, stale, or wider than the configured spread cap;
+- the immediately refreshed per-order quote or Alpaca clock timestamp is missing, stale, or materially future-dated;
+- the account-bound risk ledger is absent, malformed, or belongs to another account or mode;
+- daily loss, trailing drawdown, or conservative gross exposure exceeds its cap;
+- a negative `UNG` target lacks short permission or borrow availability;
+- mode-specific paper/live confirmation variables are missing.
 
-The broker state and order logs are written under `.local/qore/`:
+The runtime state is intentionally local:
 
-- `.local/qore/broker/account-snapshot.json`
-- `.local/qore/broker/status.json`
-- `.local/qore/broker/orders.jsonl`
-- `.local/qore/broker/risk-ledger.json`
-- `.local/qore/live-trading-supervisor/status.json`
-- `.local/qore/live-inference/all-year-target.json`
+```text
+.local/qore/live-weather/
+.local/qore/live-inference/all-year-target.json
+.local/qore/broker/account-snapshot.json
+.local/qore/broker/account-status.json
+.local/qore/broker/status.json
+.local/qore/broker/orders.jsonl
+.local/qore/broker/risk-ledger.json
+.local/qore/live-trading-supervisor/status.json
+```
 
-## External References
+Do not commit these files. `account-status.json` contains read-only account/history telemetry, while `status.json` remains the reconcile/preflight result. Broker status never initializes or rewrites the risk ledger. The Command UI reads a sanitized loopback telemetry API; its **Refresh Alpaca** action invokes broker status only and cannot reconcile or submit orders.
 
-- Alpaca Trading API setup: https://alpaca.markets/learn/connect-to-alpaca-api
-- Alpaca stock and ETF API: https://alpaca.markets/stocks
-- Alpaca paper trading: https://docs.alpaca.markets/us/docs/paper-trading
-- Alpaca orders: https://docs.alpaca.markets/us/docs/working-with-orders
-- Alpaca margin and short selling: https://docs.alpaca.markets/us/docs/margin-and-short-selling
-- IBKR TWS API: https://www.interactivebrokers.com/campus/ibkr-api-page/twsapi-doc/
+A broker-wide local lock prevents status and reconcile operations from interleaving their snapshots or order activity. QORE never reclaims an existing broker lock automatically. A signal received before any broker mutation removes an owned lock; a signal after a cancellation or submission starts deliberately preserves the lock because broker outcome may be ambiguous. An accepted cancellation also retains the lock until Alpaca proves the exact order is canceled with zero fill and the position is unchanged. In either stale-lock case, first verify and reconcile Alpaca state and confirm no broker process is running, then remove only `.local/qore/broker/operation.lock` manually. The supervisor similarly never reclaims its lock; verify no supervisor is running before manually removing a stale `.local/qore/live-trading-supervisor/supervisor.lock`.

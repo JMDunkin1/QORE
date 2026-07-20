@@ -11215,7 +11215,6 @@
   "request": {
     "command": "/v2/natural-gas/stor/wkly/data/",
     "params": {
-      "api_key": "DEMO_KEY",
       "frequency": "weekly",
       "data": [
         "value"

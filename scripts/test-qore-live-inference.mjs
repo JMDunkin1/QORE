@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSignal, enrichForecastRows, inferAllYearTarget, selectedContracts } from './lib/qore-live-all-year-inference.mjs'
 
+process.env.NODE_ENV = 'test'
+
 const root = process.cwd()
 const dataRoot = path.join(root, 'data', 'qore')
 const require = createRequire(import.meta.url)
@@ -301,7 +303,24 @@ async function portableGribPlatformBranch() {
   }
 }
 
+async function allYearInstrumentContract() {
+  const artifactDir = path.join(dataRoot, 'research', 'strategy-agent-runs', 'ngas-all-year-beta')
+  const summary = JSON.parse(await readFile(path.join(artifactDir, 'run-summary.json'), 'utf8'))
+  const rows = await csv(path.join(artifactDir, 'selected-trades.csv'))
+  assert.equal(summary.contract.researchInstruments.summer.gasSymbol, 'NG=F')
+  assert.equal(summary.contract.researchInstruments.winter.gasSymbol, 'UNG')
+  assert.equal(summary.contract.executionInstrument.gasSymbol, 'UNG')
+  assert.ok(rows.every((row) => row.researchInstrument))
+  assert.ok(rows.filter((row) => row.componentStrategyId === 'ngas-summer-alpha' && row.thesisKind !== 'index-fallback')
+    .every((row) => row.researchInstrument === 'NG=F'))
+  assert.ok(rows.filter((row) => row.componentStrategyId === 'ngas-winter-alpha' && row.thesisKind !== 'index-fallback')
+    .every((row) => row.researchInstrument === 'UNG'))
+  assert.ok(rows.filter((row) => row.thesisKind === 'index-fallback')
+    .every((row) => row.researchInstrument === 'US-INDEX-BASKET'))
+}
+
 await portableGribPlatformBranch()
+await allYearInstrumentContract()
 const summer = await summerParity()
 const winter = await winterParity()
 const summerPositions = await positionParity(summer, 'NG-F-qore-market.csv', 'summer')

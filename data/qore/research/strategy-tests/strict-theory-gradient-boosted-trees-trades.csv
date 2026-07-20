@@ -1,5 +1,0 @@
-strategyId,variant,issueDate,targetDate,entryTradeDate,targetTradeDate,sourceId,windowId,thesisKind,leadDays,direction,weightedAnomalyF,coveragePct,coldCoveragePct,warmCoveragePct,extremeCount,grossReturnPct,netReturnPct,rank
-strict-theory-gradient-boosted-trees,strict-theory,2026-02-01,2026-02-11,2026-02-02,2026-02-11,ecmwf-ifs,rumor,warm-short,10,short,11.267,0.717,0,0.717,8,2.992,2.928,0.68708
-strict-theory-gradient-boosted-trees,strict-theory,2026-02-16,2026-02-26,2026-02-17,2026-02-26,gfs,rumor,warm-short,10,short,12.472,0.632,0,0.632,9,4.37,4.306,0.68708
-strict-theory-gradient-boosted-trees,strict-theory,2026-03-01,2026-03-11,2026-03-02,2026-03-11,gfs,rumor,warm-short,10,short,18.862,0.745,0,0.745,14,-7.333,-7.397,0.68708
-strict-theory-gradient-boosted-trees,strict-theory,2026-03-21,2026-03-31,2026-03-23,2026-03-31,gfs,rumor,warm-short,10,short,15.987,0.906,0,0.906,10,0,-0.064,0.68708

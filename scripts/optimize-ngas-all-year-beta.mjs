@@ -21,6 +21,10 @@ const TRADING_DAYS = 252
 const BOOTSTRAP_ITERATIONS = 20000
 const BLOCK_LENGTH = 10
 const MAX_DRAWDOWN_PROMOTION_FLOOR_PCT = -20
+const COMPONENT_RESEARCH_INSTRUMENTS = {
+  'ngas-summer-alpha': 'NG=F',
+  'ngas-winter-alpha': 'UNG',
+}
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8')
@@ -123,6 +127,13 @@ function componentVariantFor(strategyId) {
   return ''
 }
 
+function researchInstrumentFor(row, componentStrategyId) {
+  if (row.thesisKind === 'index-fallback' && Math.abs(tradePosition(row)) <= 0.000001) {
+    return 'US-INDEX-BASKET'
+  }
+  return COMPONENT_RESEARCH_INSTRUMENTS[componentStrategyId] ?? 'unknown'
+}
+
 function splitNameForTrade(row, contractsByStrategyId) {
   const contract = contractsByStrategyId.get(row.componentStrategyId)
   if (!contract) return 'all'
@@ -167,6 +178,7 @@ function createCompositeRows(summerRows, winterRows, contractsByStrategyId) {
       variant: 'all-year-beta',
       componentStrategyId,
       componentVariant: componentVariantFor(componentStrategyId),
+      researchInstrument: researchInstrumentFor(sourceRow, componentStrategyId),
       materialRow,
       activeReturnPct: round(numberFrom(sourceRow.netReturnPct) - numberFrom(sourceRow.indexReturnPct), 4),
     }
@@ -367,6 +379,34 @@ function sourceUniverseFor(rows) {
   return unique(rows.map((row) => row.sourceId)).sort()
 }
 
+function displayCurveRows(rows) {
+  let benchmarkEquity = INITIAL_CAPITAL
+  return rows.map((row, chartIndex) => {
+    benchmarkEquity *= 1 + numberFrom(row.indexReturnPct) / 100
+    const position = tradePosition(row)
+    return {
+      chartIndex,
+      date: row.entryTradeDate || row.targetTradeDate,
+      equityPct: row.equityPct,
+      benchmarkPct: round((benchmarkEquity / INITIAL_CAPITAL - 1) * 100, 4),
+      drawdownPct: row.drawdownPct,
+      activeReturnPct: row.activeReturnPct,
+      position,
+      signal: round(numberFrom(row.confidence) * Math.sign(position), 4),
+      netReturnPct: row.netReturnPct,
+      indexReturnPct: row.indexReturnPct,
+      split: row.split,
+      thesisKind: row.thesisKind,
+      equityUsd: row.equity,
+      component: row.componentVariant,
+      researchInstrument: row.researchInstrument,
+      direction: row.direction,
+      sourceId: row.sourceId,
+      confidence: row.confidence,
+    }
+  })
+}
+
 function formatCandidateRow(selected, summaryMetrics) {
   return {
     candidateId: STRATEGY_ID,
@@ -421,6 +461,7 @@ ${STRATEGY_NAME} is the checked-in all-year artifact for the existing NGAS Summe
 
 - Architecture: Summer/Winter composite artifact.
 - Source ledgers: ${selected.componentStrategyIds.join(' + ')}.
+- Research instruments: Summer gas rows use NG=F; Winter gas rows use UNG; idle rows use the US-INDEX-BASKET fallback.
 - Row policy: ${selected.rowSelectionPolicy}
 - Material row definition: ${selected.materialRowDefinition}
 - Selection: no independent all-year parameter search; the component ledgers remain selected by their own train/validation contracts.
@@ -543,6 +584,26 @@ function main() {
       selectionPolicy: 'No independent all-year optimization. The artifact freezes the exact Summer/Winter material-row selector into its own ledger.',
       signalTiming: 'Component source rows keep their source-lane timing contracts; this artifact only selects one already-validated daily source row per entry date.',
       overfitControl: 'No all-year holdout rows are used for selection. The p-value is a direct centered circular block bootstrap on the generated all-year active-edge return stream.',
+      researchInstruments: {
+        summer: {
+          componentStrategyId: summerSummary.strategyId,
+          gasSymbol: 'NG=F',
+          contract: 'Yahoo continuous front-month natural-gas futures proxy',
+        },
+        winter: {
+          componentStrategyId: winterSummary.strategyId,
+          gasSymbol: 'UNG',
+          contract: 'Yahoo UNG ETF historical series',
+        },
+        indexFallback: {
+          symbol: 'US-INDEX-BASKET',
+          contract: 'Configured target-weight VOO/QQQM close-to-close series',
+        },
+      },
+      executionInstrument: {
+        gasSymbol: 'UNG',
+        contract: 'Alpaca equity/ETF execution',
+      },
       maxDrawdownPromotionFloorPct: MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
     },
     selected,
@@ -560,6 +621,7 @@ function main() {
     },
     outputFiles: {
       selectedTrades: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'selected-trades.csv')),
+      displayCurve: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'display-curve.csv')),
       candidateSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'candidate-summary.csv')),
       runSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'run-summary.json')),
     },
@@ -571,6 +633,7 @@ function main() {
     'variant',
     'componentStrategyId',
     'componentVariant',
+    'researchInstrument',
     ...summer.headers,
     ...winter.headers,
     'materialRow',
@@ -579,6 +642,8 @@ function main() {
   ])
 
   writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), rowsToCsv(rows, headers))
+  const curveRows = displayCurveRows(rows)
+  writeText(path.join(OUTPUT_DIR, 'display-curve.csv'), rowsToCsv(curveRows, Object.keys(curveRows[0] ?? {})))
   writeText(path.join(OUTPUT_DIR, 'candidate-summary.csv'), rowsToCsv([candidateRow], Object.keys(candidateRow)))
   writeText(path.join(OUTPUT_DIR, 'run-summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
   writeText(path.join(OUTPUT_DIR, 'report.md'), buildReport(summary))

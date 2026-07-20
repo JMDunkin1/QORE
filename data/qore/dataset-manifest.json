@@ -1,8 +1,6 @@
 {
-  "generatedAt": "2026-06-10T16:19:51.579Z",
+  "generatedAt": "2026-07-20T04:53:53.000Z",
   "defaultDataRoot": "data/qore",
-  "fileCount": 173,
-  "totalBytes": 103030868,
   "forecastCalendars": [
     {
       "id": "gfs",

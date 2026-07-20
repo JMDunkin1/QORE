@@ -5,8 +5,14 @@ import process from 'node:process'
 import Papa from 'papaparse'
 
 const REPO_ROOT = process.cwd()
-const INPUT_FILE = path.join(REPO_ROOT, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv')
-const OUTPUT_DIR = path.join(REPO_ROOT, 'data/qore/research/strategy-agent-runs/ngas-live-weather-refresh')
+const INPUT_FILE = path.resolve(
+  process.env.QORE_NGAS_LIVE_WEATHER_REFRESH_INPUT_FILE ??
+    path.join(REPO_ROOT, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv'),
+)
+const OUTPUT_DIR = path.resolve(
+  process.env.QORE_NGAS_LIVE_WEATHER_REFRESH_OUTPUT_DIR ??
+    path.join(REPO_ROOT, '.local', 'qore', 'ngas-live-weather-refresh'),
+)
 const INITIAL_CAPITAL = 100000
 const TRADING_DAYS = 252
 const ONE_WAY_COST_PCT = 0.032

@@ -75,7 +75,7 @@ for (const args of [['--user', 'daemon-reload'], ['--user', 'enable', 'qore-live
 }
 
 console.log(`Installed ${unitPath}.`)
-console.log('Before the first start, run: npm run live:readiness')
+console.log('Before the first start, run: npm run trade:readiness')
 console.log('Start it with: systemctl --user start qore-live-trading.service')
 console.log('Follow it with: journalctl --user -u qore-live-trading.service -f')
 console.log(`Keep the user service running after logout with: sudo loginctl enable-linger ${process.env.USER ?? '<user>'}`)
