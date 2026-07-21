@@ -4,12 +4,13 @@ import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { nominalEiaStorageReleaseAt } from './lib/eia-release-time.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
+import { loadAllYearStrategyArtifact } from './lib/qore-live-strategy-artifact.mjs'
 
 process.env.NODE_ENV = 'test'
 
@@ -55,6 +56,32 @@ async function writeJson(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true })
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
+
+async function createPromotionEligibleStrategyArtifactFixture() {
+  const sourcePath = path.join(repoDir, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json')
+  const source = JSON.parse(await readFile(sourcePath, 'utf8'))
+  const fixture = {
+    ...source,
+    status: 'research-baseline',
+    search: {
+      ...source.search,
+      eligibleCandidateCount: 1,
+      selectionStatus: 'fixed-composite-passes-promotion-gates',
+      selectionUsedHoldout: false,
+    },
+    validation: {
+      ...source.validation,
+      promotionGates: Object.fromEntries(Object.keys(source.validation.promotionGates).map((gate) => [gate, true])),
+    },
+    candidates: source.candidates.map((candidate, index) => ({ ...candidate, eligible: index === 0 })),
+  }
+  const filePath = path.join(scratch, 'promotion-eligible-all-year-run-summary.json')
+  await writeJson(filePath, fixture)
+  process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE = filePath
+  return loadAllYearStrategyArtifact(repoDir)
+}
+
+const promotedStrategyArtifact = await createPromotionEligibleStrategyArtifactFixture()
 
 function today() {
   return new Date().toISOString().slice(0, 10)
@@ -159,6 +186,7 @@ async function writeHandoffs({
           : gasPosition > 0 ? 'cold-long' : 'warm-short',
       liveForecastAppliedToTarget,
       validated: inferenceValidated,
+      strategyArtifact: promotedStrategyArtifact.binding,
       ...inferenceProvenanceOverrides,
       forecastValidation: {
         latestCommonIssueDate: forecastIssueDate,
@@ -1283,6 +1311,28 @@ async function testStatusDoesNotSynthesizeOrRewriteInvalidRiskLedger() {
       } })
     } else if (url.pathname === '/v2/account/portfolio/history') {
       jsonResponse(response, 200, { timestamp: [], equity: [], profit_loss: [], profit_loss_pct: [] })
+    } else if (url.pathname === '/v2/stocks/bars') {
+      assert.equal(url.searchParams.get('timeframe'), '1Day')
+      assert.equal(url.searchParams.get('adjustment'), 'all')
+      assert.equal(url.searchParams.get('feed'), 'iex')
+      assert.deepEqual(url.searchParams.get('symbols').split(',').sort(), ['QQQM', 'VOO'])
+      jsonResponse(response, 200, {
+        bars: {
+          VOO: [
+            { t: '2026-07-20T04:00:00Z', o: 100, c: 101 },
+            { t: '2026-07-21T04:00:00Z', o: 101, c: 102 },
+          ],
+          QQQM: [
+            { t: '2026-07-20T04:00:00Z', o: 50, c: 50.5 },
+            { t: '2026-07-21T04:00:00Z', o: 50.5, c: 51 },
+          ],
+        },
+      })
+    } else if (url.pathname === '/v2/calendar') {
+      jsonResponse(response, 200, [
+        { date: '2026-07-20', open: '09:30', close: '16:00' },
+        { date: '2026-07-21', open: '09:30', close: '16:00' },
+      ])
     } else {
       jsonResponse(response, 404, { message: `unexpected ${url.pathname}` })
     }
@@ -1290,12 +1340,20 @@ async function testStatusDoesNotSynthesizeOrRewriteInvalidRiskLedger() {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const baseUrl = `http://127.0.0.1:${server.address().port}`
   try {
-    for (const variant of ['missing', 'malformed']) {
+    for (const variant of ['missing', 'malformed', 'per-file-override']) {
       const statusDir = path.join(scratch, `status-risk-ledger-${variant}`)
       const ledgerPath = path.join(statusDir, 'risk-ledger.json')
+      const overrideDir = path.join(scratch, 'shared-status-output')
+      const accountStatusPath = variant === 'per-file-override'
+        ? path.join(overrideDir, 'account-status.json')
+        : path.join(statusDir, 'account-status.json')
       if (variant === 'malformed') {
         await mkdir(statusDir, { recursive: true })
+        await chmod(statusDir, 0o751)
         await writeFile(ledgerPath, '{not-json\n', 'utf8')
+      } else if (variant === 'per-file-override') {
+        await mkdir(overrideDir, { recursive: true })
+        await chmod(overrideDir, 0o751)
       }
       const before = variant === 'malformed' ? await readFile(ledgerPath, 'utf8') : null
       const result = await runNode([brokerScript, '--mode=paper', '--status', '--json'], {
@@ -1305,12 +1363,26 @@ async function testStatusDoesNotSynthesizeOrRewriteInvalidRiskLedger() {
         QORE_ALPACA_DATA_BASE_URL: baseUrl,
         QORE_ALPACA_TEST_ENDPOINT_CONFIRMED: '1',
         QORE_BROKER_STATE_DIR: statusDir,
+        QORE_BROKER_ACCOUNT_STATUS_FILE: variant === 'per-file-override' ? accountStatusPath : undefined,
       })
       assert.equal(result.code, 0, result.stderr)
       const status = JSON.parse(result.stdout)
       assert.equal(status.account.trailingDrawdownPct, null)
-      if (variant === 'missing') assert.equal(existsSync(ledgerPath), false)
-      else assert.equal(await readFile(ledgerPath, 'utf8'), before)
+      assert.equal(status.account.lastEquityUsd, 10000)
+      assert.equal(status.account.dayPnlUsd, 0)
+      assert.match(status.accountBinding, /^[a-f0-9]{24}$/)
+      assert.equal(status.benchmarkHistory.adjustment, 'all')
+      assert.equal(status.benchmarkHistory.feed, 'iex')
+      assert.equal(status.benchmarkHistory.rows.find((row) => row.symbol === 'VOO').points.length, 2)
+      assert.equal(status.portfolioHistory.generatedAt, status.benchmarkHistory.generatedAt)
+      assert.equal(status.marketCalendar.source, 'Alpaca US market calendar')
+      assert.equal(status.marketCalendar.rows.length, 2)
+      assert.equal((await stat(statusDir)).mode & 0o777, variant === 'malformed' ? 0o751 : 0o700)
+      assert.equal((await stat(accountStatusPath)).mode & 0o777, 0o600)
+      assert.equal((await stat(path.join(statusDir, 'account-snapshot.json'))).mode & 0o777, 0o600)
+      if (variant === 'per-file-override') assert.equal((await stat(overrideDir)).mode & 0o777, 0o751)
+      if (variant === 'malformed') assert.equal(await readFile(ledgerPath, 'utf8'), before)
+      else assert.equal(existsSync(ledgerPath), false)
     }
   } finally {
     await new Promise((resolve) => server.close(resolve))
@@ -1785,6 +1857,7 @@ async function testGitGeneratedArtifactAllowlist() {
       thesisKind: 'index-fallback',
       validated: true,
       liveForecastAppliedToTarget: true,
+      strategyArtifact: promotedStrategyArtifact.binding,
       forecastValidation: {
         latestCommonIssueDate: today(), issueAgeDays: 0, runHourUtc: '00',
         ...currentInferenceContract,
@@ -1894,6 +1967,7 @@ async function testSignalFreshnessUsesValidatedInferenceIssue() {
     strategyId: 'ngas-all-year-beta',
     validated: true,
     liveForecastAppliedToTarget: true,
+    strategyArtifact: promotedStrategyArtifact.binding,
     inferenceMode: 'test-live-inference',
     forecastValidation: { latestCommonIssueDate: today(), issueAgeDays: 0 },
     target: {
@@ -2110,6 +2184,18 @@ try {
     liveForecastAppliedToTarget: true,
     inferenceValidated: false,
     expectedBlock: /live forecast inference is not validated/,
+  })
+  await scenario({
+    name: 'paper reconcile requires a reviewed promotion-eligible strategy artifact binding',
+    inferenceProvenanceOverrides: { strategyArtifact: null },
+    expectedBlock: /strategy artifact is invalid: inference is missing its reviewed strategy artifact binding/,
+  })
+  await scenario({
+    name: 'paper reconcile rejects a stale reviewed strategy artifact digest',
+    inferenceProvenanceOverrides: {
+      strategyArtifact: { ...promotedStrategyArtifact.binding, digestSha256: '0'.repeat(64) },
+    },
+    expectedBlock: /strategy artifact digestSha256 does not match the current reviewed artifact/,
   })
   await scenario({
     name: 'paper reconcile requires the exact inference strategy id',

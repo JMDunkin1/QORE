@@ -638,7 +638,7 @@ async function testMarketClockFreshnessFailsClosed() {
         marketClock: clock,
       })
       const invalidClock = await request(service.baseUrl, '/api/live/status')
-      assert.equal(invalidClock.payload.brokerConnected, true)
+      assert.equal(invalidClock.payload.brokerConnected, false)
       assert.equal(invalidClock.payload.marketClock, null)
       assert.match(invalidClock.payload.risk.warnings.join(' '), expectedWarning)
     }

@@ -95,8 +95,7 @@ const serviceBaseUrl = `http://${host}:${servicePort}`
 const commonEnv = {
   ...process.env,
   QORE_REPO_DIR: repoDir,
-  QORE_DASHBOARD_SERVICE_HOST: host,
-  QORE_DASHBOARD_SERVICE_PORT: String(servicePort),
+  QORE_COMMAND_BRIDGE_PORT: String(servicePort),
   QORE_DASHBOARD_SERVICE_ALLOWED_ORIGINS: dashboardOrigins.join(','),
   VITE_QORE_API_URL: serviceBaseUrl,
 }
@@ -110,9 +109,9 @@ function spawnChild(command, args) {
 }
 
 console.log(`QORE dashboard: http://${host}:${dashboardPort}`)
-console.log(`QORE telemetry API: ${serviceBaseUrl}`)
+console.log(`QORE M1 telemetry bridge: ${serviceBaseUrl}`)
 
-const service = spawnChild(process.execPath, ['scripts/qore-dashboard-service.mjs'])
+const service = spawnChild(process.execPath, ['scripts/qore-command-bridge.mjs'])
 const vite = spawnChild(viteBin, viteArgs)
 let shuttingDown = false
 
@@ -124,7 +123,7 @@ function stopChildren(signal) {
 }
 
 service.on('error', (error) => {
-  console.error(`Could not start QORE telemetry service: ${error.message}`)
+  console.error(`Could not start QORE M1 telemetry bridge: ${error.message}`)
   stopChildren('SIGTERM')
   process.exitCode = 1
 })
@@ -137,7 +136,7 @@ vite.on('error', (error) => {
 
 service.on('exit', (code, signal) => {
   if (shuttingDown) return
-  console.error(`QORE telemetry service stopped (${code ?? signal ?? 'unknown'}).`)
+  console.error(`QORE M1 telemetry bridge stopped (${code ?? signal ?? 'unknown'}).`)
   stopChildren('SIGTERM')
   process.exitCode = code || 1
 })

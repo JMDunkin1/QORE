@@ -76,32 +76,34 @@ function dateLabel(value: string) {
 }
 
 function metricsForBacktest(): MetricDatum[] {
-  const metrics = allYearBacktest.selected.allMetrics
+  const selection = allYearBacktest.validation.selectionMetrics
+  const metrics = selection.strategy.all
+  const realityCheck = allYearBacktest.validation.selectionRealityCheck
+  const drawdownFloor = allYearBacktest.contract.maxDrawdownPromotionFloorPct
   return [
     {
-      label: 'CAGR',
+      label: 'SELECTION CAGR',
       value: signedPercent(metrics.cagrPct),
       tone: 'positive',
     },
     {
-      label: 'RETURN / INDEX',
-      value: `${signedPercent(metrics.totalReturnPct)} / ${signedPercent(allYearBacktest.selected.indexMetrics.all.totalReturnPct)}`,
+      label: 'SELECTION RETURN / INDEX',
+      value: `${signedPercent(metrics.totalReturnPct)} / ${signedPercent(selection.index.all.totalReturnPct)}`,
       tone: 'positive',
     },
     {
-      label: 'HOLDOUT ANN. EDGE',
-      value: signedPercent(allYearBacktest.selected.splitAnnualEdges.holdout),
-      tone: 'positive',
+      label: 'VALIDATION EDGE',
+      value: signedPercent(selection.splitEdges.validation),
+      tone: selection.splitEdges.validation > 0 ? 'positive' : 'warning',
     },
     {
-      label: 'SHARPE / SORTINO',
-      value: `${formatNumber(metrics.sharpe)} / ${formatNumber(metrics.sortino)}`,
-      tone: 'positive',
+      label: 'VALIDATION SHARPE',
+      value: formatNumber(selection.strategy.validation.sharpe),
     },
     {
-      label: 'MAX DD / CALMAR',
-      value: `${signedPercent(metrics.maxDrawdownPct)} / ${formatNumber(metrics.calmar)}`,
-      tone: 'negative',
+      label: 'MAX DD / FLOOR',
+      value: `${signedPercent(metrics.maxDrawdownPct)} / ${signedPercent(drawdownFloor)}`,
+      tone: metrics.maxDrawdownPct > drawdownFloor ? 'positive' : 'warning',
     },
     {
       label: 'VOL / VAR95',
@@ -112,9 +114,9 @@ function metricsForBacktest(): MetricDatum[] {
       value: `${formatNumber(metrics.tradeCount, 0)} / ${formatNumber(metrics.exposurePct, 1)}%`,
     },
     {
-      label: 'REALITY P / ITER',
-      value: `${allYearBacktest.validation.realityCheck.pValue} / ${formatNumber(allYearBacktest.validation.realityCheck.iterations, 0)}`,
-      tone: 'positive',
+      label: 'SELECTION P / ITER',
+      value: `${formatNumber(realityCheck.pValue, 5)} / ${formatNumber(realityCheck.iterations, 0)}`,
+      tone: realityCheck.pValue < 0.05 ? 'positive' : 'warning',
     },
   ]
 }
@@ -123,6 +125,7 @@ function SplitRow({ label, metrics, indexMetrics, edge }: { label: string; metri
   return (
     <tr>
       <th scope="row">{label}</th>
+      <td>{metrics.firstEntry && metrics.lastExit ? `${metrics.firstEntry} — ${metrics.lastExit}` : '—'}</td>
       <td className={classForSigned(metrics.totalReturnPct)}>{signedPercent(metrics.totalReturnPct)}</td>
       <td>{signedPercent(indexMetrics.totalReturnPct)}</td>
       <td className={classForSigned(edge)}>{signedPercent(edge)}</td>
@@ -136,7 +139,10 @@ function SplitRow({ label, metrics, indexMetrics, edge }: { label: string; metri
 
 export function BacktestView() {
   const [showPosition, setShowPosition] = useState(false)
-  const metrics = allYearBacktest.selected.allMetrics
+  const reportMetrics = allYearBacktest.selected.allMetrics
+  const selection = allYearBacktest.validation.selectionMetrics
+  const selectionMetrics = selection.strategy.all
+  const selectionEnd = selection.throughDate
   const researchInstruments = allYearBacktest.contract.researchInstruments
   const executionInstrument = allYearBacktest.contract.executionInstrument
   const finalEquity = backtestPoints.at(-1) ? 100_000 * (1 + (backtestPoints.at(-1)?.equityPct ?? 0) / 100) : 100_000
@@ -157,8 +163,12 @@ export function BacktestView() {
             </dd>
           </div>
           <div>
-            <dt>PERIOD</dt>
-            <dd>{dateLabel(metrics.firstEntry)} — {dateLabel(metrics.lastExit)}</dd>
+            <dt>EVIDENCE PERIOD</dt>
+            <dd>{dateLabel(selectionMetrics.firstEntry)} — {dateLabel(selectionMetrics.lastExit)}</dd>
+          </div>
+          <div>
+            <dt>REPORT THROUGH</dt>
+            <dd>{dateLabel(reportMetrics.lastExit)}</dd>
           </div>
           <div>
             <dt>BUILT</dt>
@@ -168,15 +178,20 @@ export function BacktestView() {
       </header>
 
       <div className="warning-line" role="note">
-        <strong>{researchInstruments.summer.gasSymbol} + {researchInstruments.winter.gasSymbol} → {executionInstrument.gasSymbol}</strong>
-        <span>Summer gas rows use the NG=F continuous futures proxy; Winter gas rows use UNG history; Alpaca executes UNG. The mixed research ledger will not replicate live ETF fills exactly.</span>
+        <strong>{researchInstruments.summer.signalSymbol} SIGNAL → {executionInstrument.gasSymbol} P&amp;L / ALPACA</strong>
+        <span>Every gas return now uses UNG. Prior holdings own the overnight move, current targets start at the adjusted session open, and turnover costs cover UNG, VOO, and QQQM. Exact fills, intraday retargeting, and borrow availability remain broker outcomes.</span>
       </div>
 
-      <MetricRail metrics={metricsForBacktest()} ariaLabel="All-year backtest headline metrics" />
+      <div className="warning-line" role="note">
+        <strong>ELIGIBILITY THROUGH {selectionEnd}</strong>
+        <span>Only the chronological train/validation prefix through this date enters all-year promotion. Later rows, the expanded public validation split, holdout, full-calendar curve, and full-calendar bootstrap are report-only.</span>
+      </div>
+
+      <MetricRail metrics={metricsForBacktest()} ariaLabel={`Selection-safe backtest evidence through ${selectionEnd}`} />
 
       <PerformanceChart
-        title="Equity / benchmark / drawdown"
-        meta={`${formatCurrency(finalEquity)} END · ${formatNumber(backtestPoints.length, 0)} DAYS · ${formatNumber(metrics.turnover, 2)} TURN`}
+        title={`Full-calendar equity / benchmark / drawdown · report-only after ${selectionEnd}`}
+        meta={`${formatCurrency(finalEquity)} END · ${formatNumber(backtestPoints.length, 0)} DAYS · ${formatNumber(reportMetrics.turnover, 2)} TURN · REPORT THROUGH ${reportMetrics.lastExit}`}
         data={backtestPoints}
         series={[{ ...positionSeries, visible: showPosition }, ...performanceSeries]}
         empty="NO CURVE · RUN THE ALL-YEAR BACKTEST"
@@ -194,16 +209,17 @@ export function BacktestView() {
 
       <BacktestValidation />
 
-      <section className="data-section" aria-labelledby="split-title">
+      <section className="data-section" aria-labelledby="selection-split-title">
         <header className="section-header">
-          <h2 id="split-title">Train / validation / holdout</h2>
-          <span className="plain-status positive">HOLDOUT REPORT-ONLY</span>
+          <h2 id="selection-split-title">Selection evidence</h2>
+          <span className="plain-status">ELIGIBILITY THROUGH {selectionEnd}</span>
         </header>
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
                 <th>SPLIT</th>
+                <th>WINDOW</th>
                 <th>STRATEGY</th>
                 <th>INDEX</th>
                 <th>CUM. EDGE</th>
@@ -214,10 +230,38 @@ export function BacktestView() {
               </tr>
             </thead>
             <tbody>
-              <SplitRow label="TRAIN" metrics={allYearBacktest.selected.trainMetrics} indexMetrics={allYearBacktest.selected.indexMetrics.train} edge={allYearBacktest.selected.splitEdges.train} />
-              <SplitRow label="VALIDATION" metrics={allYearBacktest.selected.validationMetrics} indexMetrics={allYearBacktest.selected.indexMetrics.validation} edge={allYearBacktest.selected.splitEdges.validation} />
-              <SplitRow label="HOLDOUT" metrics={allYearBacktest.selected.holdoutMetrics} indexMetrics={allYearBacktest.selected.indexMetrics.holdout} edge={allYearBacktest.selected.splitEdges.holdout} />
-              <SplitRow label="FULL" metrics={metrics} indexMetrics={allYearBacktest.selected.indexMetrics.all} edge={allYearBacktest.selected.splitEdges.all} />
+              <SplitRow label="TRAIN" metrics={selection.strategy.train} indexMetrics={selection.index.train} edge={selection.splitEdges.train} />
+              <SplitRow label="VALIDATION" metrics={selection.strategy.validation} indexMetrics={selection.index.validation} edge={selection.splitEdges.validation} />
+              <SplitRow label="TRAIN + VALIDATION" metrics={selection.strategy.all} indexMetrics={selection.index.all} edge={selection.splitEdges.all} />
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="data-section" aria-labelledby="report-split-title">
+        <header className="section-header">
+          <h2 id="report-split-title">Later / full-calendar diagnostics</h2>
+          <span className="plain-status warning">REPORT-ONLY · NO PROMOTION INPUT</span>
+        </header>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>SPLIT</th>
+                <th>WINDOW</th>
+                <th>STRATEGY</th>
+                <th>INDEX</th>
+                <th>CUM. EDGE</th>
+                <th>CAGR</th>
+                <th>SHARPE</th>
+                <th>MAX DD</th>
+                <th>ACTIVE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <SplitRow label="EXPANDED VALIDATION · REPORT-ONLY" metrics={allYearBacktest.selected.validationMetrics} indexMetrics={allYearBacktest.selected.indexMetrics.validation} edge={allYearBacktest.selected.splitEdges.validation} />
+              <SplitRow label="PUBLIC HOLDOUT · REPORT-ONLY" metrics={allYearBacktest.selected.holdoutMetrics} indexMetrics={allYearBacktest.selected.indexMetrics.holdout} edge={allYearBacktest.selected.splitEdges.holdout} />
+              <SplitRow label="FULL CALENDAR · REPORT-ONLY" metrics={reportMetrics} indexMetrics={allYearBacktest.selected.indexMetrics.all} edge={allYearBacktest.selected.splitEdges.all} />
             </tbody>
           </table>
         </div>
@@ -226,13 +270,14 @@ export function BacktestView() {
       <div className="data-grid">
         <section className="data-section" aria-labelledby="diagnostics-title">
           <header className="section-header compact">
-            <h2 id="diagnostics-title">Risk / weather</h2>
+            <h2 id="diagnostics-title">Full-calendar risk / weather</h2>
+            <span className="plain-status warning">REPORT-ONLY</span>
           </header>
           <dl className="terminal-readout">
-            <div><dt>WIN RATE</dt><dd>{formatNumber(metrics.winRatePct, 1)}%</dd></div>
-            <div><dt>PROFIT FACTOR</dt><dd>{formatNumber(metrics.profitFactor)}</dd></div>
-            <div><dt>CVaR95</dt><dd className="negative">{signedPercent(metrics.cvar95Pct)}</dd></div>
-            <div><dt>AVG DAILY P&L</dt><dd className="positive">{signedPercent(metrics.averageDailyPnlPct, 3)}</dd></div>
+            <div><dt>WIN RATE</dt><dd>{formatNumber(reportMetrics.winRatePct, 1)}%</dd></div>
+            <div><dt>PROFIT FACTOR</dt><dd>{formatNumber(reportMetrics.profitFactor)}</dd></div>
+            <div><dt>CVaR95</dt><dd className="negative">{signedPercent(reportMetrics.cvar95Pct)}</dd></div>
+            <div><dt>AVG DAILY P&L</dt><dd>{signedPercent(reportMetrics.averageDailyPnlPct, 3)}</dd></div>
             <div><dt>WEATHER DIRECTION</dt><dd>{formatNumber(weatherQuality.directionalAccuracyPct, 1)}%</dd></div>
             <div><dt>COLD ≤ {formatNumber(weatherQuality.coldEventThresholdF, 0)}F RECALL</dt><dd>{formatNumber(weatherQuality.coldRecallPct, 1)}%</dd></div>
             <div><dt>WEATHER MAE</dt><dd>{formatNumber(weatherQuality.maeF, 2)}F</dd></div>
@@ -246,11 +291,12 @@ export function BacktestView() {
 
         <section className="data-section" aria-labelledby="sleeve-title">
           <header className="section-header compact">
-            <h2 id="sleeve-title">Seasonal rows</h2>
+            <h2 id="sleeve-title">Full-calendar seasonal attribution</h2>
+            <span className="plain-status warning">REPORT-ONLY</span>
           </header>
           <div className="table-scroll compact-table">
             <table>
-              <thead><tr><th>ROW TYPE</th><th>ROWS</th><th>COMPOUND</th><th>WIN</th><th>AVG</th></tr></thead>
+              <thead><tr><th>THESIS</th><th>TARGET ROWS</th><th>CAUSAL COMPOUND</th><th>WIN DAYS</th><th>AVG / DAY</th></tr></thead>
               <tbody>
                 {sleeveStats.map((sleeve) => (
                   <tr key={sleeve.id}>
@@ -269,11 +315,12 @@ export function BacktestView() {
 
       <section className="data-section" aria-labelledby="tape-title">
         <header className="section-header compact">
-          <h2 id="tape-title">Recent rows</h2>
+          <h2 id="tape-title">Recent report-only rows</h2>
+          <span className="plain-status warning">AFTER SELECTION CUTOFF</span>
         </header>
         <div className="table-scroll trade-tape">
           <table>
-            <thead><tr><th>DATE</th><th>SPLIT</th><th>THESIS</th><th>INSTRUMENT</th><th>GAS POS</th><th>DAILY</th><th>ACTIVE EDGE</th><th>EQUITY</th></tr></thead>
+            <thead><tr><th>DATE</th><th>SPLIT</th><th>THESIS</th><th>TARGET SLEEVE</th><th>GAS POS</th><th>DAILY</th><th>ACTIVE EDGE</th><th>EQUITY</th></tr></thead>
             <tbody>
               {recentBacktestRows.map((row) => (
                 <tr key={`${row.date}-${row.chartIndex}`}>

@@ -16,6 +16,8 @@ export type BacktestMetrics = {
   tradeCount: number
   exposurePct: number
   turnover: number
+  gasTurnover?: number
+  indexTurnover?: number
   var95Pct: number
   cvar95Pct: number
   averageDailyPnlPct: number
@@ -42,29 +44,66 @@ export type StrategyTrade = BacktestPoint & {
   equityUsd: number
   component: 'summer-alpha' | 'winter-alpha'
   researchInstrument: string
+  signalInstrument: string
   direction: string
   sourceId: string
   confidence: number
+  priorCloseThesisKind: string
+  priorCloseReturnContributionPct: number
+  currentSessionReturnContributionPct: number
 }
 
 type Percentiles = { p05: number; p50: number; p95: number }
+
+type SplitKey = 'all' | 'train' | 'validation' | 'holdout'
+
+type RealityCheck = {
+  method: string
+  pValue: number
+  observedAverageDailyEdgePct: number
+  observedAnnualizedEdgePct: number
+  meanConfidenceIntervalDailyEdgePct: Percentiles
+  nullConfidenceIntervalDailyEdgePct: Percentiles
+  sampleCount: number
+  sampleStartDate: string
+  sampleEndDate: string
+  activeOverlayDays: number
+  iterations: number
+  blockLength: number
+}
+
+type PromotionGates = {
+  positiveTrainEdge: boolean
+  positiveValidationEdge: boolean
+  preHoldoutBootstrapSignificance: boolean
+  trainMaxDrawdown: boolean
+  validationMaxDrawdown: boolean
+  summerComponent: boolean
+  winterComponent: boolean
+  liveContract: boolean
+}
 
 type AllYearSummary = {
   generatedAt: string
   strategyId: string
   displayName: string
+  status: 'research-baseline' | 'needs-validation'
   data: {
     marketStartDate: string
     marketEndDate: string
     marketDays: number
   }
   contract: {
+    trainEnd: string
+    selectionEnd: string
+    validationEnd: string
+    holdoutStart: string
     selectionPolicy: string
     signalTiming: string
     overfitControl: string
     researchInstruments: {
-      summer: { componentStrategyId: string; gasSymbol: string; contract: string }
-      winter: { componentStrategyId: string; gasSymbol: string; contract: string }
+      summer: { componentStrategyId: string; gasSymbol: string; signalSymbol: string; contract: string }
+      winter: { componentStrategyId: string; gasSymbol: string; signalSymbol: string; contract: string }
       indexFallback: { symbol: string; contract: string }
     }
     executionInstrument: { gasSymbol: string; contract: string }
@@ -76,9 +115,9 @@ type AllYearSummary = {
     trainMetrics: BacktestMetrics
     validationMetrics: BacktestMetrics
     holdoutMetrics: BacktestMetrics
-    indexMetrics: Record<'all' | 'train' | 'validation' | 'holdout', BacktestMetrics>
-    splitEdges: Record<'all' | 'train' | 'validation' | 'holdout', number>
-    splitAnnualEdges: Record<'all' | 'train' | 'validation' | 'holdout', number>
+    indexMetrics: Record<SplitKey, BacktestMetrics>
+    splitEdges: Record<SplitKey, number>
+    splitAnnualEdges: Record<SplitKey, number>
     componentTradeCounts: { summer: number; winter: number }
     indexFallbackRows: number
     materialRows: number
@@ -90,18 +129,15 @@ type AllYearSummary = {
     selectionUsedHoldout: boolean
   }
   validation: {
-    realityCheck: {
-      method: string
-      pValue: number
-      observedAverageDailyEdgePct: number
-      observedAnnualizedEdgePct: number
-      meanConfidenceIntervalDailyEdgePct: Percentiles
-      nullConfidenceIntervalDailyEdgePct: Percentiles
-      sampleCount: number
-      activeOverlayDays: number
-      iterations: number
-      blockLength: number
+    selectionRealityCheck: RealityCheck
+    selectionMetrics: {
+      throughDate: string
+      strategy: Record<SplitKey, BacktestMetrics>
+      index: Record<SplitKey, BacktestMetrics>
+      splitEdges: Record<SplitKey, number>
     }
+    promotionGates: PromotionGates
+    realityCheck: RealityCheck
     componentRealityChecks: Record<string, { pValue: number; bestObservedCandidateId?: string; candidateFamilySize?: number }>
   }
 }
@@ -158,23 +194,19 @@ export const allYearTrades: StrategyTrade[] = parsedTrades.map((row, rowIndex) =
     equityUsd: numberFrom(row.equityUsd, 100_000),
     component: (row.component || 'summer-alpha') as StrategyTrade['component'],
     researchInstrument: row.researchInstrument || 'unknown',
+    signalInstrument: row.signalInstrument || 'unknown',
     direction: row.direction || 'flat',
     sourceId: row.sourceId || 'unknown',
     confidence: numberFrom(row.confidence),
+    priorCloseThesisKind: row.priorCloseThesisKind || 'index-fallback',
+    priorCloseReturnContributionPct: numberFrom(row.priorCloseReturnContributionPct),
+    currentSessionReturnContributionPct: numberFrom(row.currentSessionReturnContributionPct, numberFrom(row.netReturnPct)),
   }
 })
 
 export const backtestPoints: BacktestPoint[] = allYearTrades
 
-export const allYearBacktest = {
-  ...summary,
-  status:
-    summary.selected.splitEdges.holdout > 0 &&
-    summary.validation.realityCheck.pValue < 0.05 &&
-    summary.selected.allMetrics.maxDrawdownPct > summary.contract.maxDrawdownPromotionFloorPct
-      ? ('research-baseline' as const)
-      : ('needs-validation' as const),
-}
+export const allYearBacktest = summary
 
 const sleeveLabels: Record<string, string> = {
   'cold-long': 'Winter cold / long gas',
@@ -186,22 +218,50 @@ const sleeveLabels: Record<string, string> = {
   'index-fallback': 'Index fallback',
 }
 
-export const sleeveStats = Object.entries(
-  allYearTrades.reduce<Record<string, StrategyTrade[]>>((groups, trade) => {
-    ;(groups[trade.thesisKind] ??= []).push(trade)
-    return groups
-  }, {}),
-)
-  .map(([id, rows]) => {
-    const compounded = rows.reduce((equity, row) => equity * (1 + row.netReturnPct / 100), 1)
-    const wins = rows.filter((row) => row.netReturnPct > 0).length
+type CausalSleeve = {
+  rowCount: number
+  returnsByDate: Map<string, number>
+}
+
+const causalSleeves = new Map<string, CausalSleeve>()
+
+function sleeveFor(id: string) {
+  const existing = causalSleeves.get(id)
+  if (existing) return existing
+  const created = { rowCount: 0, returnsByDate: new Map<string, number>() }
+  causalSleeves.set(id, created)
+  return created
+}
+
+for (const trade of allYearTrades) {
+  sleeveFor(trade.thesisKind).rowCount += 1
+  const contributions = [
+    { id: trade.priorCloseThesisKind, returnPct: trade.priorCloseReturnContributionPct },
+    { id: trade.thesisKind, returnPct: trade.currentSessionReturnContributionPct },
+  ]
+  for (const contribution of contributions) {
+    const sleeve = sleeveFor(contribution.id)
+    sleeve.returnsByDate.set(
+      trade.date,
+      (sleeve.returnsByDate.get(trade.date) ?? 0) + contribution.returnPct,
+    )
+  }
+}
+
+export const sleeveStats = [...causalSleeves.entries()]
+  .map(([id, sleeve]) => {
+    const dailyReturns = [...sleeve.returnsByDate.entries()]
+      .sort(([firstDate], [secondDate]) => firstDate.localeCompare(secondDate))
+      .map(([, returnPct]) => returnPct)
+    const compounded = dailyReturns.reduce((equity, returnPct) => equity * (1 + returnPct / 100), 1)
+    const wins = dailyReturns.filter((returnPct) => returnPct > 0).length
     return {
       id,
       label: sleeveLabels[id] ?? id,
-      rowCount: rows.length,
+      rowCount: sleeve.rowCount,
       totalReturnPct: round((compounded - 1) * 100, 2),
-      winRatePct: round((wins / Math.max(rows.length, 1)) * 100, 1),
-      averageReturnPct: round(rows.reduce((sum, row) => sum + row.netReturnPct, 0) / Math.max(rows.length, 1), 3),
+      winRatePct: round((wins / Math.max(dailyReturns.length, 1)) * 100, 1),
+      averageReturnPct: round(dailyReturns.reduce((sum, returnPct) => sum + returnPct, 0) / Math.max(dailyReturns.length, 1), 3),
     }
   })
   .sort((first, second) => second.rowCount - first.rowCount)

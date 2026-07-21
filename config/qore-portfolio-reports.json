@@ -1,0 +1,62 @@
+{
+  "serviceId": "qore-portfolio-reports-config-v1",
+  "report": {
+    "defaultCadence": "daily",
+    "timeZone": "America/New_York",
+    "maxTelemetryAgeHours": 36,
+    "maxRuntimeStateAgeHours": 6,
+    "dedicatedQoreAccount": false,
+    "outputDirectory": ".local/qore/portfolio-reports"
+  },
+  "schedules": [
+    {
+      "id": "daily-after-close",
+      "enabled": true,
+      "cadence": "daily",
+      "weekdays": [1, 2, 3, 4, 5],
+      "hour": 18,
+      "minute": 30,
+      "deliveryWindowMinutes": 180
+    },
+    {
+      "id": "weekly-sunday",
+      "enabled": false,
+      "cadence": "weekly",
+      "weekdays": [0],
+      "hour": 18,
+      "minute": 0,
+      "deliveryWindowMinutes": 180
+    }
+  ],
+  "scheduler": {
+    "pollIntervalMs": 900000,
+    "refreshBrokerStatus": true
+  },
+  "delivery": {
+    "requestTimeoutMs": 15000,
+    "destinations": [
+      {
+        "id": "discord-primary",
+        "type": "discord",
+        "enabled": false,
+        "webhookUrlEnv": "QORE_REPORT_DISCORD_WEBHOOK_URL"
+      },
+      {
+        "id": "telegram-primary",
+        "type": "telegram",
+        "enabled": false,
+        "botTokenEnv": "QORE_REPORT_TELEGRAM_BOT_TOKEN",
+        "chatIdEnv": "QORE_REPORT_TELEGRAM_CHAT_ID"
+      },
+      {
+        "id": "email-primary",
+        "type": "resend",
+        "enabled": false,
+        "apiKeyEnv": "QORE_REPORT_RESEND_API_KEY",
+        "fromEnv": "QORE_REPORT_EMAIL_FROM",
+        "toEnv": "QORE_REPORT_EMAIL_TO",
+        "subjectPrefix": "QORE portfolio report"
+      }
+    ]
+  }
+}

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSignal, enrichForecastRows, inferAllYearTarget, selectedContracts } from './lib/qore-live-all-year-inference.mjs'
+import { liveComponentContractDigestSha256 } from './lib/qore-live-contract.mjs'
 
 process.env.NODE_ENV = 'test'
 
@@ -40,6 +42,30 @@ function close(actual, expected, tolerance = 0.002) {
 }
 function addDays(date, count) { return new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10) }
 
+async function writeStrategyArtifactFixture(filePath, { eligible }) {
+  const sourcePath = path.join(dataRoot, 'research', 'strategy-agent-runs', 'ngas-all-year-beta', 'run-summary.json')
+  const source = JSON.parse(await readFile(sourcePath, 'utf8'))
+  const promotionGates = Object.fromEntries(
+    Object.keys(source.validation.promotionGates).map((gate) => [gate, eligible]),
+  )
+  const fixture = {
+    ...source,
+    status: eligible ? 'research-baseline' : 'needs-validation',
+    search: {
+      ...source.search,
+      eligibleCandidateCount: eligible ? 1 : 0,
+      selectionStatus: eligible ? 'fixed-composite-passes-promotion-gates' : 'fixed-composite-retained-needs-validation',
+      selectionUsedHoldout: false,
+    },
+    validation: { ...source.validation, promotionGates },
+    candidates: source.candidates.map((candidate, index) => ({ ...candidate, eligible: eligible && index === 0 })),
+  }
+  const raw = `${JSON.stringify(fixture, null, 2)}\n`
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, raw)
+  return { fixture, digestSha256: crypto.createHash('sha256').update(raw).digest('hex') }
+}
+
 function runNode(args, env) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, args, { cwd: root, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -48,6 +74,54 @@ function runNode(args, env) {
     child.stderr.on('data', (chunk) => { stderr += chunk })
     child.on('close', (code) => resolve({ code, stdout, stderr }))
   })
+}
+
+async function startYahooDailyFixture(targetDate) {
+  const dates = []
+  for (let date = addDays(targetDate, -120); date <= targetDate; date = addDays(date, 1)) {
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay()
+    if (weekday > 0 && weekday < 6) dates.push(date)
+  }
+  const offsets = { 'NG=F': 2, UNG: 10, VOO: 400, QQQM: 150 }
+  const requests = []
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    const symbol = decodeURIComponent(url.pathname.split('/').at(-1))
+    requests.push(symbol)
+    if (!Object.hasOwn(offsets, symbol)) {
+      response.writeHead(404)
+      response.end()
+      return
+    }
+    const closes = dates.map((date, index) => date === targetDate ? offsets[symbol] * 100 : offsets[symbol] + index * 0.05)
+    const payload = {
+      chart: {
+        result: [{
+          timestamp: dates.map((date) => Date.parse(`${date}T00:00:00Z`) / 1000),
+          indicators: {
+            quote: [{
+              open: closes.map((value) => value * 0.99),
+              high: closes.map((value) => value * 1.01),
+              low: closes.map((value) => value * 0.98),
+              close: closes,
+              volume: closes.map((_, index) => 1_000_000 + index),
+            }],
+            adjclose: [{ adjclose: closes }],
+          },
+        }],
+        error: null,
+      },
+    }
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify(payload))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}/v8/finance/chart`,
+    requests,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  }
 }
 
 async function writeCsvWindow(sourcePath, targetPath, startDate, endDate) {
@@ -62,6 +136,27 @@ async function writeCsvThrough(sourcePath, targetPath, endDate) {
   const selected = lines.filter((line) => line.slice(0, 10) <= endDate)
   await mkdir(path.dirname(targetPath), { recursive: true })
   await writeFile(targetPath, `${header}\n${selected.join('\n')}\n`)
+}
+
+async function writeMarketFixture(sourcePath, targetPath, options) {
+  const [header, ...lines] = (await readFile(sourcePath, 'utf8')).trim().split(/\r?\n/)
+  const dropped = new Set(options.dropDates ?? [])
+  const selected = lines.filter((line) => {
+    const date = line.slice(0, 10)
+    return date >= (options.startDate ?? '0000-00-00') && date <= options.endDate && !dropped.has(date)
+  })
+  if (options.extraDate) {
+    const source = selected.find((line) => line.startsWith(`${options.extraDate.sourceDate},`))
+    assert.ok(source, `Missing market row used to create extra date ${options.extraDate.sourceDate}`)
+    selected.push(`${options.extraDate.date}${source.slice(10)}`)
+  }
+  if (options.duplicateDate) {
+    const duplicate = selected.find((line) => line.startsWith(`${options.duplicateDate},`))
+    assert.ok(duplicate, `Missing market row to duplicate on ${options.duplicateDate}`)
+    selected.push(duplicate)
+  }
+  await mkdir(path.dirname(targetPath), { recursive: true })
+  await writeFile(targetPath, `${header}\n${selected.join('\n')}${selected.length ? '\n' : ''}`)
 }
 
 async function dropLocation(filePath, locationId) {
@@ -138,6 +233,68 @@ async function positionParity(result, marketFile, label) {
   return active.length + fallback.length
 }
 
+async function winterStorageReleaseCalendarBoundary(result) {
+  const market = (await csv(path.join(dataRoot, 'market/yahoo/UNG-qore-market.csv')))
+    .map((row) => ({ date: row.date, gasClose: Number(row.close) }))
+    .filter((row) => row.gasClose > 0)
+  const storage = await csv(path.join(dataRoot, 'fundamentals/eia/working-gas-storage-lower48-weekly.csv'))
+  const beforeRelease = inferAllYearTarget({
+    forecastRows: result.forecasts,
+    actualWeatherRows: result.actualWeatherRows,
+    marketDays: market,
+    storageRows: storage,
+    targetDate: '2025-01-03',
+  })
+  assert.equal(beforeRelease.diagnostics.storage.storageDate, '2024-12-20')
+  assert.equal(beforeRelease.diagnostics.storage.storageReleaseAt, '2024-12-27T15:30:00.000Z')
+  assert.equal(beforeRelease.diagnostics.storage.releaseCalendarStatus, 'versioned')
+
+  const afterRelease = inferAllYearTarget({
+    forecastRows: result.forecasts,
+    actualWeatherRows: result.actualWeatherRows,
+    marketDays: market,
+    storageRows: storage,
+    targetDate: '2025-01-06',
+  })
+  assert.equal(afterRelease.diagnostics.storage.storageDate, '2024-12-27')
+  assert.equal(afterRelease.diagnostics.storage.storageReleaseAt, '2025-01-03T15:30:00.000Z')
+}
+
+async function summerStorageReleaseCalendarBoundary(result) {
+  const market = (await csv(path.join(dataRoot, 'market/yahoo/NG-F-qore-market.csv')))
+    .map((row) => ({ date: row.date, gasClose: Number(row.close) }))
+    .filter((row) => row.gasClose > 0)
+  const storage = await csv(path.join(dataRoot, 'fundamentals/eia/working-gas-storage-lower48-weekly.csv'))
+  const beforeRelease = inferAllYearTarget({
+    forecastRows: result.forecasts,
+    marketDays: market,
+    storageRows: storage,
+    targetDate: '2023-07-07',
+  })
+  assert.equal(beforeRelease.diagnostics.storage.storageDate, '2023-06-23')
+  assert.equal(beforeRelease.diagnostics.storage.storageReleaseAt, '2023-06-29T14:30:00.000Z')
+  assert.equal(beforeRelease.diagnostics.storage.releaseCalendarStatus, 'versioned')
+
+  const afterRelease = inferAllYearTarget({
+    forecastRows: result.forecasts,
+    marketDays: market,
+    storageRows: storage,
+    targetDate: '2023-07-10',
+  })
+  assert.equal(afterRelease.diagnostics.storage.storageDate, '2023-06-30')
+  assert.equal(afterRelease.diagnostics.storage.storageReleaseAt, '2023-07-07T14:30:00.000Z')
+
+  assert.throws(
+    () => inferAllYearTarget({
+      forecastRows: result.forecasts,
+      marketDays: market,
+      storageRows: [...storage, { date: '2099-01-02', storageBcf: '1' }],
+      targetDate: '2023-07-10',
+    }),
+    /Missing versioned EIA release timestamp for storage period 2099-01-02/,
+  )
+}
+
 async function liveMarketBoundary(result) {
   const market = (await csv(path.join(dataRoot, 'market/yahoo/NG-F-qore-market.csv')))
     .map((row) => ({ date: row.date, gasClose: Number(row.close) }))
@@ -178,11 +335,42 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
       await writeFile(path.join(forecastRoot, 'weather', weatherDirs[calendar.id], `${base}-manifest.json`), `${JSON.stringify({ forecastSource: calendar.id, generatedAt: `${date}T12:00:00.000Z`, failures: [] })}\n`)
     }
     const outputPath = path.join(scratch, 'target.json')
+    const strategyArtifactPath = path.join(scratch, 'eligible-all-year-run-summary.json')
+    const strategyArtifact = await writeStrategyArtifactFixture(strategyArtifactPath, { eligible: true })
     const env = {
       QORE_LIVE_INFERENCE_STATE_DIR: scratch,
       QORE_LIVE_INFERENCE_FILE: outputPath,
       QORE_LIVE_INFERENCE_DATE: date,
       QORE_LIVE_INFERENCE_SKIP_FETCH: '1',
+      QORE_LIVE_STRATEGY_ARTIFACT_FILE: strategyArtifactPath,
+    }
+    const gasFileName = expectedSources === selectedContracts.summer.sourceIds ? 'NG-F-qore-market.csv' : 'UNG-qore-market.csv'
+    if (options.marketCollectorBaseUrl) {
+      env.QORE_LIVE_MARKET_HISTORY_STATE_DIR = path.join(scratch, 'market-history')
+      env.QORE_LIVE_MARKET_HISTORY_YAHOO_BASE_URL = options.marketCollectorBaseUrl
+    } else {
+      env.QORE_LIVE_INFERENCE_GAS_MARKET_FILE = path.join(dataRoot, 'market/yahoo', gasFileName)
+      env.QORE_LIVE_INFERENCE_INDEX_MARKET_FILE = path.join(dataRoot, 'market/yahoo/US-INDEX-BASKET-qore-market.csv')
+    }
+    if (options.marketFixture) {
+      const gasPath = path.join(scratch, gasFileName)
+      const indexPath = path.join(scratch, 'US-INDEX-BASKET-qore-market.csv')
+      await writeMarketFixture(path.join(dataRoot, 'market/yahoo', gasFileName), gasPath, {
+        startDate: options.marketFixture.startDate,
+        endDate: options.marketFixture.gasEndDate ?? date,
+        dropDates: options.marketFixture.dropGasDates,
+        duplicateDate: options.marketFixture.duplicateGasDate,
+        extraDate: options.marketFixture.extraGasDate,
+      })
+      await writeMarketFixture(path.join(dataRoot, 'market/yahoo/US-INDEX-BASKET-qore-market.csv'), indexPath, {
+        startDate: options.marketFixture.startDate,
+        endDate: options.marketFixture.indexEndDate ?? date,
+        dropDates: options.marketFixture.dropIndexDates,
+        duplicateDate: options.marketFixture.duplicateIndexDate,
+      })
+      env.QORE_LIVE_INFERENCE_GAS_MARKET_FILE = gasPath
+      env.QORE_LIVE_INFERENCE_INDEX_MARKET_FILE = indexPath
+      if (options.marketFixture.maxAgeDays !== undefined) env.QORE_LIVE_INFERENCE_MAX_MARKET_AGE_DAYS = String(options.marketFixture.maxAgeDays)
     }
     if (options.staticStorageEndDate) {
       const storagePath = path.join(scratch, 'working-gas-storage.csv')
@@ -202,6 +390,13 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
     }
     assert.equal(run.code, 0, run.stderr)
     const snapshot = JSON.parse(await readFile(outputPath, 'utf8'))
+    assert.equal(snapshot.strategyArtifact.status, 'research-baseline')
+    assert.equal(snapshot.strategyArtifact.promotionEligible, true)
+    assert.equal(snapshot.strategyArtifact.digestSha256, strategyArtifact.digestSha256)
+    assert.equal(snapshot.marketValidation.targetDate, date)
+    assert.equal(snapshot.marketValidation.latestCommonDate, snapshot.marketValidation.latestIndexDate)
+    assert.equal(snapshot.marketValidation.recentIndexSessionsValidated, 42)
+    assert.ok(snapshot.marketValidation.commonSessionCount >= 42)
     if (!options.skipPositionParity) {
       const expectedPosition = options.expectedPosition ?? result.selected.find((row) => row.entryTradeDate === date)?.ungPosition
       assert.notEqual(expectedPosition, undefined, `Missing expected live target for ${date}`)
@@ -209,6 +404,9 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
     }
     assert.deepEqual(snapshot.forecastValidation.requiredSources, expectedSources)
     if (options.expectedLatestIssueDate) assert.equal(snapshot.forecastValidation.latestCommonIssueDate, options.expectedLatestIssueDate)
+    if (options.expectedMarket) {
+      for (const [key, value] of Object.entries(options.expectedMarket)) assert.deepEqual(snapshot.marketValidation[key], value, `Unexpected marketValidation.${key}`)
+    }
     if (options.expectedStorage) {
       assert.equal(snapshot.storageValidation.latestInputDate, options.expectedStorage.latestInputDate)
       assert.equal(snapshot.storageValidation.latestPolledDate, options.expectedStorage.latestInputDate)
@@ -216,6 +414,62 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
       assert.equal(snapshot.target.diagnostics.storage.storageDate, options.expectedStorage.storageDate)
       assert.equal(snapshot.target.diagnostics.storage.allowed, options.expectedStorage.allowed)
     }
+    if (options.marketCollectorBaseUrl) {
+      const historyDir = path.join(scratch, 'market-history')
+      const manifest = JSON.parse(await readFile(path.join(historyDir, 'manifest.json'), 'utf8'))
+      assert.equal(manifest.targetDate, date)
+      assert.equal(manifest.completedSessionCutoffExclusive, date)
+      assert.equal(manifest.authoritativeSessionsValidated, 42)
+      for (const file of ['NG-F-qore-market.csv', 'UNG-qore-market.csv', 'VOO-qore-market.csv', 'QQQM-qore-market.csv', 'US-INDEX-BASKET-qore-market.csv', 'manifest.json']) {
+        assert.equal((await stat(path.join(historyDir, file))).mode & 0o777, 0o600, `${file} must be mode 0600`)
+        if (file.endsWith('.csv')) {
+          assert.equal((await csv(path.join(historyDir, file))).some((row) => row.date === date), false, `${file} retained the target-date bar`)
+        }
+      }
+      assert.equal(snapshot.marketValidation.historySource, 'Yahoo chart API')
+      assert.equal(snapshot.marketValidation.completedSessionCutoffExclusive, date)
+    }
+  } finally {
+    await rm(scratch, { recursive: true, force: true })
+  }
+}
+
+async function nonPromotedStrategyArtifactFailsClosed() {
+  const scratch = await mkdtemp(path.join(tmpdir(), 'qore-live-artifact-gate-'))
+  try {
+    const strategyArtifactPath = path.join(scratch, 'needs-validation-run-summary.json')
+    await writeStrategyArtifactFixture(strategyArtifactPath, { eligible: false })
+    const run = await runNode(['scripts/qore-live-strategy-inference.mjs'], {
+      QORE_LIVE_INFERENCE_STATE_DIR: scratch,
+      QORE_LIVE_INFERENCE_FILE: path.join(scratch, 'target.json'),
+      QORE_LIVE_INFERENCE_SKIP_FETCH: '1',
+      QORE_LIVE_STRATEGY_ARTIFACT_FILE: strategyArtifactPath,
+    })
+    assert.equal(run.code, 1)
+    assert.match(run.stderr, /artifact is not promotion-eligible:.*status must equal research-baseline/)
+  } finally {
+    await rm(scratch, { recursive: true, force: true })
+  }
+}
+
+async function mismatchedLiveComponentContractFailsClosed() {
+  const scratch = await mkdtemp(path.join(tmpdir(), 'qore-live-contract-gate-'))
+  try {
+    const strategyArtifactPath = path.join(scratch, 'mismatched-live-contract-run-summary.json')
+    const { fixture } = await writeStrategyArtifactFixture(strategyArtifactPath, { eligible: true })
+    fixture.contract.liveInference.componentContract.summer.selected.weatherFraction = 0.4
+    fixture.contract.liveInference.componentContractDigestSha256 = liveComponentContractDigestSha256(
+      fixture.contract.liveInference.componentContract,
+    )
+    await writeFile(strategyArtifactPath, `${JSON.stringify(fixture, null, 2)}\n`)
+    const run = await runNode(['scripts/qore-live-strategy-inference.mjs'], {
+      QORE_LIVE_INFERENCE_STATE_DIR: scratch,
+      QORE_LIVE_INFERENCE_FILE: path.join(scratch, 'target.json'),
+      QORE_LIVE_INFERENCE_SKIP_FETCH: '1',
+      QORE_LIVE_STRATEGY_ARTIFACT_FILE: strategyArtifactPath,
+    })
+    assert.equal(run.code, 1)
+    assert.match(run.stderr, /reviewed component contract digest does not match the executable live contract/)
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }
@@ -307,12 +561,14 @@ async function allYearInstrumentContract() {
   const artifactDir = path.join(dataRoot, 'research', 'strategy-agent-runs', 'ngas-all-year-beta')
   const summary = JSON.parse(await readFile(path.join(artifactDir, 'run-summary.json'), 'utf8'))
   const rows = await csv(path.join(artifactDir, 'selected-trades.csv'))
-  assert.equal(summary.contract.researchInstruments.summer.gasSymbol, 'NG=F')
+  assert.equal(summary.contract.researchInstruments.summer.gasSymbol, 'UNG')
+  assert.equal(summary.contract.researchInstruments.summer.signalSymbol, 'NG=F')
   assert.equal(summary.contract.researchInstruments.winter.gasSymbol, 'UNG')
+  assert.equal(summary.contract.researchInstruments.winter.signalSymbol, 'UNG')
   assert.equal(summary.contract.executionInstrument.gasSymbol, 'UNG')
   assert.ok(rows.every((row) => row.researchInstrument))
   assert.ok(rows.filter((row) => row.componentStrategyId === 'ngas-summer-alpha' && row.thesisKind !== 'index-fallback')
-    .every((row) => row.researchInstrument === 'NG=F'))
+    .every((row) => row.researchInstrument === 'UNG' && row.signalInstrument === 'NG=F'))
   assert.ok(rows.filter((row) => row.componentStrategyId === 'ngas-winter-alpha' && row.thesisKind !== 'index-fallback')
     .every((row) => row.researchInstrument === 'UNG'))
   assert.ok(rows.filter((row) => row.thesisKind === 'index-fallback')
@@ -320,13 +576,67 @@ async function allYearInstrumentContract() {
 }
 
 await portableGribPlatformBranch()
+await nonPromotedStrategyArtifactFailsClosed()
+await mismatchedLiveComponentContractFailsClosed()
 await allYearInstrumentContract()
 const summer = await summerParity()
 const winter = await winterParity()
+await summerStorageReleaseCalendarBoundary(summer)
+await winterStorageReleaseCalendarBoundary(winter)
 const summerPositions = await positionParity(summer, 'NG-F-qore-market.csv', 'summer')
 const winterPositions = await positionParity(winter, 'UNG-qore-market.csv', 'winter')
 await liveMarketBoundary(summer)
-await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds)
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  expectedMarket: {
+    gasSymbol: 'NG=F', latestGasDate: '2024-04-24', latestIndexDate: '2024-04-24',
+    latestCommonDate: '2024-04-24', marketAgeDays: 1, maxMarketAgeDays: 4, provisionalTargetDate: '2024-04-25',
+  },
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  marketFixture: { gasEndDate: '2024-04-19', indexEndDate: '2024-04-19' },
+  expectedError: /cannot verify intervening weekday session\(s\).*2024-04-22, 2024-04-23, 2024-04-24/,
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  marketFixture: { gasEndDate: '2024-04-23', indexEndDate: '2024-04-25' },
+  expectedError: /missing a valid NG=F row for recent index session\(s\): 2024-04-24/,
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  marketFixture: { duplicateGasDate: '2024-04-24' },
+  expectedError: /NG=F market history contains duplicate date 2024-04-24/,
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  marketFixture: { startDate: '2024-03-15' },
+  expectedError: /Market history has only \d+ index sessions through 2024-04-25; at least 42 are required/,
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  marketFixture: { gasEndDate: '2024-04-19', indexEndDate: '2024-04-19', maxAgeDays: 7 },
+  expectedError: /cannot verify intervening weekday session\(s\).*2024-04-22, 2024-04-23, 2024-04-24/,
+})
+await liveLoaderParity(summer, '2024-05-05', selectedContracts.summer.sourceIds, {
+  marketFixture: {
+    gasEndDate: '2024-05-03', indexEndDate: '2024-05-03',
+    extraGasDate: { sourceDate: '2024-05-03', date: '2024-05-05' },
+  },
+  expectedMarket: {
+    latestGasDate: '2024-05-03', latestIndexDate: '2024-05-03', latestCommonDate: '2024-05-03',
+    marketAgeDays: 2, provisionalTargetDate: null,
+  },
+  skipPositionParity: true,
+})
+const yahooFixture = await startYahooDailyFixture('2024-04-25')
+try {
+  await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+    marketCollectorBaseUrl: yahooFixture.baseUrl,
+    expectedMarket: {
+      latestGasDate: '2024-04-24', latestIndexDate: '2024-04-24', latestCommonDate: '2024-04-24',
+      marketAgeDays: 1, provisionalTargetDate: '2024-04-25', historySource: 'Yahoo chart API',
+    },
+    skipPositionParity: true,
+  })
+  assert.deepEqual(new Set(yahooFixture.requests), new Set(['NG=F', 'UNG', 'VOO', 'QQQM']))
+} finally {
+  await yahooFixture.close()
+}
 const completeWinterFixtures = { 'ecmwf-aifs': 'ecmwf-ifs' }
 await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.liveSourceIds, {
   fixtureSources: completeWinterFixtures,
@@ -357,7 +667,7 @@ await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.live
 await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.liveSourceIds, {
   fixtureSources: completeWinterFixtures,
   partialLocationSources: ['ecmwf-aifs'],
-  skipPositionParity: true,
+  expectedError: /stale or incomplete/,
 })
 await liveLoaderParity(winter, '2026-03-10', selectedContracts.winterFollow.liveSourceIds, {
   fixtureSources: completeWinterFixtures,

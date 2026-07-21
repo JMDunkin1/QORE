@@ -10,6 +10,7 @@ import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 const repoDir = path.resolve(process.env.QORE_REPO_DIR ?? process.cwd())
 loadLocalEnv(repoDir)
 
+const snapshotOnly = process.argv.slice(2).includes('--snapshot-json')
 const host = '127.0.0.1'
 const port = validPort(process.env.QORE_DASHBOARD_SERVICE_PORT ?? process.env.QORE_API_PORT) ?? 4775
 const staleAfterMs = positiveNumber(process.env.QORE_DASHBOARD_STALE_AFTER_MS, 15 * 60 * 1000)
@@ -50,6 +51,11 @@ const configuredOrigins = String(process.env.QORE_DASHBOARD_SERVICE_ALLOWED_ORIG
 const allowedOrigins = new Set(configuredOrigins.filter(isLocalOrigin))
 const maxDiagnosticMessageCount = 32
 const maxDiagnosticMessageLength = 240
+const maxSnapshotBytes = 512 * 1024
+const maxPositions = 64
+const maxOpenOrders = 256
+const maxPortfolioHistoryPoints = 1500
+const maxSupervisorJobs = 64
 const credentialValues = [
   process.env.QORE_ALPACA_API_KEY_ID,
   process.env.QORE_ALPACA_API_SECRET_KEY,
@@ -234,10 +240,22 @@ function riskSnapshotFreshness(generatedAt) {
 
 function normalizedAccount(account, rawAccount) {
   if (!account) return null
+  const equityUsd = roundedNumber(account?.equityUsd, 2)
+  const dayPnlPct = roundedNumber(account?.dayPnlPct, 4)
+  const reportedLastEquityUsd = roundedNumber(account?.lastEquityUsd, 2)
+  const inferredLastEquityUsd = equityUsd !== null && dayPnlPct !== null && dayPnlPct > -100
+    ? roundedNumber(equityUsd / (1 + dayPnlPct / 100), 2)
+    : null
+  const lastEquityUsd = reportedLastEquityUsd ?? inferredLastEquityUsd
   return {
-    equityUsd: roundedNumber(account?.equityUsd, 2),
+    equityUsd,
     cashUsd: roundedNumber(account?.cashUsd, 2),
-    dayPnlPct: roundedNumber(account?.dayPnlPct, 4),
+    lastEquityUsd,
+    dayPnlUsd: roundedNumber(
+      account?.dayPnlUsd ?? (equityUsd !== null && lastEquityUsd !== null ? equityUsd - lastEquityUsd : null),
+      2,
+    ),
+    dayPnlPct,
     trailingDrawdownPct: roundedNumber(account?.trailingDrawdownPct, 4),
     buyingPowerUsd: roundedNumber(account?.buyingPowerUsd ?? rawAccount?.buyingPower, 2),
     status: safeString(account?.status ?? rawAccount?.status, 40),
@@ -380,7 +398,9 @@ function normalizedPortfolioHistory(history, sourceGeneratedAt = null) {
     baseValueUsd,
     baseValueAsOf: isoTimestamp(history?.baseValueAsOf ?? history?.base_value_asof),
     timeframe: safeString(history?.timeframe, 16) ?? '1D',
-    points: [...byTimestamp.values()].sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
+    points: [...byTimestamp.values()]
+      .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+      .slice(-maxPortfolioHistoryPoints),
   }
 }
 
@@ -411,13 +431,13 @@ function normalizedForecastValidation(validation) {
     issueAgeDays: roundedNumber(validation?.issueAgeDays, 3),
     runHourUtc: safeString(validation?.runHourUtc, 8),
     requiredSources: Array.isArray(validation?.requiredSources)
-      ? validation.requiredSources.map((value) => safeString(value, 40)).filter(Boolean)
+      ? validation.requiredSources.slice(0, 32).map((value) => safeString(value, 40)).filter(Boolean)
       : [],
     collectedSources: Array.isArray(validation?.collectedSources)
-      ? validation.collectedSources.map((value) => safeString(value, 40)).filter(Boolean)
+      ? validation.collectedSources.slice(0, 32).map((value) => safeString(value, 40)).filter(Boolean)
       : [],
     requiredLeads: Array.isArray(validation?.requiredLeads)
-      ? validation.requiredLeads.map((value) => roundedNumber(value, 2)).filter((value) => value !== null)
+      ? validation.requiredLeads.slice(0, 64).map((value) => roundedNumber(value, 2)).filter((value) => value !== null)
       : [],
     scoreRowCount: roundedNumber(validation?.scoreRowCount, 0),
   }
@@ -467,7 +487,7 @@ function normalizedWeatherStatus(weather) {
           durationMs: roundedNumber(cycle?.durationMs, 0),
           cadenceMet: booleanOrNull(cycle?.cadenceMet),
           dueJobs: Array.isArray(cycle?.dueJobs)
-            ? cycle.dueJobs.map((value) => safeString(value, 80)).filter(Boolean)
+            ? cycle.dueJobs.slice(0, 64).map((value) => safeString(value, 80)).filter(Boolean)
             : [],
         }
       : null,
@@ -475,7 +495,9 @@ function normalizedWeatherStatus(weather) {
       ? {
           generatedAt: isoTimestamp(current?.generatedAt),
           source: safeString(current?.source, 160),
-          models: Array.isArray(current?.models) ? current.models.map((value) => safeString(value, 60)).filter(Boolean) : [],
+          models: Array.isArray(current?.models)
+            ? current.models.slice(0, 32).map((value) => safeString(value, 60)).filter(Boolean)
+            : [],
           latestActionableScore: roundedNumber(current?.latestActionableScore, 6),
           digest: safeString(current?.digest, 160),
         }
@@ -509,7 +531,7 @@ function normalizedSupervisor(supervisor, weather) {
         }
       : null,
     jobs: Array.isArray(supervisor?.jobs)
-      ? supervisor.jobs.map((job) => ({
+      ? supervisor.jobs.slice(0, maxSupervisorJobs).map((job) => ({
           id: safeString(job?.id, 80),
           label: safeString(job?.label, 160),
           enabled: booleanOrNull(job?.enabled),
@@ -518,7 +540,7 @@ function normalizedSupervisor(supervisor, weather) {
         }))
       : [],
     failedJobs: Array.isArray(supervisor?.failedJobs)
-      ? supervisor.failedJobs.map((job) => ({
+      ? supervisor.failedJobs.slice(0, maxSupervisorJobs).map((job) => ({
           id: safeString(job?.id, 80),
           label: safeString(job?.label, 160),
           exitCode: roundedNumber(job?.exitCode, 0),
@@ -613,6 +635,17 @@ async function dashboardStatus() {
 
   const connectionSource = newestConnectionSource(brokerAccountStatus, brokerSnapshot)
   const activeConnectionMode = normalizedBrokerMode(connectionSource?.mode)
+  const brokerFresh = sourceIsFresh(
+    connectionSource?.generatedAt ?? connectionSource?.sourceGeneratedAt,
+    brokerFutureToleranceMs,
+  )
+  const brokerReportedConnected = connectionSource?.brokerConnected === true
+  const authoritativeConnection = Boolean(
+    activeConnectionMode
+      && brokerReportedConnected
+      && brokerFresh
+      && sourceMatchesMode(connectionSource, activeConnectionMode),
+  )
   const brokerCandidates = [brokerAccountStatus, brokerSnapshot]
   const matchingModeCandidates = brokerCandidates.filter((candidate) => sourceMatchesMode(candidate, activeConnectionMode))
   const successfulMatchingModeCandidates = matchingModeCandidates.filter((candidate) => candidate?.brokerConnected === true)
@@ -633,17 +666,7 @@ async function dashboardStatus() {
   const rawAccount = accountSource?.rawAccount ?? null
   const sourceGeneratedAt = successfulAccountGeneratedAt(accountSource)
   const portfolioHistoryGeneratedAt = historyGeneratedAt(portfolioHistorySource)
-  const brokerFresh = sourceIsFresh(
-    connectionSource?.generatedAt ?? connectionSource?.sourceGeneratedAt,
-    brokerFutureToleranceMs,
-  )
-  const brokerReportedConnected = connectionSource?.brokerConnected === true
-  const connectionCanSupplyMarketClock = Boolean(
-    activeConnectionMode
-      && brokerReportedConnected
-      && brokerFresh
-      && sourceMatchesMode(connectionSource, activeConnectionMode),
-  )
+  const connectionCanSupplyMarketClock = authoritativeConnection
   const clockFreshness = connectionCanSupplyMarketClock
     ? marketClockFreshness(connectionSource?.marketClock)
     : { fresh: false, reason: null }
@@ -731,10 +754,10 @@ async function dashboardStatus() {
     generatedAt: new Date().toISOString(),
     sourceGeneratedAt,
     mode: activeConnectionMode ?? 'unknown',
-    brokerConnected: Boolean(activeConnectionMode && brokerReportedConnected && brokerFresh),
+    brokerConnected: Boolean(authoritativeConnection && marketClockSource),
     account: normalizedAccount(accountSource?.account, rawAccount),
-    positions: positionsSource.map(normalizedPosition).filter((position) => position.symbol),
-    openOrders: ordersSource.map(normalizedOrder).filter((order) => order.symbol || order.id),
+    positions: positionsSource.slice(0, maxPositions).map(normalizedPosition).filter((position) => position.symbol),
+    openOrders: ordersSource.slice(0, maxOpenOrders).map(normalizedOrder).filter((order) => order.symbol || order.id),
     marketClock: normalizedMarketClock(marketClockSource?.marketClock),
     portfolioHistory: normalizedPortfolioHistory(
       portfolioHistorySource?.portfolioHistory,
@@ -874,14 +897,26 @@ const server = createServer(async (req, res) => {
   }
 })
 
-server.listen(port, host, () => {
-  console.log(`QORE telemetry service listening at http://${host}:${port}`)
-})
-
 function shutdown() {
   if (activeRefreshChild) stopChild(activeRefreshChild, 'SIGTERM')
   server.close(() => process.exit(0))
 }
 
-process.on('SIGINT', shutdown)
-process.on('SIGTERM', shutdown)
+if (snapshotOnly) {
+  try {
+    const payload = JSON.stringify(await dashboardStatus())
+    if (Buffer.byteLength(payload) > maxSnapshotBytes) {
+      throw new Error('Sanitized Command telemetry exceeds the bounded snapshot size.')
+    }
+    process.stdout.write(`${payload}\n`)
+  } catch (error) {
+    process.stderr.write(`${safeText(error?.message ?? 'Telemetry snapshot failure.')}\n`)
+    process.exitCode = 1
+  }
+} else {
+  server.listen(port, host, () => {
+    console.log(`QORE telemetry service listening at http://${host}:${port}`)
+  })
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
+}

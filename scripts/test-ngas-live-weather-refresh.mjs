@@ -1,8 +1,16 @@
 #!/usr/bin/env node
+import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import Papa from 'papaparse'
+import {
+  applyExecutionStep,
+  createExecutionState,
+  loadExecutionCalendar,
+  loadResearchExecutionContract,
+  targetWeightsForAllocation,
+} from './lib/qore-research-execution.mjs'
 
 const REPO_ROOT = process.cwd()
 const INPUT_FILE = path.resolve(
@@ -13,10 +21,10 @@ const OUTPUT_DIR = path.resolve(
   process.env.QORE_NGAS_LIVE_WEATHER_REFRESH_OUTPUT_DIR ??
     path.join(REPO_ROOT, '.local', 'qore', 'ngas-live-weather-refresh'),
 )
-const INITIAL_CAPITAL = 100000
 const TRADING_DAYS = 252
-const ONE_WAY_COST_PCT = 0.032
 const EFFECTIVE_OVERLAY_CAP = 0.5625
+const EXECUTION_CONTRACT = loadResearchExecutionContract(REPO_ROOT)
+const EXECUTION_SCENARIO_ID = EXECUTION_CONTRACT.selectionScenarioId
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8')
@@ -127,23 +135,24 @@ function noWeatherRefreshAllocation(row) {
   }
 }
 
-function returnForAllocation(row, allocation, previousPosition) {
-  const grossReturnPct =
-    allocation.indexFraction * numberFrom(row.indexReturnPct) + allocation.position * numberFrom(row.ungReturnPct)
-  const tradingCostPct = Math.abs(allocation.position - previousPosition) * ONE_WAY_COST_PCT
-  return {
-    grossReturnPct,
-    tradingCostPct,
-    returnPct: grossReturnPct - tradingCostPct,
-  }
-}
-
-function replayRows(rows, label, allocationForRow) {
-  let previousPosition = 0
+function replayRows(rows, label, allocationForRow, executionByDate) {
+  let state = createExecutionState(EXECUTION_CONTRACT)
   return rows.map((row) => {
     const allocation = allocationForRow(row)
-    const returns = returnForAllocation(row, allocation, previousPosition)
-    previousPosition = allocation.position
+    const day = executionByDate.get(row.entryTradeDate)
+    if (!day) throw new Error(`Missing UNG/VOO/QQQM execution session for ${row.entryTradeDate}.`)
+    const execution = applyExecutionStep({
+      state,
+      day,
+      targetWeights: targetWeightsForAllocation(EXECUTION_CONTRACT, {
+        gasPosition: allocation.position,
+        investedIndexFraction: allocation.indexFraction,
+      }),
+      contract: EXECUTION_CONTRACT,
+      scenarioId: EXECUTION_SCENARIO_ID,
+    })
+    state = execution.state
+    const tradingCostPct = execution.tradingCostPct + execution.borrowCostPct
     return {
       scenario: label,
       date: row.entryTradeDate,
@@ -155,9 +164,12 @@ function replayRows(rows, label, allocationForRow) {
       indexFraction: round(allocation.indexFraction, 4),
       ungReturnPct: numberFrom(row.ungReturnPct),
       indexReturnPct: numberFrom(row.indexReturnPct),
-      grossReturnPct: round(returns.grossReturnPct, 4),
-      tradingCostPct: round(returns.tradingCostPct, 4),
-      returnPct: round(returns.returnPct, 4),
+      grossReturnPct: round(execution.grossReturnPct, 4),
+      tradingCostPct: round(tradingCostPct, 4),
+      gasTurnover: round(execution.gasTurnover, 6),
+      indexTurnover: round(execution.indexTurnover, 6),
+      totalTurnover: round(execution.totalTurnover, 6),
+      returnPct: round(execution.netReturnPct, 4),
     }
   })
 }
@@ -300,9 +312,26 @@ function comparisonHeadline(checkedInSummary, noWeatherRefreshSummary) {
 
 function main() {
   const sourceRows = parseCsv(INPUT_FILE)
+  const executionByDate = new Map(
+    loadExecutionCalendar(REPO_ROOT, {
+      startDate: sourceRows[0]?.entryTradeDate,
+      endDate: sourceRows.at(-1)?.entryTradeDate,
+    }).map((day) => [day.date, day]),
+  )
   const checkedIn = checkedInRows(sourceRows)
-  const currentReplay = replayRows(sourceRows, 'current replay from positions', currentAllocation)
-  const noWeatherRefresh = replayRows(sourceRows, 'counterfactual no close-in weather refresh', noWeatherRefreshAllocation)
+  const currentReplay = replayRows(sourceRows, 'current replay from positions', currentAllocation, executionByDate)
+  const noWeatherRefresh = replayRows(
+    sourceRows,
+    'counterfactual no close-in weather refresh',
+    noWeatherRefreshAllocation,
+    executionByDate,
+  )
+  currentReplay.forEach((row, index) => {
+    assert.ok(
+      Math.abs(row.returnPct - checkedIn[index].returnPct) <= 0.0002,
+      `Shared execution replay diverged from the checked-in ledger on ${row.date}.`,
+    )
+  })
   const checkedInSummary = summarizeScenario(checkedIn, {})
   const baselineBySplit = checkedInSummary
   const noWeatherRefreshSummary = summarizeScenario(noWeatherRefresh, baselineBySplit)
@@ -320,7 +349,11 @@ function main() {
       'Compare the checked-in all-year daily ledger, which includes close-in weather refresh behavior, with a no-close-in-weather-refresh counterfactual replay. This tests whether the existing live-weather-style adjustment layer helped returns; it does not add broker routing.',
     inputFile: path.relative(REPO_ROOT, INPUT_FILE),
     assumptions: {
-      oneWayCostPct: ONE_WAY_COST_PCT,
+      executionContractId: EXECUTION_CONTRACT.contractId,
+      executionContractDigest: EXECUTION_CONTRACT.digest,
+      executionScenarioId: EXECUTION_SCENARIO_ID,
+      execution:
+        'Both the checked-in path and counterfactual use the shared causal adjusted-open ledger, cash buffer, rebalance deadband, and all-leg UNG/VOO/QQQM costs.',
       effectiveOverlayCap: EFFECTIVE_OVERLAY_CAP,
       droppedStandaloneNoRefreshPosition:
         'Rows that the current weather-resolution logic fully dropped are restored as a conservative +/-0.25 standalone reversion position inferred from the adverse forecast-shift direction.',

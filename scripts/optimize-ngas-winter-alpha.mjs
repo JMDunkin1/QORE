@@ -3,6 +3,24 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import Papa from 'papaparse'
+import {
+  applyExecutionStep,
+  causalReturnContributionsForRow,
+  createExecutionState,
+  executionAuditFields,
+  loadExecutionCalendar,
+  loadResearchExecutionContract,
+  targetWeightsForAllocation,
+} from './lib/qore-research-execution.mjs'
+import {
+  NASA_POWER_ACTUAL_LAG_DAYS,
+  eiaReportAvailableAtOpen,
+  nasaPowerActualAvailableAtOpen,
+} from './lib/qore-signal-availability.mjs'
+import {
+  eiaStorageReleaseAt,
+  loadEiaStorageReleaseCalendar,
+} from './lib/eia-release-time.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -13,6 +31,10 @@ const FROZEN_INPUT_MANIFEST_FILE = path.join(FROZEN_INPUT_DIR, 'input-manifest.j
 const INDEX_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/US-INDEX-BASKET-qore-market.csv')
 const ACTUAL_DAILY_FILE = path.join(DATA_ROOT, 'weather/events/arctic-blast-actual-daily-2021-01-01-2026-03-31.csv')
 const STORAGE_FILE = path.join(DATA_ROOT, 'fundamentals/eia/working-gas-storage-lower48-weekly.csv')
+const STORAGE_RELEASE_CALENDAR_FILE = path.join(
+  DATA_ROOT,
+  'fundamentals/eia/working-gas-storage-release-calendar.json',
+)
 
 const STRATEGY_ID = 'ngas-winter-alpha'
 const FROZEN_WEATHER_FOLLOW_ID = 'winter-alpha-weather-follow'
@@ -22,8 +44,10 @@ const INITIAL_CAPITAL = 100000
 const TRAIN_END = '2024-03-31'
 const VALIDATION_END = '2025-10-31'
 const HOLDOUT_START = '2025-11-01'
-const ROUND_TRIP_COST_PCT = 0.064
-const ONE_WAY_COST_PCT = ROUND_TRIP_COST_PCT / 2
+const EXECUTION_CONTRACT = loadResearchExecutionContract(REPO_ROOT)
+const BASELINE_EXECUTION_SCENARIO = EXECUTION_CONTRACT.scenarios[EXECUTION_CONTRACT.selectionScenarioId]
+const ONE_WAY_COST_PCT = BASELINE_EXECUTION_SCENARIO.oneWayBps.UNG / 100
+const ROUND_TRIP_COST_PCT = ONE_WAY_COST_PCT * 2
 const TRADING_DAYS = 252
 const BOOTSTRAP_ITERATIONS = 1200
 const BLOCK_LENGTH = 10
@@ -32,9 +56,6 @@ const WEATHER_RESOLUTION_SOURCE_IDS = new Set(['gfs', 'gefs-mean'])
 const MAX_EFFECTIVE_OVERLAY_CAP = 0.6
 const STORAGE_SEASON_START_MONTH = 9
 const STORAGE_SEASONAL_WINDOW_DAYS = 10
-const EIA_STORAGE_STANDARD_RELEASE_WEEKDAY_UTC = 4
-const EIA_STORAGE_STANDARD_RELEASE_LAG_DAYS = 6
-const EIA_STORAGE_STANDARD_RELEASE_TIME_ET = '10:30 a.m. ET'
 const HEATING_DEMAND_BASE_F = 65
 
 const FOLLOW_FRESHNESS_POLICIES = [
@@ -126,6 +147,8 @@ const ACTIVE_FAMILY_CONFLICT_POLICY = 'short-fade-plus-cold-follow-vol-long'
 const ACTIVE_FAMILY_WEATHER_RESOLUTION_POLICY_ID = 'graded-shift-sizing'
 const ACTIVE_FAMILY_OVERLAY_RISK_MULTIPLIER = 1.25
 const ACTIVE_FAMILY_HOLD_POLICY_ID = DEFAULT_HOLD_PERIOD_POLICY.id
+const FROZEN_SELECTED_CANDIDATE_ID =
+  'ngas-alpha-short-fade-plus-cold-follow-vol-long-graded-shift-sizing-storage-drawdown-400bcf-hdd-follow-tiered-risk-125'
 const ACTIVE_FAMILY_STORAGE_POLICY_IDS = new Set([
   'storage-drawdown-400bcf',
   'storage-seasonal-tight',
@@ -203,7 +226,7 @@ const COLD_FOLLOW_STORAGE_POLICIES = [
     kind: 'season-drawdown',
     minSeasonDrawdownBcf: 400,
     description:
-      `Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 400 Bcf drawdown from the current withdrawal-season peak.`,
+      `Allow cold-follow gas longs only after the versioned EIA storage release timestamp has confirmed at least a 400 Bcf drawdown from the current withdrawal-season peak.`,
   },
   {
     id: 'storage-drawdown-600bcf',
@@ -211,7 +234,7 @@ const COLD_FOLLOW_STORAGE_POLICIES = [
     kind: 'season-drawdown',
     minSeasonDrawdownBcf: 600,
     description:
-      `Allow cold-follow gas longs only after the standard EIA storage release date has confirmed at least a 600 Bcf drawdown from the current withdrawal-season peak.`,
+      `Allow cold-follow gas longs only after the versioned EIA storage release timestamp has confirmed at least a 600 Bcf drawdown from the current withdrawal-season peak.`,
   },
   {
     id: 'storage-seasonal-tight',
@@ -871,16 +894,6 @@ function addCalendarDays(isoDate, days) {
   return new Date(Date.parse(isoDate) + days * 86400000).toISOString().slice(0, 10)
 }
 
-function daysUntilNextWeekday(isoDate, weekdayUtc) {
-  const currentWeekday = new Date(`${isoDate}T00:00:00Z`).getUTCDay()
-  const daysUntil = (weekdayUtc - currentWeekday + 7) % 7
-  return daysUntil === 0 ? 7 : daysUntil
-}
-
-function standardEiaStorageReleaseDate(storageDate) {
-  return addCalendarDays(storageDate, daysUntilNextWeekday(storageDate, EIA_STORAGE_STANDARD_RELEASE_WEEKDAY_UTC))
-}
-
 function storageSeasonStartFor(isoDate) {
   const year = Number(isoDate.slice(0, 4))
   const month = Number(isoDate.slice(5, 7))
@@ -889,6 +902,7 @@ function storageSeasonStartFor(isoDate) {
 }
 
 function loadStorageData() {
+  const releaseCalendar = loadEiaStorageReleaseCalendar(STORAGE_RELEASE_CALENDAR_FILE)
   const rows = parseCsv(STORAGE_FILE)
     .map((row, index) => ({
       index,
@@ -900,18 +914,21 @@ function loadStorageData() {
     .map((row, index) => ({
       ...row,
       index,
-      releaseDate: standardEiaStorageReleaseDate(row.date),
+      releasedAt: eiaStorageReleaseAt(row.date, releaseCalendar),
       dayOfYear: dayOfYear(row.date),
       year: Number(row.date.slice(0, 4)),
     }))
+
+  const missingRelease = rows.find((row) => !row.releasedAt)
+  if (missingRelease) throw new Error(`Missing versioned EIA release timestamp for storage period ${missingRelease.date}`)
 
   const cache = new Map()
 
   function latestStorageRow(date) {
     let latest = null
     for (const row of rows) {
-      if (row.releaseDate <= date) latest = row
-      if (row.releaseDate > date) break
+      if (!eiaReportAvailableAtOpen(row.releasedAt, date)) break
+      latest = row
     }
     return latest
   }
@@ -953,7 +970,8 @@ function loadStorageData() {
     const context = {
       available: true,
       storageDate: latest.date,
-      storageReleaseDate: latest.releaseDate,
+      storageReleaseDate: latest.releasedAt.slice(0, 10),
+      storageAvailableFromDate: addCalendarDays(latest.releasedAt.slice(0, 10), 1),
       storageBcf: round(latest.storageBcf, 2),
       storageSeasonPeakBcf: round(seasonPeakBcf, 2),
       storageSeasonDrawdownBcf: round(seasonPeakBcf - latest.storageBcf, 2),
@@ -971,7 +989,10 @@ function loadStorageData() {
   }
 
   return {
-    inputFiles: [path.relative(REPO_ROOT, STORAGE_FILE)],
+    inputFiles: [
+      path.relative(REPO_ROOT, STORAGE_FILE),
+      path.relative(REPO_ROOT, STORAGE_RELEASE_CALENDAR_FILE),
+    ],
     contextForDate,
   }
 }
@@ -1220,7 +1241,10 @@ function weatherResolutionForRow(row, position, weatherResolutionData) {
     }
   }
 
-  const actual = row.targetDate < row.entryTradeDate ? weatherResolutionData.actualByDate.get(row.targetDate) : null
+  const actualAvailableFromDate = addCalendarDays(row.targetDate, NASA_POWER_ACTUAL_LAG_DAYS)
+  const actual = nasaPowerActualAvailableAtOpen(row.targetDate, row.entryTradeDate)
+    ? weatherResolutionData.actualByDate.get(row.targetDate)
+    : null
   const closeForecast = actual ? null : latestCloseForecastFor(row, weatherResolutionData)
   const resolutionAnomalyF = actual?.weightedAnomalyF ?? closeForecast?.weightedAnomalyF ?? Number.NaN
   if (!Number.isFinite(resolutionAnomalyF)) {
@@ -1242,6 +1266,7 @@ function weatherResolutionForRow(row, position, weatherResolutionData) {
     available: true,
     source: actual ? 'actual' : 'close-forecast',
     issueDate: actual ? row.targetDate : closeForecast.issueDate,
+    availableFromDate: actual ? actualAvailableFromDate : closeForecast.issueDate,
     sourceIds: actual ? ['NASA POWER actual anomaly basket'] : closeForecast.sourceIds,
     originalAnomalyF: round(originalAnomalyF, 3),
     resolutionAnomalyF: round(resolutionAnomalyF, 3),
@@ -1940,6 +1965,7 @@ function buildRowsForPolicy(
   weatherResolutionData,
   storageData,
   heatingDemandData,
+  executionByDate,
 ) {
   const holdPeriodPolicy = policy.holdPeriodPolicy ?? DEFAULT_HOLD_PERIOD_POLICY
   const followFreshnessPolicy = policy.followFreshnessPolicy ?? DEFAULT_FOLLOW_FRESHNESS_POLICY
@@ -1954,6 +1980,9 @@ function buildRowsForPolicy(
   let equity = INITIAL_CAPITAL
   let peak = INITIAL_CAPITAL
   let previousPosition = 0
+  let priorCloseThesisKind = 'index-fallback'
+  let priorCloseComponentThesisKinds = []
+  let executionState = createExecutionState(EXECUTION_CONTRACT)
 
   for (const date of dates) {
     const dualRow = dualByDate.get(date)
@@ -1966,20 +1995,34 @@ function buildRowsForPolicy(
     const resolvedBlend = applyWeatherResolution(policy, storageGatedBlend, weatherResolutionData)
     const heatingDemandBlend = applyHeatingDemandPolicy(policy, resolvedBlend, heatingDemandData)
     const blend = applyOverlayRiskMultiplier(policy, heatingDemandBlend)
+    const executedPosition = round(blend.position, 4)
     const weatherActive = blend.position !== 0
     const activeFollowRow = weatherActive ? blend.followRow : null
     const activeReversionRow = weatherActive ? blend.reversionRow : null
     const dominant = weatherActive ? chooseDominantRow(activeFollowRow, activeReversionRow, blend.position, policy) ?? fallback : fallback
     const isFallback = blend.position === 0
-    const indexReturnPct = numberFrom(fallback.indexReturnPct)
-    const ungReturnPct = numberFrom(fallback.ungReturnPct)
-    const indexFraction = Math.max(0, 1 - Math.abs(blend.position))
+    const executionDay = executionByDate.get(date)
+    if (!executionDay) throw new Error(`Winter Alpha is missing UNG/VOO/QQQM execution data for ${date}.`)
+    const indexReturnPct = executionDay.indexReturnPct
+    const ungReturnPct = executionDay.symbols.UNG.closeToCloseReturnPct
+    const indexFraction = round(Math.max(0, 1 - Math.abs(executedPosition)), 4)
     const indexRiskOn = indexRiskOnForDate(policy, date, indexTrendRiskByDate)
     const investedIndexFraction = indexRiskOn ? indexFraction : 0
     const cashFraction = indexFraction - investedIndexFraction
-    const grossReturnPct = investedIndexFraction * indexReturnPct + blend.position * ungReturnPct
-    const tradingCostPct = Math.abs(blend.position - previousPosition) * ONE_WAY_COST_PCT
-    const netReturnPct = investedIndexFraction * indexReturnPct + blend.position * ungReturnPct - tradingCostPct
+    const targetWeights = targetWeightsForAllocation(EXECUTION_CONTRACT, {
+      gasPosition: executedPosition,
+      investedIndexFraction,
+    })
+    const execution = applyExecutionStep({
+      state: executionState,
+      day: executionDay,
+      targetWeights,
+      contract: EXECUTION_CONTRACT,
+    })
+    executionState = execution.state
+    const grossReturnPct = execution.grossReturnPct
+    const tradingCostPct = execution.tradingCostPct + execution.borrowCostPct
+    const netReturnPct = round(execution.netReturnPct, 4)
     const previousEquity = equity
     equity = Math.max(1, equity * (1 + netReturnPct / 100))
     peak = Math.max(peak, equity)
@@ -1997,7 +2040,7 @@ function buildRowsForPolicy(
       entryTradeDate: date,
       exitTradeDate: date,
       targetTradeDate: date,
-      direction: blend.position < 0 ? 'short' : 'long',
+      direction: executedPosition < 0 ? 'short' : 'long',
       sourceId: isFallback
         ? 'US-INDEX-BASKET'
         : blend.followRow && blend.reversionRow && usesVolatilityConfirmation(policy)
@@ -2017,6 +2060,8 @@ function buildRowsForPolicy(
             ? 'weather-follow'
             : 'weather-reversion',
       thesisKind: isFallback ? 'index-fallback' : dominant.thesisKind,
+      priorCloseThesisKind,
+      priorCloseComponentThesisKinds,
       leadDays: numberFrom(dominant.leadDays),
       confidence: round(Math.max(numberFrom(activeFollowRow?.confidence), numberFrom(activeReversionRow?.confidence)), 4),
       weightedAnomalyF: numberFrom(dominant.weightedAnomalyF),
@@ -2029,12 +2074,14 @@ function buildRowsForPolicy(
       cashFraction: round(cashFraction, 4),
       indexRiskMode: policy.indexRiskMode,
       indexRiskOn,
-      ungPosition: round(blend.position, 4),
+      ungPosition: executedPosition,
       ungReturnPct: round(ungReturnPct, 4),
       indexReturnPct: round(indexReturnPct, 4),
       grossReturnPct: round(grossReturnPct, 4),
       tradingCostPct: round(tradingCostPct, 4),
-      netReturnPct: round(netReturnPct, 4),
+      netReturnPct,
+      componentMaterialRow: !isFallback || Math.abs(executedPosition) > 0.000001 || Math.abs(executedPosition - previousPosition) > 0.000001,
+      ...executionAuditFields(execution, executionDay, EXECUTION_CONTRACT),
       equity: round(equity, 2),
       equityPct: round((equity / INITIAL_CAPITAL - 1) * 100, 4),
       drawdownPct: round(drawdownPct, 4),
@@ -2071,6 +2118,7 @@ function buildRowsForPolicy(
       weatherResolutionPolicy: policy.weatherResolutionPolicy?.id ?? DEFAULT_WEATHER_RESOLUTION_POLICY.id,
       weatherResolutionSource: blend.weatherResolution.source ?? '',
       weatherResolutionIssueDate: blend.weatherResolution.issueDate ?? '',
+      weatherResolutionAvailableFromDate: blend.weatherResolution.availableFromDate ?? '',
       weatherResolutionSourceIds: blend.weatherResolution.sourceIds ?? [],
       weatherResolutionOriginalAnomalyF: Number.isFinite(blend.weatherResolution.originalAnomalyF)
         ? round(blend.weatherResolution.originalAnomalyF, 3)
@@ -2104,6 +2152,7 @@ function buildRowsForPolicy(
         : '',
       storageDate: storageContext.storageDate ?? '',
       storageReleaseDate: storageContext.storageReleaseDate ?? '',
+      storageAvailableFromDate: storageContext.storageAvailableFromDate ?? '',
       storageBcf: Number.isFinite(storageContext.storageBcf) ? round(storageContext.storageBcf, 2) : '',
       storageSeasonPeakBcf: Number.isFinite(storageContext.storageSeasonPeakBcf) ? round(storageContext.storageSeasonPeakBcf, 2) : '',
       storageSeasonDrawdownBcf: Number.isFinite(storageContext.storageSeasonDrawdownBcf)
@@ -2133,12 +2182,17 @@ function buildRowsForPolicy(
       equityPct: (equity / INITIAL_CAPITAL - 1) * 100,
       dailyPnlPct: previousEquity ? ((equity - previousEquity) / previousEquity) * 100 : 0,
       drawdownPct,
-      position: blend.position,
+      position: executedPosition,
       netReturnPct,
       indexReturnPct,
       activeReturnPct: netReturnPct - indexReturnPct,
+      totalTurnover: execution.totalTurnover,
+      gasTurnover: execution.gasTurnover,
+      indexTurnover: execution.indexTurnover,
     })
-    previousPosition = blend.position
+    previousPosition = executedPosition
+    priorCloseThesisKind = row.thesisKind
+    priorCloseComponentThesisKinds = componentThesisKinds
   }
 
   return { rows, curve }
@@ -2189,7 +2243,9 @@ function metricsFromCurve(curve, tradeCount) {
   const var95 = percentile(returns, 0.05)
   const cvarSlice = returns.filter((value) => value <= var95)
   const exposure = mean(curve.map((point) => Math.abs(point.position)))
-  const turnover = curve.reduce((sum, point, index) => sum + Math.abs(point.position - (curve[index - 1]?.position ?? 0)), 0)
+  const turnover = curve.reduce((sum, point) => sum + numberFrom(point.totalTurnover), 0)
+  const gasTurnover = curve.reduce((sum, point) => sum + numberFrom(point.gasTurnover), 0)
+  const indexTurnover = curve.reduce((sum, point) => sum + numberFrom(point.indexTurnover), 0)
   const avg = mean(returns)
   const standardError = std(returns) ? std(returns) / Math.sqrt(returns.length) : 0
 
@@ -2206,6 +2262,8 @@ function metricsFromCurve(curve, tradeCount) {
     tradeCount,
     exposurePct: round(exposure * 100, 1),
     turnover: round(turnover, 2),
+    gasTurnover: round(gasTurnover, 2),
+    indexTurnover: round(indexTurnover, 2),
     var95Pct: round(var95 * 100, 2),
     cvar95Pct: round(mean(cvarSlice) * 100, 2),
     averageDailyPnlPct: round(avg * 100, 3),
@@ -2239,68 +2297,60 @@ function rowHasThesisKind(row, thesisKind) {
     : false
 }
 
-function sideReturnSnapshot(rows, splitFilter = () => true) {
-  const buckets = {
-    coldLong: [],
-    warmShort: [],
-    weatherFollow: [],
-    reversionLong: [],
-    reversionShort: [],
-    weatherReversion: [],
-    longSide: [],
-    shortSide: [],
-    fallback: [],
-  }
-
+function causalSideMetric(rows, thesisMatches, splitFilter = () => true) {
+  const pointsByDate = new Map()
+  let tradeCount = 0
   for (const row of rows) {
     if (!splitFilter(row)) continue
-    const point = {
-      date: row.entryTradeDate,
-      equity: INITIAL_CAPITAL * (1 + numberFrom(row.netReturnPct) / 100),
-      dailyPnlPct: numberFrom(row.netReturnPct),
-      drawdownPct: numberFrom(row.netReturnPct) < 0 ? numberFrom(row.netReturnPct) : 0,
-      position: numberFrom(row.ungPosition),
+    const contributions = causalReturnContributionsForRow(row)
+    if (thesisMatches(contributions[1])) tradeCount += 1
+    for (const contribution of contributions) {
+      if (!thesisMatches(contribution)) continue
+      const point = pointsByDate.get(row.entryTradeDate) ?? { returnPct: 0, position: 0 }
+      point.returnPct += contribution.returnPct
+      if (Math.abs(contribution.position) > Math.abs(point.position)) point.position = contribution.position
+      pointsByDate.set(row.entryTradeDate, point)
     }
-    const hasColdLong = rowHasThesisKind(row, 'cold-long')
-    const hasWarmShort = rowHasThesisKind(row, 'warm-short')
-    const hasReversionLong = rowHasThesisKind(row, 'reversion-long')
-    const hasReversionShort = rowHasThesisKind(row, 'reversion-short')
-
-    if (hasColdLong) {
-      buckets.coldLong.push(point)
-      buckets.weatherFollow.push(point)
-      buckets.longSide.push(point)
-    }
-    if (hasWarmShort) {
-      buckets.warmShort.push(point)
-      buckets.weatherFollow.push(point)
-      buckets.shortSide.push(point)
-    }
-    if (hasReversionLong) {
-      buckets.reversionLong.push(point)
-      buckets.weatherReversion.push(point)
-      buckets.longSide.push(point)
-    }
-    if (hasReversionShort) {
-      buckets.reversionShort.push(point)
-      buckets.weatherReversion.push(point)
-      buckets.shortSide.push(point)
-    }
-    if (rowHasThesisKind(row, 'index-fallback')) buckets.fallback.push(point)
   }
 
-  const metricFor = (key) => metricsFromCurve(buckets[key], buckets[key].length)
+  const points = [...pointsByDate.entries()].map(([date, point]) => ({
+    date,
+    equity: INITIAL_CAPITAL * (1 + point.returnPct / 100),
+    dailyPnlPct: point.returnPct,
+    drawdownPct: point.returnPct < 0 ? point.returnPct : 0,
+    position: point.position,
+  }))
+  return metricsFromCurve(points, tradeCount)
+}
 
+function sideReturnSnapshot(rows, splitFilter = () => true) {
+  const has = (thesisKind) => (row) => rowHasThesisKind(row, thesisKind)
   return {
-    coldLong: metricFor('coldLong'),
-    warmShort: metricFor('warmShort'),
-    weatherFollow: metricFor('weatherFollow'),
-    reversionLong: metricFor('reversionLong'),
-    reversionShort: metricFor('reversionShort'),
-    weatherReversion: metricFor('weatherReversion'),
-    longSide: metricFor('longSide'),
-    shortSide: metricFor('shortSide'),
-    fallback: metricFor('fallback'),
+    coldLong: causalSideMetric(rows, has('cold-long'), splitFilter),
+    warmShort: causalSideMetric(rows, has('warm-short'), splitFilter),
+    weatherFollow: causalSideMetric(
+      rows,
+      (row) => rowHasThesisKind(row, 'cold-long') || rowHasThesisKind(row, 'warm-short'),
+      splitFilter,
+    ),
+    reversionLong: causalSideMetric(rows, has('reversion-long'), splitFilter),
+    reversionShort: causalSideMetric(rows, has('reversion-short'), splitFilter),
+    weatherReversion: causalSideMetric(
+      rows,
+      (row) => rowHasThesisKind(row, 'reversion-long') || rowHasThesisKind(row, 'reversion-short'),
+      splitFilter,
+    ),
+    longSide: causalSideMetric(
+      rows,
+      (row) => rowHasThesisKind(row, 'cold-long') || rowHasThesisKind(row, 'reversion-long'),
+      splitFilter,
+    ),
+    shortSide: causalSideMetric(
+      rows,
+      (row) => rowHasThesisKind(row, 'warm-short') || rowHasThesisKind(row, 'reversion-short'),
+      splitFilter,
+    ),
+    fallback: causalSideMetric(rows, has('index-fallback'), splitFilter),
   }
 }
 
@@ -2374,6 +2424,7 @@ function summarizePolicy(
   weatherResolutionData,
   storageData,
   heatingDemandData,
+  executionByDate,
   options = {},
 ) {
   const { rows, curve } = buildRowsForPolicy(
@@ -2385,6 +2436,7 @@ function summarizePolicy(
     weatherResolutionData,
     storageData,
     heatingDemandData,
+    executionByDate,
   )
   const eventRows = rows.filter((row) => row.windowId !== 'index-fallback')
   const indexCurve = indexCurveFromRows(rows)
@@ -2599,6 +2651,8 @@ function selectedTradeRows(rows) {
     'sourceId',
     'windowId',
     'thesisKind',
+    'priorCloseThesisKind',
+    'priorCloseComponentThesisKinds',
     'leadDays',
     'confidence',
     'weightedAnomalyF',
@@ -2617,6 +2671,37 @@ function selectedTradeRows(rows) {
     'grossReturnPct',
     'tradingCostPct',
     'netReturnPct',
+    'componentMaterialRow',
+    'executionInstrument',
+    'executionPriceConvention',
+    'priorUngPosition',
+    'deployedUngPosition',
+    'deployedVooPosition',
+    'deployedQqqmPosition',
+    'ungOvernightReturnPct',
+    'ungIntradayReturnPct',
+    'vooReturnPct',
+    'qqqmReturnPct',
+    'indexOvernightReturnPct',
+    'indexIntradayReturnPct',
+    'overnightPortfolioReturnPct',
+    'intradayPortfolioReturnPct',
+    'priorCloseReturnContributionPct',
+    'currentSessionReturnContributionPct',
+    'gasTargetTurnover',
+    'vooTargetTurnover',
+    'qqqmTargetTurnover',
+    'gasTurnover',
+    'vooTurnover',
+    'qqqmTurnover',
+    'indexTurnover',
+    'totalTurnover',
+    'gasTradingCostPct',
+    'vooTradingCostPct',
+    'qqqmTradingCostPct',
+    'borrowCostPct',
+    'frictionContractId',
+    'frictionScenarioId',
     'equity',
     'equityPct',
     'drawdownPct',
@@ -2637,6 +2722,7 @@ function selectedTradeRows(rows) {
     'weatherResolutionPolicy',
     'weatherResolutionSource',
     'weatherResolutionIssueDate',
+    'weatherResolutionAvailableFromDate',
     'weatherResolutionSourceIds',
     'weatherResolutionOriginalAnomalyF',
     'weatherResolutionAnomalyF',
@@ -2656,6 +2742,7 @@ function selectedTradeRows(rows) {
     'warmDemandCoveragePct',
     'storageDate',
     'storageReleaseDate',
+    'storageAvailableFromDate',
     'storageBcf',
     'storageSeasonPeakBcf',
     'storageSeasonDrawdownBcf',
@@ -2806,18 +2893,16 @@ function sideRow(label, metrics) {
 }
 
 function winterAlphaPromotionStatus(summary) {
-  const holdoutEdge = numberFrom(summary.selected?.splitEdges?.holdout, Number.NEGATIVE_INFINITY)
-  const pValue = numberFrom(summary.validation?.realityCheck?.pValue, Number.POSITIVE_INFINITY)
-  return holdoutEdge > 0 && pValue <= 0.1 ? 'research-baseline' : 'needs-more-validation'
+  return summary.selected?.eligible ? 'research-baseline' : 'needs-more-validation'
 }
 
 function winterAlphaVerdict(summary) {
   const status = winterAlphaPromotionStatus(summary)
   if (status === 'research-baseline') {
-    return 'Load this as an active research-baseline strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. It has cleared the current holdout-edge and bootstrap reality checks, but still needs non-overlapping paper validation before any broker adapter exists.'
+    return 'Load this as an active research-baseline strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. It cleared the frozen train/validation eligibility contract; holdout and full-calendar bootstrap metrics remain report-only, and non-overlapping paper validation is still required before broker use.'
   }
 
-  return 'Load this as an active needs-more-validation strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. Holdout and the bootstrap reality check remain the promotion gates.'
+  return 'Load this as an active needs-more-validation strategy, not broker-ready. The selected blend keeps idle capital in the index fallback so any return improvement comes from explicit gas overlays rather than a cash timing patch. It did not clear the frozen train/validation eligibility contract; holdout and full-calendar bootstrap metrics remain report-only.'
 }
 
 function buildReport(summary) {
@@ -2848,7 +2933,8 @@ This active QORE research strategy is self-contained around frozen Winter Alpha 
 - HDD demand overlay: ${selected.heatingDemandPolicy.label}. ${selected.heatingDemandPolicy.description}
 - Cold-follow storage gate: ${selected.coldFollowStoragePolicy.label}. ${selected.coldFollowStoragePolicy.description}
 - Idle capital risk mode: ${selected.indexRiskLabel}.
-- Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on UNG position changes.
+- Execution: prior-close holdings earn the overnight move; current UNG/VOO/QQQM targets become effective at the split-adjusted session open.
+- Cost: frozen ${EXECUTION_CONTRACT.contractId} baseline, with ${BASELINE_EXECUTION_SCENARIO.oneWayBps.UNG} bps one-way on UNG and ${BASELINE_EXECUTION_SCENARIO.oneWayBps.VOO} bp one-way on each index ETF leg, applied to drift-aware executed turnover.
 - Selection: ${summary.contract.selectionPolicy}
 
 ## Metrics
@@ -2892,7 +2978,7 @@ ${sideRow('Index fallback', selected.sideReturns.all.fallback)}
 - Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts available by the trade date, or target-day actual weather only when the target date is already before the trade date.
 - Follow-freshness gates only drop repeated same-thesis follow rows after an earlier accepted follow row; they do not create or extend signals.
 - HDD demand overlays use forecast location anomalies from the same issue/target/window as the frozen follow row, converted to ${HEATING_DEMAND_BASE_F}F-base HDD anomaly before the entry row is sized.
-- Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally six calendar days after the Friday week-ending storage date. Drawdown is measured from the current withdrawal-season storage peak, and seasonal tightness is measured against prior years only.
+- Cold-follow storage gates use EIA Lower 48 working gas storage only at a session open after its versioned publication timestamp. The calendar includes ordinary Thursday releases, holiday changes, and documented extraordinary delays. Drawdown is measured from the current withdrawal-season storage peak, and seasonal tightness is measured against prior years only.
 - Hold-period overlays only shorten frozen daily ledger holds for the selected graded vol-confirmed family; they do not create new weather signals, extend an input hold, alter forecast thresholds, or use holdout rows for selection.
 - Gas-overlay risk multipliers are predeclared sizing variants on the selected graded vol-confirmed family only; they do not change entry dates, directions, frozen input signals, or weather thresholds.
 - Stale follow rows dropped: ${selected.legCounts.all.staleFollowDropped} full-sample rows, ${selected.legCounts.trainValidation.staleFollowDropped} train/validation rows.
@@ -2938,16 +3024,31 @@ function main() {
   const weatherResolutionData = loadWeatherResolutionData()
   const storageData = loadStorageData()
   const heatingDemandData = loadHeatingDemandData()
+  const executionByDate = new Map(loadExecutionCalendar(REPO_ROOT, { startDate: '2021-01-01' }).map((day) => [day.date, day]))
   const policies = expandedBlendPolicies().filter(activeWinterFamilyPolicy)
   if (!policies.length) {
     throw new Error('No active Winter Alpha family policies matched the targeted freshness/storage/HDD comparison.')
   }
   const candidates = policies
     .map((policy) =>
-      summarizePolicy(policy, dualRows, weatherRows, volatilityRows, indexTrendRiskByDate, weatherResolutionData, storageData, heatingDemandData),
+      summarizePolicy(
+        policy,
+        dualRows,
+        weatherRows,
+        volatilityRows,
+        indexTrendRiskByDate,
+        weatherResolutionData,
+        storageData,
+        heatingDemandData,
+        executionByDate,
+      ),
     )
     .sort((a, b) => b.trainValidationRank - a.trainValidationRank)
-  const selectedCandidate = candidates.find((candidate) => candidate.eligible) ?? candidates[0]
+  const eligibleCandidate = candidates.find((candidate) => candidate.eligible)
+  const selectedCandidate = eligibleCandidate ?? candidates.find((candidate) => candidate.candidateId === FROZEN_SELECTED_CANDIDATE_ID)
+  if (!selectedCandidate) {
+    throw new Error(`Frozen Winter Alpha candidate ${FROZEN_SELECTED_CANDIDATE_ID} was not present in the active family.`)
+  }
   const selected = summarizePolicy(
     selectedCandidate.policy,
     dualRows,
@@ -2957,11 +3058,13 @@ function main() {
     weatherResolutionData,
     storageData,
     heatingDemandData,
+    executionByDate,
     { keepRows: true },
   )
   const realityCheck = blockBootstrapRealityCheck(selected.curve, candidates)
   const { headers, rows } = selectedTradeRows(selected.rows)
   const summary = {
+    artifactSchemaVersion: 2,
     generatedAt: new Date().toISOString(),
     strategyId: STRATEGY_ID,
     data: {
@@ -2972,6 +3075,8 @@ function main() {
       weatherResolutionInputs: weatherResolutionData.inputFiles,
       storageInputs: storageData.inputFiles,
       heatingDemandInputs: heatingDemandData.inputFiles,
+      executionMarketFiles: ['UNG', 'VOO', 'QQQM'].map((symbol) => `data/qore/market/yahoo/${symbol}-daily.csv`),
+      executionContractFile: path.relative(REPO_ROOT, EXECUTION_CONTRACT.filePath),
       marketStartDate: selected.allMetrics.firstEntry,
       marketEndDate: selected.allMetrics.lastExit,
       marketDays: selected.rows.length,
@@ -2980,23 +3085,46 @@ function main() {
       trainEnd: TRAIN_END,
       validationEnd: VALIDATION_END,
       holdoutStart: HOLDOUT_START,
-      roundTripCostPct: ROUND_TRIP_COST_PCT,
-      oneWayCostPct: ONE_WAY_COST_PCT,
-      fallback: 'Unallocated capital remains in the configured target-weight US-INDEX-BASKET ETF fallback close-to-close.',
+      ungRoundTripCostPct: ROUND_TRIP_COST_PCT,
+      ungOneWayCostPct: ONE_WAY_COST_PCT,
+      signalInstrument: {
+        symbol: 'UNG',
+        role: 'Frozen Winter signal ledgers and gas-return reference.',
+      },
+      pnlInstrument: {
+        symbol: 'UNG',
+        role: 'All gas-sleeve P&L, candidate ranking, and validation.',
+      },
+      execution: {
+        contractId: EXECUTION_CONTRACT.contractId,
+        contractDigest: EXECUTION_CONTRACT.digest,
+        scenarioId: EXECUTION_CONTRACT.selectionScenarioId,
+        priceConvention: EXECUTION_CONTRACT.priceConvention,
+        deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
+        rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
+        indexWeights: EXECUTION_CONTRACT.indexWeights,
+        selectionRule: EXECUTION_CONTRACT.selectionRule,
+        costCalibration: EXECUTION_CONTRACT.costCalibration,
+        oneWayBps: BASELINE_EXECUTION_SCENARIO.oneWayBps,
+        annualBorrowRatePct: BASELINE_EXECUTION_SCENARIO.annualBorrowRatePct,
+        borrowBasis: BASELINE_EXECUTION_SCENARIO.borrowBasis,
+        scenarios: EXECUTION_CONTRACT.scenarios,
+      },
+      fallback: 'Unallocated deployable capital is routed to the configured VOO/QQQM target-weight index basket; the broker cash buffer remains uninvested.',
       signalTiming:
-        'Frozen Winter Alpha inputs already enforce post-signal execution; NGAS Winter Alpha combines those daily ledgers and recalculates costs.',
+        'Frozen Winter Alpha inputs enforce post-signal execution. Prior holdings earn close-to-open returns; current targets earn adjusted-open-to-close returns.',
       selectionPolicy:
         'Only the current active Winter Alpha blend family is compared here: the predeclared graded weather-resolution, default frozen-ledger hold, 1.25x gas-overlay risk multiplier, follow-freshness gates, HDD demand overlays, and cold-follow EIA storage gates are selected on train and validation. Holdout rows after 2025-11-01 are reported after selection.',
       overfitControl:
         'No holdout rows are used for selection. Frozen input candidates are embedded inside the Winter Alpha lane, and this layer keeps the active blend family fixed while choosing one predeclared follow-freshness gate, one predeclared HDD demand overlay, and one predeclared cold-follow storage gate. Volatility confirmation is used only as a predeclared same-direction fade confirmer while portfolio-level risk-off overlays stay diagnostic.',
       weatherResolutionTiming:
-        'Weather-resolution overlays use GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate, or NASA POWER actual anomalies only when targetDate < entryTradeDate.',
+        `Weather-resolution overlays use frozen 00Z GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= entryTradeDate. NASA POWER actual anomalies require a conservative ${NASA_POWER_ACTUAL_LAG_DAYS}-calendar-day publication lag; otherwise the latest available forecast is used. Same-date 00Z runs are assumed available before the New York session open because the historical calendar has no separate publication timestamp.`,
       followFreshnessTiming:
         'Follow-freshness gates compare only prior accepted frozen follow rows by issueDate and thesisKind; same-parent held rows inherit the original decision.',
       heatingDemandTiming:
         `HDD demand overlays use same issueDate, targetDate, leadDays, and windowId location forecasts as the frozen follow row, converted to ${HEATING_DEMAND_BASE_F}F-base HDD anomaly before the entry row is sized.`,
       storageTiming:
-        `Cold-follow storage gates use EIA Lower 48 working gas storage rows on or after the standard ${EIA_STORAGE_STANDARD_RELEASE_TIME_ET} Thursday release date, normally ${EIA_STORAGE_STANDARD_RELEASE_LAG_DAYS} calendar days after the Friday week-ending storage date; historical seasonal comparisons use only prior storage years.`,
+        'Cold-follow storage gates use EIA Lower 48 working gas storage only at a session open after the versioned publication timestamp, including holiday changes and documented extraordinary delays; historical seasonal comparisons use only prior storage years.',
       indexTrendLookbackSessions: INDEX_TREND_LOOKBACK_SESSIONS,
     },
     inputs: inputManifest.inputs,
@@ -3012,6 +3140,7 @@ function main() {
       eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
       activeFamilyFilter:
         `${ACTIVE_FAMILY_CONFLICT_POLICY}, ${ACTIVE_FAMILY_WEATHER_RESOLUTION_POLICY_ID}, ${ACTIVE_FAMILY_HOLD_POLICY_ID}, ${ACTIVE_FAMILY_OVERLAY_RISK_MULTIPLIER}x overlay risk`,
+      selectionStatus: eligibleCandidate ? 'eligible-candidate-selected' : 'no-eligible-candidate-frozen-signal-retained',
       selectionUsedHoldout: false,
     },
     validation: {

@@ -61,6 +61,8 @@ export type LiveTelemetry = {
   account: {
     equityUsd: number | null
     cashUsd: number | null
+    lastEquityUsd: number | null
+    dayPnlUsd: number | null
     dayPnlPct: number | null
     trailingDrawdownPct: number | null
     buyingPowerUsd: number | null
@@ -95,6 +97,17 @@ export type LiveTelemetry = {
   } | null
   supervisor: Record<string, unknown> | null
   error?: string
+}
+
+export type CommandConnection = {
+  generatedAt: string
+  phase: string
+  progressPct: number
+  connected: boolean
+  remoteName: string
+  transport: 't3-tailscale-ssh'
+  detail: string
+  error: string | null
 }
 
 export type LivePerformancePoint = {

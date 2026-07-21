@@ -1,8 +1,8 @@
-import type { LiveTelemetry } from './types'
+import type { CommandConnection, LiveTelemetry } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_QORE_API_URL ?? 'http://127.0.0.1:4775').replace(/\/$/, '')
 
-async function request(path: string, options: RequestInit = {}, timeoutMs = 8_000) {
+async function request<T extends { error?: string | null }>(path: string, options: RequestInit = {}, timeoutMs = 8_000) {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -11,7 +11,7 @@ async function request(path: string, options: RequestInit = {}, timeoutMs = 8_00
       headers: { Accept: 'application/json', ...options.headers },
       signal: controller.signal,
     })
-    const payload = (await response.json().catch(() => ({}))) as LiveTelemetry
+    const payload = (await response.json().catch(() => ({}))) as T
     if (!response.ok) throw new Error(payload.error || `Runtime API returned ${response.status}.`)
     return payload
   } finally {
@@ -20,9 +20,13 @@ async function request(path: string, options: RequestInit = {}, timeoutMs = 8_00
 }
 
 export function getLiveTelemetry() {
-  return request('/api/live/status')
+  return request<LiveTelemetry>('/api/live/status')
 }
 
 export function refreshLiveTelemetry() {
-  return request('/api/live/refresh', { method: 'POST' }, 50_000)
+  return request<LiveTelemetry>('/api/live/refresh', { method: 'POST' }, 50_000)
+}
+
+export function getCommandConnection() {
+  return request<CommandConnection>('/api/connection/status')
 }
