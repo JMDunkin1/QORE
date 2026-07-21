@@ -3,15 +3,33 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import Papa from 'papaparse'
+import {
+  applyExecutionStep,
+  causalReturnContributionsForRow,
+  createExecutionState,
+  executionAuditFields,
+  loadExecutionCalendar,
+  loadResearchExecutionContract,
+  targetWeightsForAllocation,
+} from './lib/qore-research-execution.mjs'
+import { eiaReportAvailableAtOpen } from './lib/qore-signal-availability.mjs'
+import {
+  eiaStorageReleaseAt,
+  loadEiaStorageReleaseCalendar,
+} from './lib/eia-release-time.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
 const MANIFEST_PATH = path.join(DATA_ROOT, 'dataset-manifest.json')
 const OUTPUT_DIR = path.join(DATA_ROOT, 'research/strategy-agent-runs/ngas-summer-alpha')
-const GAS_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/NG-F-qore-market.csv')
+const GAS_SIGNAL_FILE = path.join(DATA_ROOT, 'market/yahoo/NG-F-qore-market.csv')
 const INDEX_MARKET_FILE = path.join(DATA_ROOT, 'market/yahoo/US-INDEX-BASKET-qore-market.csv')
 const ACTUAL_ANOMALY_FILE = path.join(DATA_ROOT, 'weather/nasa-power/daily-temperature-anomalies-2021-01-01-2026-03-31.csv')
 const EIA_STORAGE_FILE = path.join(DATA_ROOT, 'fundamentals/eia/working-gas-storage-lower48-weekly.csv')
+const EIA_STORAGE_RELEASE_CALENDAR_FILE = path.join(
+  DATA_ROOT,
+  'fundamentals/eia/working-gas-storage-release-calendar.json',
+)
 const SUMMER_FORECAST_CALENDARS = [
   {
     id: 'gfs',
@@ -39,8 +57,10 @@ const FIRST_SIGNAL_DATE = '2021-01-01'
 const TRAIN_END = '2023-12-31'
 const VALIDATION_END = '2024-12-31'
 const HOLDOUT_START = '2025-01-01'
-const ROUND_TRIP_COST_PCT = 0.064
-const ONE_WAY_COST_PCT = ROUND_TRIP_COST_PCT / 2
+const EXECUTION_CONTRACT = loadResearchExecutionContract(REPO_ROOT)
+const BASELINE_EXECUTION_SCENARIO = EXECUTION_CONTRACT.scenarios[EXECUTION_CONTRACT.selectionScenarioId]
+const ONE_WAY_COST_PCT = BASELINE_EXECUTION_SCENARIO.oneWayBps.UNG / 100
+const ROUND_TRIP_COST_PCT = ONE_WAY_COST_PCT * 2
 const TRADING_DAYS = 252
 const COOL_COVERAGE_MAX_ANOMALY_F = -5
 const COOL_EXTREME_ANOMALY_F = -10
@@ -49,7 +69,6 @@ const WARM_EXTREME_ANOMALY_F = 14
 const BOOTSTRAP_ITERATIONS = 1200
 const BLOCK_LENGTH = 10
 const HEAT_SIGNAL_FRESHNESS_LOOKBACK_DAYS = 3
-const STORAGE_AVAILABLE_LAG_DAYS = 7
 const STORAGE_SEASONAL_LOOKBACK_YEARS = 5
 const STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER = 1.25
 const STORAGE_DEFICIT_HEAT_MAX_FRACTION = 0.4375
@@ -461,42 +480,57 @@ function loadMarketRows(filePath) {
 }
 
 function loadStorageRows() {
-  if (!fs.existsSync(EIA_STORAGE_FILE)) return []
-  return parseCsv(EIA_STORAGE_FILE)
+  if (!fs.existsSync(EIA_STORAGE_FILE)) {
+    throw new Error(`Missing required EIA storage input: ${EIA_STORAGE_FILE}`)
+  }
+  const releaseCalendar = loadEiaStorageReleaseCalendar(EIA_STORAGE_RELEASE_CALENDAR_FILE)
+  const rows = parseCsv(EIA_STORAGE_FILE)
     .map((row) => ({
       date: row.date,
       year: Number(row.date.slice(0, 4)),
       seasonalWeek: storageSeasonalWeek(row.date),
       storageBcf: numberFrom(row.storageBcf, Number.NaN),
+      releasedAt: eiaStorageReleaseAt(row.date, releaseCalendar),
     }))
     .filter((row) => row.date && Number.isFinite(row.storageBcf) && row.storageBcf > 0)
     .sort((a, b) => a.date.localeCompare(b.date))
+
+  const missingRelease = rows.find((row) => !row.releasedAt)
+  if (missingRelease) {
+    throw new Error(`Missing versioned EIA release timestamp for storage period ${missingRelease.date}`)
+  }
+  const outOfOrderRelease = rows.find(
+    (row, index) => index > 0 && Date.parse(row.releasedAt) < Date.parse(rows[index - 1].releasedAt),
+  )
+  if (outOfOrderRelease) {
+    throw new Error(`EIA release timestamps are not chronological at storage period ${outOfOrderRelease.date}`)
+  }
+  return rows
 }
 
-function latestLaggedStorageRow(storageRows, tradeDate) {
-  const cutoffDate = addCalendarDays(tradeDate, -STORAGE_AVAILABLE_LAG_DAYS)
+function latestReleasedStorageRow(storageRows, tradeDate) {
   let low = 0
   let high = storageRows.length - 1
-  let result = null
-
+  let latest = null
   while (low <= high) {
-    const mid = Math.floor((low + high) / 2)
-    if (storageRows[mid].date <= cutoffDate) {
-      result = storageRows[mid]
-      low = mid + 1
+    const middle = Math.floor((low + high) / 2)
+    const row = storageRows[middle]
+    if (eiaReportAvailableAtOpen(row.releasedAt, tradeDate)) {
+      latest = row
+      low = middle + 1
     } else {
-      high = mid - 1
+      high = middle - 1
     }
   }
-
-  return result
+  return latest
 }
 
 function storageSeasonalContext(storageRows, tradeDate) {
-  const latest = latestLaggedStorageRow(storageRows, tradeDate)
+  const latest = latestReleasedStorageRow(storageRows, tradeDate)
   if (!latest) {
     return {
       storageDate: '',
+      storageReleaseAt: '',
       storageBcf: 0,
       storageSeasonalAverageBcf: 0,
       storageSeasonalDiffPct: 0,
@@ -515,6 +549,7 @@ function storageSeasonalContext(storageRows, tradeDate) {
 
   return {
     storageDate: latest.date,
+    storageReleaseAt: latest.releasedAt,
     storageBcf: round(latest.storageBcf, 2),
     storageSeasonalAverageBcf: round(seasonalAverage, 2),
     storageSeasonalDiffPct: round(seasonalDiffPct, 4),
@@ -538,34 +573,45 @@ function marketReturnByDate(rows) {
 }
 
 function rollingVolPct(rows, index, lookback = 20) {
-  const returns = rows.slice(Math.max(0, index - lookback + 1), index + 1).map((row) => row.ungReturnPct / 100)
+  const returns = rows.slice(Math.max(0, index - lookback + 1), index + 1).map((row) => row.signalReturnPct / 100)
   return std(returns) * Math.sqrt(TRADING_DAYS) * 100
 }
 
 function loadAlignedMarketDays() {
-  const ungRows = loadMarketRows(GAS_MARKET_FILE)
+  const signalRows = loadMarketRows(GAS_SIGNAL_FILE)
   const indexRows = loadMarketRows(INDEX_MARKET_FILE)
   const storageRows = loadStorageRows()
-  const ungByDate = marketReturnByDate(ungRows)
+  const signalByDate = marketReturnByDate(signalRows)
   const indexByDate = marketReturnByDate(indexRows)
-  const dates = [...ungByDate.keys()].filter((date) => date >= FIRST_SIGNAL_DATE && indexByDate.has(date)).sort()
+  const executionDays = loadExecutionCalendar(REPO_ROOT, { startDate: FIRST_SIGNAL_DATE })
+  const executionByDate = new Map(executionDays.map((day) => [day.date, day]))
+  const signalDates = [...signalByDate.keys()].filter((date) => date >= FIRST_SIGNAL_DATE && indexByDate.has(date)).sort()
+  const missingExecutionDates = signalDates.filter((date) => !executionByDate.has(date))
+  if (missingExecutionDates.length) {
+    throw new Error(
+      `Summer Alpha is missing UNG/VOO/QQQM execution data for ${missingExecutionDates.length} signal sessions: ${missingExecutionDates.slice(0, 5).join(', ')}.`,
+    )
+  }
+  const dates = signalDates
   const rows = dates.map((date) => {
-    const ung = ungByDate.get(date)
-    const index = indexByDate.get(date)
+    const signal = signalByDate.get(date)
+    const executionDay = executionByDate.get(date)
     const storage = storageSeasonalContext(storageRows, date)
     return {
       date,
-      ungClose: ung.close,
-      indexClose: index.close,
-      ungReturnPct: ung.returnPct,
-      indexReturnPct: index.returnPct,
+      signalClose: signal.close,
+      signalReturnPct: signal.returnPct,
+      ungClose: executionDay.symbols.UNG.adjustedClose,
+      ungReturnPct: executionDay.symbols.UNG.closeToCloseReturnPct,
+      indexReturnPct: executionDay.indexReturnPct,
+      executionDay,
       ...storage,
     }
   })
 
   return rows.map((row, index) => ({
     ...row,
-    ungVolAnnualPct: round(rollingVolPct(rows, index), 4),
+    signalVolAnnualPct: round(rollingVolPct(rows, index), 4),
   }))
 }
 
@@ -706,7 +752,7 @@ function scaledFraction(baseFraction, confidence, mode, day, targetVolPct) {
   if (mode === 'fixed') return baseFraction
   const confidenceScale = confidence
   if (mode === 'confidence-scaled') return baseFraction * confidenceScale
-  const volScale = day.ungVolAnnualPct > 0 ? clamp(targetVolPct / day.ungVolAnnualPct, 0.35, 1.25) : 1
+  const volScale = day.signalVolAnnualPct > 0 ? clamp(targetVolPct / day.signalVolAnnualPct, 0.35, 1.25) : 1
   return baseFraction * confidenceScale * volScale
 }
 
@@ -860,6 +906,7 @@ function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
           windowId: 'weather-follow',
           thesisKind: signal.thesisKind,
           storageDate: days[index].storageDate,
+          storageReleaseAt: days[index].storageReleaseAt,
           storageBcf: days[index].storageBcf,
           storageSeasonalAverageBcf: days[index].storageSeasonalAverageBcf,
           storageSeasonalDiffPct: days[index].storageSeasonalDiffPct,
@@ -875,6 +922,7 @@ function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
         entryTradeDate: days[entryIndex].date,
         exitTradeDate: days[followEndIndex].date,
         storageDate: days[entryIndex].storageDate,
+        storageReleaseAt: days[entryIndex].storageReleaseAt,
         storageBcf: days[entryIndex].storageBcf,
         storageSeasonalAverageBcf: days[entryIndex].storageSeasonalAverageBcf,
         storageSeasonalDiffPct: days[entryIndex].storageSeasonalDiffPct,
@@ -886,8 +934,8 @@ function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
       skippedHeatFollowSignals += 1
     }
 
-    const priorClose = days[Math.max(entryIndex - 1, 0)]?.ungClose
-    const exitClose = days[followEndIndex]?.ungClose
+    const priorClose = days[Math.max(entryIndex - 1, 0)]?.signalClose
+    const exitClose = days[followEndIndex]?.signalClose
     const realizedMovePct = priorClose && exitClose ? ((exitClose - priorClose) / priorClose) * 100 : 0
     if (Math.abs(realizedMovePct) < candidate.minRealizedMovePct) continue
     if (Math.sign(realizedMovePct) !== signal.direction) continue
@@ -919,6 +967,7 @@ function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
         windowId: 'weather-reversion',
         thesisKind: reversionPosition > 0 ? 'reversion-long' : 'reversion-short',
         storageDate: days[index].storageDate,
+        storageReleaseAt: days[index].storageReleaseAt,
         storageBcf: days[index].storageBcf,
         storageSeasonalAverageBcf: days[index].storageSeasonalAverageBcf,
         storageSeasonalDiffPct: days[index].storageSeasonalDiffPct,
@@ -946,6 +995,7 @@ function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
         entryTradeDate: days[reversionEntryIndex].date,
         exitTradeDate: days[reversionExitIndex].date,
         storageDate: days[reversionEntryIndex].storageDate,
+        storageReleaseAt: days[reversionEntryIndex].storageReleaseAt,
         storageBcf: days[reversionEntryIndex].storageBcf,
         storageSeasonalAverageBcf: days[reversionEntryIndex].storageSeasonalAverageBcf,
         storageSeasonalDiffPct: days[reversionEntryIndex].storageSeasonalDiffPct,
@@ -963,17 +1013,30 @@ function buildCurve(days, overlayByIndex) {
   let equity = INITIAL_CAPITAL
   let peak = INITIAL_CAPITAL
   let previousPosition = 0
+  let priorCloseThesisKind = 'index-fallback'
+  let executionState = createExecutionState(EXECUTION_CONTRACT)
   const curve = []
   const rows = []
 
   for (let index = 0; index < days.length; index += 1) {
     const day = days[index]
     const overlay = overlayByIndex.get(index)
-    const position = overlay?.position ?? 0
-    const indexFraction = Math.max(0, 1 - Math.abs(position))
-    const grossReturnPct = indexFraction * day.indexReturnPct + position * day.ungReturnPct
-    const tradingCostPct = Math.abs(position - previousPosition) * ONE_WAY_COST_PCT
-    const netReturnPct = grossReturnPct - tradingCostPct
+    const position = round(overlay?.position ?? 0, 4)
+    const indexFraction = round(Math.max(0, 1 - Math.abs(position)), 4)
+    const targetWeights = targetWeightsForAllocation(EXECUTION_CONTRACT, {
+      gasPosition: position,
+      investedIndexFraction: indexFraction,
+    })
+    const execution = applyExecutionStep({
+      state: executionState,
+      day: day.executionDay,
+      targetWeights,
+      contract: EXECUTION_CONTRACT,
+    })
+    executionState = execution.state
+    const grossReturnPct = execution.grossReturnPct
+    const tradingCostPct = execution.tradingCostPct + execution.borrowCostPct
+    const netReturnPct = round(execution.netReturnPct, 4)
     const previousEquity = equity
     equity = Math.max(1, equity * (1 + netReturnPct / 100))
     peak = Math.max(peak, equity)
@@ -991,6 +1054,7 @@ function buildCurve(days, overlayByIndex) {
       sourceId: overlay?.sourceId ?? 'US-INDEX-BASKET',
       windowId: overlay?.windowId ?? 'index-fallback',
       thesisKind: overlay?.thesisKind ?? 'index-fallback',
+      priorCloseThesisKind,
       leadDays: overlay?.leadDays ?? 0,
       confidence: overlay?.confidence ?? 0,
       weightedAnomalyF: overlay?.weightedAnomalyF ?? 0,
@@ -1002,6 +1066,7 @@ function buildCurve(days, overlayByIndex) {
       warmCoveragePct: overlay?.thesisKind === 'summer-heat-long' ? overlay.coveragePct : 0,
       extremeCount: overlay?.extremeCount ?? 0,
       storageDate: overlay?.storageDate ?? day.storageDate,
+      storageReleaseAt: overlay?.storageReleaseAt ?? day.storageReleaseAt,
       storageBcf: overlay?.storageBcf ?? day.storageBcf,
       storageSeasonalAverageBcf: overlay?.storageSeasonalAverageBcf ?? day.storageSeasonalAverageBcf,
       storageSeasonalDiffPct: overlay?.storageSeasonalDiffPct ?? day.storageSeasonalDiffPct,
@@ -1013,7 +1078,10 @@ function buildCurve(days, overlayByIndex) {
       indexReturnPct: round(day.indexReturnPct, 4),
       grossReturnPct: round(grossReturnPct, 4),
       tradingCostPct: round(tradingCostPct, 4),
-      netReturnPct: round(netReturnPct, 4),
+      netReturnPct,
+      componentMaterialRow:
+        overlay?.thesisKind !== undefined || Math.abs(position) > 0.000001 || Math.abs(position - previousPosition) > 0.000001,
+      ...executionAuditFields(execution, day.executionDay, EXECUTION_CONTRACT),
       equity: round(equity, 2),
       equityPct: round((equity / INITIAL_CAPITAL - 1) * 100, 4),
       drawdownPct: round(drawdownPct, 4),
@@ -1042,8 +1110,12 @@ function buildCurve(days, overlayByIndex) {
       netReturnPct,
       indexReturnPct: day.indexReturnPct,
       activeReturnPct: netReturnPct - day.indexReturnPct,
+      totalTurnover: execution.totalTurnover,
+      gasTurnover: execution.gasTurnover,
+      indexTurnover: execution.indexTurnover,
     })
     previousPosition = position
+    priorCloseThesisKind = row.thesisKind
   }
 
   return { curve, rows }
@@ -1070,6 +1142,7 @@ function executedEventRowsFromRows(rows) {
       extremeCount: row.extremeCount,
       confidence: row.confidence,
       storageDate: row.storageDate,
+      storageReleaseAt: row.storageReleaseAt,
       storageBcf: row.storageBcf,
       storageSeasonalAverageBcf: row.storageSeasonalAverageBcf,
       storageSeasonalDiffPct: row.storageSeasonalDiffPct,
@@ -1134,10 +1207,9 @@ function metricsFromCurve(curve, tradeCount) {
   const var95 = percentile(returns, 0.05)
   const cvarSlice = returns.filter((value) => value <= var95)
   const exposure = mean(curve.map((point) => Math.abs(point.position)))
-  const turnover = curve.reduce((sum, point, index) => {
-    const previous = curve[index - 1]?.position ?? 0
-    return sum + Math.abs(point.position - previous)
-  }, 0)
+  const turnover = curve.reduce((sum, point) => sum + numberFrom(point.totalTurnover), 0)
+  const gasTurnover = curve.reduce((sum, point) => sum + numberFrom(point.gasTurnover), 0)
+  const indexTurnover = curve.reduce((sum, point) => sum + numberFrom(point.indexTurnover), 0)
   const avg = mean(returns)
   const standardError = std(returns) ? std(returns) / Math.sqrt(returns.length) : 0
 
@@ -1154,6 +1226,8 @@ function metricsFromCurve(curve, tradeCount) {
     tradeCount,
     exposurePct: round(exposure * 100, 1),
     turnover: round(turnover, 2),
+    gasTurnover: round(gasTurnover, 2),
+    indexTurnover: round(indexTurnover, 2),
     var95Pct: round(var95 * 100, 2),
     cvar95Pct: round(mean(cvarSlice) * 100, 2),
     averageDailyPnlPct: round(avg * 100, 3),
@@ -1203,49 +1277,48 @@ function legCounts(eventRows, splitFilter = () => true) {
   }
 }
 
-function sideReturnSnapshot(rows, splitFilter = () => true) {
-  const buckets = {
-    summerColdShort: [],
-    summerHeatLong: [],
-    weatherFollow: [],
-    reversionLong: [],
-    reversionShort: [],
-    weatherReversion: [],
-  }
-
+function causalSideMetric(rows, thesisMatches, splitFilter = () => true) {
+  const pointsByDate = new Map()
+  let tradeCount = 0
   for (const row of rows) {
     if (!splitFilter(row)) continue
-    const point = {
-      date: row.entryTradeDate,
-      equity: INITIAL_CAPITAL * (1 + row.netReturnPct / 100),
-      dailyPnlPct: row.netReturnPct,
-      drawdownPct: row.netReturnPct < 0 ? row.netReturnPct : 0,
-      position: row.ungPosition,
-    }
-    if (row.thesisKind === 'summer-cold-short') {
-      buckets.summerColdShort.push(point)
-      buckets.weatherFollow.push(point)
-    } else if (row.thesisKind === 'summer-heat-long') {
-      buckets.summerHeatLong.push(point)
-      buckets.weatherFollow.push(point)
-    } else if (row.thesisKind === 'reversion-long') {
-      buckets.reversionLong.push(point)
-      buckets.weatherReversion.push(point)
-    } else if (row.thesisKind === 'reversion-short') {
-      buckets.reversionShort.push(point)
-      buckets.weatherReversion.push(point)
+    const contributions = causalReturnContributionsForRow(row)
+    if (thesisMatches(contributions[1].thesisKind)) tradeCount += 1
+    for (const contribution of contributions) {
+      if (!thesisMatches(contribution.thesisKind)) continue
+      const point = pointsByDate.get(row.entryTradeDate) ?? { returnPct: 0, position: 0 }
+      point.returnPct += contribution.returnPct
+      if (Math.abs(contribution.position) > Math.abs(point.position)) point.position = contribution.position
+      pointsByDate.set(row.entryTradeDate, point)
     }
   }
 
-  const metricFor = (key) => metricsFromCurve(buckets[key], buckets[key].length)
+  const points = [...pointsByDate.entries()].map(([date, point]) => ({
+    date,
+    equity: INITIAL_CAPITAL * (1 + point.returnPct / 100),
+    dailyPnlPct: point.returnPct,
+    drawdownPct: point.returnPct < 0 ? point.returnPct : 0,
+    position: point.position,
+  }))
+  return metricsFromCurve(points, tradeCount)
+}
 
+function sideReturnSnapshot(rows, splitFilter = () => true) {
   return {
-    summerColdShort: metricFor('summerColdShort'),
-    summerHeatLong: metricFor('summerHeatLong'),
-    weatherFollow: metricFor('weatherFollow'),
-    reversionLong: metricFor('reversionLong'),
-    reversionShort: metricFor('reversionShort'),
-    weatherReversion: metricFor('weatherReversion'),
+    summerColdShort: causalSideMetric(rows, (thesisKind) => thesisKind === 'summer-cold-short', splitFilter),
+    summerHeatLong: causalSideMetric(rows, (thesisKind) => thesisKind === 'summer-heat-long', splitFilter),
+    weatherFollow: causalSideMetric(
+      rows,
+      (thesisKind) => ['summer-cold-short', 'summer-heat-long'].includes(thesisKind),
+      splitFilter,
+    ),
+    reversionLong: causalSideMetric(rows, (thesisKind) => thesisKind === 'reversion-long', splitFilter),
+    reversionShort: causalSideMetric(rows, (thesisKind) => thesisKind === 'reversion-short', splitFilter),
+    weatherReversion: causalSideMetric(
+      rows,
+      (thesisKind) => ['reversion-long', 'reversion-short'].includes(thesisKind),
+      splitFilter,
+    ),
   }
 }
 
@@ -1427,7 +1500,7 @@ function formatCandidateRow(candidate) {
     storageDeficitHeatMultiplier: STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER,
     storageDeficitHeatMaxFraction: STORAGE_DEFICIT_HEAT_MAX_FRACTION,
     storageSeasonalLookbackYears: STORAGE_SEASONAL_LOOKBACK_YEARS,
-    storageAvailableLagDays: STORAGE_AVAILABLE_LAG_DAYS,
+    storageAvailabilityContract: 'versioned-release-calendar-before-session-open',
     volTargetPct: candidate.volTargetPct,
     signals: candidate.signalCount,
     scheduledEvents: candidate.scheduledEventCount,
@@ -1478,25 +1551,12 @@ function formatCandidateRow(candidate) {
 }
 
 function sideMetrics(rows) {
-  const side = (thesisKind) =>
-    metricsFromCurve(
-      rows
-        .filter((row) => row.thesisKind === thesisKind)
-        .map((row) => ({
-          date: row.entryTradeDate,
-          equity: INITIAL_CAPITAL * (1 + row.netReturnPct / 100),
-          dailyPnlPct: row.netReturnPct,
-          drawdownPct: row.netReturnPct < 0 ? row.netReturnPct : 0,
-          position: row.ungPosition,
-        })),
-      rows.filter((row) => row.thesisKind === thesisKind).length,
-    )
   return {
-    summerColdShort: side('summer-cold-short'),
-    summerHeatLong: side('summer-heat-long'),
-    reversionLong: side('reversion-long'),
-    reversionShort: side('reversion-short'),
-    fallback: side('index-fallback'),
+    summerColdShort: causalSideMetric(rows, (thesisKind) => thesisKind === 'summer-cold-short'),
+    summerHeatLong: causalSideMetric(rows, (thesisKind) => thesisKind === 'summer-heat-long'),
+    reversionLong: causalSideMetric(rows, (thesisKind) => thesisKind === 'reversion-long'),
+    reversionShort: causalSideMetric(rows, (thesisKind) => thesisKind === 'reversion-short'),
+    fallback: causalSideMetric(rows, (thesisKind) => thesisKind === 'index-fallback'),
   }
 }
 
@@ -1665,10 +1725,10 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Forecast-combination link: Bates-Granger-style forecast combination says independent forecasts can contain useful information even when none should be selected alone. This lane tests equal-weight and train-only inverse-error-shrunk source weights.
 - Weather-risk-premium link: published natural-gas event studies report that U.S. natural gas futures react to forecasted temperatures and temperature shocks.
 - Freshness link: the heat-follow leg only buys the first broad heat signal after a quiet period, because repeated heat forecasts are more likely already priced.
-- Storage-deficit link: the heat-follow leg gets a modest size tilt only when lagged EIA Lower 48 storage is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal norm, because summer heat should matter more when the supply cushion is thinner.
+- Storage-deficit link: the heat-follow leg gets a modest size tilt only when the latest EIA Lower 48 storage report available before the session open is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal norm, because summer heat should matter more when the supply cushion is thinner.
 - Overreaction link: the fade leg is a constrained contrarian response only when gas first moves in the weather-demand direction, not a standalone price-only reversal.
 - Cooling-demand fade sizing link: the fade can size heat-rally shorts by forecast CDD anomaly, because CDD is closer to summer power-sector gas burn than raw temperature anomaly alone.
-- Storage-aware fade link: heat-driven rallies are not faded when lagged Lower 48 storage is below its trailing seasonal norm, because a tight balance sheet can let weather risk persist.
+- Storage-aware fade link: heat-driven rallies are not faded when the latest released Lower 48 storage report is below its trailing seasonal norm, because a tight balance sheet can let weather risk persist.
 - Overfit control: candidate rank uses train and validation only. Holdout after ${HOLDOUT_START} is reported after selection, and a deterministic block-bootstrap reality check is run on daily active return versus the index fallback.
 
 ## Selected Candidate
@@ -1676,14 +1736,15 @@ This is the NGAS Summer Alpha cooling-season research strategy. It explicitly re
 - Architecture: ${selected.architectureLabel}.
 - Source set: ${selected.sourceSetLabel}.
 - Source weighting: ${selected.sourceWeightMode === 'bg-shrink' ? 'train-only inverse forecast-error shrinkage' : 'equal forecast weights'}.
-- Weather leg: ${selected.weatherFraction}x max NG futures overlay for ${selected.followHoldDays} trading day(s), long only on fresh broad summer heat after ${selected.freshHeatLookbackDays} quiet calendar day(s). Cool-short rows remain diagnostic until the data produces enough confirmed cool events.
-- Storage tilt: fresh heat-follow rows are scaled by ${STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER}x, capped at ${STORAGE_DEFICIT_HEAT_MAX_FRACTION}x notional, only when EIA storage available with a ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day lag is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal average.
-- Reversion leg: ${selected.reversionFraction}x max NG futures overlay for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized same-direction gas move, opposite the weather-driven move. Heat-rally fades are skipped when lagged storage is below its trailing seasonal norm.
+- Weather leg: ${selected.weatherFraction}x max UNG return sleeve for ${selected.followHoldDays} trading day(s), long only on fresh broad summer heat after ${selected.freshHeatLookbackDays} quiet calendar day(s). NG=F remains a price-confirmation input; cool-short rows remain diagnostic until the data produces enough confirmed cool events.
+- Storage tilt: fresh heat-follow rows are scaled by ${STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER}x, capped at ${STORAGE_DEFICIT_HEAT_MAX_FRACTION}x notional, only when the latest EIA storage report published before that session's open is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal average.
+- Reversion leg: ${selected.reversionFraction}x max UNG return sleeve for ${selected.reversionHoldDays} trading day(s) after a ${selected.minRealizedMovePct}% realized same-direction NG=F move, opposite the weather-driven move. Heat-rally fades are skipped when released storage is below its trailing seasonal norm.
 - Reversion demand sizing: ${reversionDemandModeDescription(selected.reversionDemandMode)}.
 - Close-in weather-resolution fade check: ${selected.weatherResolutionMode === 'graded-shift' ? 'graded GFS/GEFS lead-1 to lead-3 forecast shift sizing' : 'none'}.
-- Sizing: ${selected.sizingMode}${selected.sizingMode === 'vol-target' ? `, ${selected.volTargetPct}% annualized UNG volatility target` : ''}.
+- Sizing: ${selected.sizingMode}${selected.sizingMode === 'vol-target' ? `, ${selected.volTargetPct}% annualized NG=F signal-volatility target` : ''}.
 - Signal gates: absolute forecast anomaly >= ${selected.anomalyThreshold}F; side coverage >= ${selected.coverageThreshold}; confidence >= ${selected.minConfidence}; source groups >= ${selected.minGroups}; model families >= ${selected.minFamilies}; heat-follow freshness lookback ${selected.freshHeatLookbackDays} calendar day(s).
-- Cost: ${ROUND_TRIP_COST_PCT}% round trip, charged as ${ONE_WAY_COST_PCT}% one-way on gas position changes.
+- Execution: prior-close holdings earn the overnight move; current UNG/VOO/QQQM targets become effective at the split-adjusted session open.
+- Cost: frozen ${EXECUTION_CONTRACT.contractId} baseline, with ${BASELINE_EXECUTION_SCENARIO.oneWayBps.UNG} bps one-way on UNG and ${BASELINE_EXECUTION_SCENARIO.oneWayBps.VOO} bp one-way on each index ETF leg, applied to drift-aware executed turnover.
 - Selection: candidate rank used train and validation only. Holdout rows after ${HOLDOUT_START} were not used to choose the candidate.
 
 ## Metrics
@@ -1743,7 +1804,7 @@ ${topCandidates
 
 ## Verdict
 
-Load this as an active needs-more-validation strategy, not broker-ready. It fixes the prior underperformance by using the futures-grade gas series, requiring multi-model confirmation, buying only fresh broad heat signals, and fading same-direction heat overreactions only when lagged storage is not below its trailing seasonal norm. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
+Load this as an active needs-more-validation strategy, not broker-ready. It uses NG=F only for the Summer price-confirmation signal and calculates every gas-sleeve return with executable UNG history under the frozen causal-open cost contract. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
 `
 }
 
@@ -1844,14 +1905,18 @@ function main() {
     )
   const summaryCandidates = candidates.map(formatCandidateRow)
   const summary = {
+    artifactSchemaVersion: 2,
     generatedAt: new Date().toISOString(),
     strategyId: STRATEGY_ID,
     data: {
       weatherManifest: path.relative(REPO_ROOT, MANIFEST_PATH),
-      gasMarketFile: path.relative(REPO_ROOT, GAS_MARKET_FILE),
+      signalGasMarketFile: path.relative(REPO_ROOT, GAS_SIGNAL_FILE),
+      executionMarketFiles: ['UNG', 'VOO', 'QQQM'].map((symbol) => `data/qore/market/yahoo/${symbol}-daily.csv`),
+      executionContractFile: path.relative(REPO_ROOT, EXECUTION_CONTRACT.filePath),
       indexMarketFile: path.relative(REPO_ROOT, INDEX_MARKET_FILE),
       actualAnomalyFile: path.relative(REPO_ROOT, ACTUAL_ANOMALY_FILE),
       eiaStorageFile: path.relative(REPO_ROOT, EIA_STORAGE_FILE),
+      eiaStorageReleaseCalendarFile: path.relative(REPO_ROOT, EIA_STORAGE_RELEASE_CALENDAR_FILE),
       weatherResolutionInputs: weatherResolutionData.inputFiles,
       firstSignalDate: FIRST_SIGNAL_DATE,
       marketStartDate: days[0]?.date,
@@ -1886,22 +1951,46 @@ function main() {
       trainEnd: TRAIN_END,
       validationEnd: VALIDATION_END,
       holdoutStart: HOLDOUT_START,
-      roundTripCostPct: ROUND_TRIP_COST_PCT,
-      oneWayCostPct: ONE_WAY_COST_PCT,
-      fallback: 'Unallocated capital remains in the configured target-weight US-INDEX-BASKET ETF fallback close-to-close.',
-      signalTiming: 'Forecast issue-date signals are used only on trading sessions strictly after the issue date.',
+      ungRoundTripCostPct: ROUND_TRIP_COST_PCT,
+      ungOneWayCostPct: ONE_WAY_COST_PCT,
+      signalInstrument: {
+        symbol: 'NG=F',
+        role: 'Summer price confirmation, realized-move gates, and signal-volatility sizing only.',
+      },
+      pnlInstrument: {
+        symbol: 'UNG',
+        role: 'All gas-sleeve P&L, candidate ranking, and validation.',
+      },
+      execution: {
+        contractId: EXECUTION_CONTRACT.contractId,
+        contractDigest: EXECUTION_CONTRACT.digest,
+        scenarioId: EXECUTION_CONTRACT.selectionScenarioId,
+        priceConvention: EXECUTION_CONTRACT.priceConvention,
+        deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
+        rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
+        indexWeights: EXECUTION_CONTRACT.indexWeights,
+        selectionRule: EXECUTION_CONTRACT.selectionRule,
+        costCalibration: EXECUTION_CONTRACT.costCalibration,
+        oneWayBps: BASELINE_EXECUTION_SCENARIO.oneWayBps,
+        annualBorrowRatePct: BASELINE_EXECUTION_SCENARIO.annualBorrowRatePct,
+        borrowBasis: BASELINE_EXECUTION_SCENARIO.borrowBasis,
+        scenarios: EXECUTION_CONTRACT.scenarios,
+      },
+      fallback: 'Unallocated deployable capital is routed to the configured VOO/QQQM target-weight index basket; the broker cash buffer remains uninvested.',
+      signalTiming:
+        'Forecast issue-date signals are used only on later trading sessions. Prior holdings earn close-to-open returns; current targets earn adjusted-open-to-close returns.',
       reversionTiming:
-        'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, start no earlier than the next trading session, and skip heat-rally fades when lagged storage is below its trailing seasonal norm.',
+        'Reversion legs use realized gas moves through the weather-follow leg, require the move to match the weather-demand direction, start no earlier than the next trading session, and skip heat-rally fades when the latest storage report available before the open is below its trailing seasonal norm.',
       weatherResolutionTiming:
-        `Close-in weather-resolution fade sizing is tested on the top ${WEATHER_RESOLUTION_VARIANT_POOL_SIZE} eligible base-grid candidates and uses GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= the reversion entry date.`,
+        `Close-in weather-resolution fade sizing is tested on the top ${WEATHER_RESOLUTION_VARIANT_POOL_SIZE} eligible base-grid candidates and uses frozen 00Z GFS/GEFS lead-1 to lead-3 forecasts with issueDate <= the reversion entry date. Same-date 00Z runs are assumed available before the New York session open because the historical calendar has no separate publication timestamp.`,
       reversionDemandSizing:
         `When selected, cooling-demand-tiered fade sizing uses forecast CDD anomaly versus a ${COOLING_DEMAND_BASE_F}F base: below ${COOLING_DEMAND_SOLID_ANOMALY_F}F trims reversion size, ${COOLING_DEMAND_SOLID_ANOMALY_F}-${COOLING_DEMAND_EXTREME_ANOMALY_F}F modestly adds size, and at least ${COOLING_DEMAND_EXTREME_ANOMALY_F}F can lift the reversion sleeve up to ${COOLING_DEMAND_REVERSION_EXTREME_MAX_FRACTION}x.`,
       heatSignalFreshness:
         'Summer heat-follow exposure is allowed only when no prior broad summer heat signal was issued within the fixed freshness lookback window; repeated heat signals can still qualify for the same-direction fade.',
       storageDeficitHeatTilt:
-        `Fresh summer heat-follow exposure is multiplied by ${STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER}x, capped at ${STORAGE_DEFICIT_HEAT_MAX_FRACTION}x notional, only when lagged EIA Lower 48 storage is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal average.`,
+        `Fresh summer heat-follow exposure is multiplied by ${STORAGE_DEFICIT_HEAT_SIZE_MULTIPLIER}x, capped at ${STORAGE_DEFICIT_HEAT_MAX_FRACTION}x notional, only when the latest EIA Lower 48 storage report available before the session open is below its trailing ${STORAGE_SEASONAL_LOOKBACK_YEARS}-year seasonal average.`,
       storageTiming:
-        `Storage rows are treated as available only after a conservative ${STORAGE_AVAILABLE_LAG_DAYS}-calendar-day lag from the EIA row date.`,
+        'Storage rows are available only at a session open after their timestamp in the versioned EIA WNGSR release calendar; a missing release-calendar row fails artifact generation.',
       selectionPolicy:
         'The architecture requires fresh multi-model heat-follow and storage-aware same-direction overreaction-fade legs. Cool-short rows are kept diagnostic until the data produces enough confirmed cool events. Rank and eligibility use train and validation splits only; holdout metrics are reported after selection.',
       sourceWeighting:
@@ -1947,6 +2036,7 @@ function main() {
     'sourceId',
     'windowId',
     'thesisKind',
+    'priorCloseThesisKind',
     'leadDays',
     'confidence',
     'weightedAnomalyF',
@@ -1958,6 +2048,7 @@ function main() {
     'warmCoveragePct',
     'extremeCount',
     'storageDate',
+    'storageReleaseAt',
     'storageBcf',
     'storageSeasonalAverageBcf',
     'storageSeasonalDiffPct',
@@ -1970,6 +2061,37 @@ function main() {
     'grossReturnPct',
     'tradingCostPct',
     'netReturnPct',
+    'componentMaterialRow',
+    'executionInstrument',
+    'executionPriceConvention',
+    'priorUngPosition',
+    'deployedUngPosition',
+    'deployedVooPosition',
+    'deployedQqqmPosition',
+    'ungOvernightReturnPct',
+    'ungIntradayReturnPct',
+    'vooReturnPct',
+    'qqqmReturnPct',
+    'indexOvernightReturnPct',
+    'indexIntradayReturnPct',
+    'overnightPortfolioReturnPct',
+    'intradayPortfolioReturnPct',
+    'priorCloseReturnContributionPct',
+    'currentSessionReturnContributionPct',
+    'gasTargetTurnover',
+    'vooTargetTurnover',
+    'qqqmTargetTurnover',
+    'gasTurnover',
+    'vooTurnover',
+    'qqqmTurnover',
+    'indexTurnover',
+    'totalTurnover',
+    'gasTradingCostPct',
+    'vooTradingCostPct',
+    'qqqmTradingCostPct',
+    'borrowCostPct',
+    'frictionContractId',
+    'frictionScenarioId',
     'equity',
     'equityPct',
     'drawdownPct',
@@ -2005,6 +2127,7 @@ function main() {
     'extremeCount',
     'confidence',
     'storageDate',
+    'storageReleaseAt',
     'storageBcf',
     'storageSeasonalAverageBcf',
     'storageSeasonalDiffPct',
@@ -2045,7 +2168,7 @@ function main() {
     'storageDeficitHeatMultiplier',
     'storageDeficitHeatMaxFraction',
     'storageSeasonalLookbackYears',
-    'storageAvailableLagDays',
+    'storageAvailabilityContract',
     'volTargetPct',
     'signals',
     'scheduledEvents',

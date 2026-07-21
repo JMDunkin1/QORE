@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { appendFile, mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { appendFile, chmod, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
 import { inspectGitWorkingTree } from './lib/qore-git-state.mjs'
+import { assertQoreExecutionHost } from './lib/qore-execution-host.mjs'
 import { liveInferenceProvenanceBlocks } from './lib/qore-live-inference-provenance.mjs'
+import { validateIndexBasketConfig } from './lib/qore-index-basket.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
+import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
@@ -275,7 +278,13 @@ function relative(filePath) {
 }
 
 async function ensureParent(filePath) {
-  await mkdir(path.dirname(filePath), { recursive: true })
+  const directory = path.dirname(filePath)
+  const existed = existsSync(directory)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const relativeToBrokerDir = path.relative(brokerDir, directory)
+  const isBrokerOwnedDirectory = relativeToBrokerDir === ''
+    || (!path.isAbsolute(relativeToBrokerDir) && relativeToBrokerDir !== '..' && !relativeToBrokerDir.startsWith(`..${path.sep}`))
+  if (!existed && isBrokerOwnedDirectory) await chmod(directory, 0o700)
 }
 
 function readJsonFile(filePath, fallback = null) {
@@ -295,8 +304,10 @@ async function writeJson(filePath, value) {
   await ensureParent(filePath)
   const temporaryPath = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+    await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+    await chmod(temporaryPath, 0o600)
     await rename(temporaryPath, filePath)
+    await chmod(filePath, 0o600)
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => {})
     throw error
@@ -305,7 +316,8 @@ async function writeJson(filePath, value) {
 
 async function appendJsonl(filePath, value) {
   await ensureParent(filePath)
-  await appendFile(filePath, `${JSON.stringify(value)}\n`, 'utf8')
+  await appendFile(filePath, `${JSON.stringify(value)}\n`, { encoding: 'utf8', mode: 0o600 })
+  await chmod(filePath, 0o600)
 }
 
 function existingBrokerLock() {
@@ -541,7 +553,7 @@ function portfolioTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
-function normalizePortfolioHistory(payload) {
+function normalizePortfolioHistory(payload, capturedAt) {
   const timestamps = Array.isArray(payload?.timestamp) ? payload.timestamp : []
   const equity = Array.isArray(payload?.equity) ? payload.equity : []
   const profitLoss = Array.isArray(payload?.profit_loss) ? payload.profit_loss : []
@@ -570,6 +582,7 @@ function normalizePortfolioHistory(payload) {
   }
 
   return {
+    generatedAt: new Date(capturedAt).toISOString(),
     baseValueUsd: baseValueUsd === null ? null : round(baseValueUsd, 2),
     baseValueAsOf: portfolioTimestamp(payload?.base_value_asof),
     timeframe: String(payload?.timeframe ?? '1D'),
@@ -577,10 +590,92 @@ function normalizePortfolioHistory(payload) {
   }
 }
 
-async function getAlpacaPortfolioHistory() {
+async function getAlpacaPortfolioHistory(capturedAt = currentTime().toISOString()) {
   const params = new URLSearchParams({ period: 'all', timeframe: '1D' })
   const payload = await alpacaRequest('GET', `/v2/account/portfolio/history?${params}`)
-  return normalizePortfolioHistory(payload)
+  return normalizePortfolioHistory(payload, capturedAt)
+}
+
+function normalizeBenchmarkHistory(payload, symbols, capturedAt) {
+  const rows = symbols.map((symbol) => {
+    const rawBars = Array.isArray(payload?.bars?.[symbol]) ? payload.bars[symbol] : []
+    const byTimestamp = new Map()
+    for (const bar of rawBars) {
+      const timestamp = portfolioTimestamp(bar?.t)
+      const closeUsd = finiteNumber(bar?.c)
+      if (!timestamp || closeUsd === null || closeUsd <= 0) continue
+      byTimestamp.set(timestamp, {
+        timestamp,
+        openUsd: finiteNumber(bar?.o) === null ? null : round(finiteNumber(bar.o), 4),
+        closeUsd: round(closeUsd, 4),
+      })
+    }
+    return {
+      symbol,
+      points: [...byTimestamp.values()].sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
+    }
+  })
+  return {
+    generatedAt: new Date(capturedAt).toISOString(),
+    source: 'Alpaca historical stock bars',
+    feed: alpacaMarketDataFeed,
+    adjustment: 'all',
+    timeframe: '1Day',
+    rows,
+  }
+}
+
+async function getAlpacaBenchmarkHistory(capturedAt = currentTime().toISOString()) {
+  const basket = readIndexBasketConfig()
+  const symbols = basket.components.map((component) => component.symbol)
+  const end = new Date(capturedAt)
+  const start = new Date(end.getTime() - 45 * 86_400_000)
+  const params = new URLSearchParams({
+    symbols: symbols.join(','),
+    timeframe: '1Day',
+    start: start.toISOString(),
+    end: end.toISOString(),
+    limit: '1000',
+    adjustment: 'all',
+    feed: alpacaMarketDataFeed,
+    sort: 'asc',
+  })
+  const payload = await alpacaDataRequest(`/v2/stocks/bars?${params}`)
+  return normalizeBenchmarkHistory(payload, symbols, capturedAt)
+}
+
+function normalizeTradingCalendar(payload) {
+  const rows = []
+  for (const session of Array.isArray(payload) ? payload : []) {
+    const date = String(session?.date ?? '')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+    rows.push({
+      date,
+      open: String(session?.open ?? '').slice(0, 8) || null,
+      close: String(session?.close ?? '').slice(0, 8) || null,
+    })
+  }
+  return {
+    generatedAt: currentTime().toISOString(),
+    source: 'Alpaca US market calendar',
+    rows: rows.sort((left, right) => left.date.localeCompare(right.date)),
+  }
+}
+
+async function getAlpacaTradingCalendar() {
+  const end = currentTime()
+  const start = new Date(end.getTime() - 45 * 86_400_000)
+  const params = new URLSearchParams({
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  })
+  return normalizeTradingCalendar(await alpacaRequest('GET', `/v2/calendar?${params}`))
+}
+
+function sanitizedAccountBinding(account) {
+  const accountId = String(account?.id ?? '').trim()
+  if (!accountId) return null
+  return crypto.createHash('sha256').update(`alpaca:${brokerMode}:${accountId}`).digest('hex').slice(0, 24)
 }
 
 async function accountContextFrom(account, { persistRiskLedger = true, requireValidRiskLedger = false } = {}) {
@@ -682,8 +777,10 @@ async function accountContextFrom(account, { persistRiskLedger = true, requireVa
   }
   return {
     equityUsd: normalizedEquityUsd,
-    cashUsd: cashUsd ?? 0,
+    lastEquityUsd: lastEquityUsd === null ? null : round(lastEquityUsd, 2),
+    cashUsd: cashUsd === null ? null : round(cashUsd, 2),
     openIntentCount: 0,
+    dayPnlUsd: equityUsd === null || lastEquityUsd === null ? null : round(equityUsd - lastEquityUsd, 2),
     dayPnlPct: dayPnlPct === null ? null : round(dayPnlPct, 4),
     trailingDrawdownPct: riskLedger.trailingDrawdownPct,
     consecutiveLosses: 0,
@@ -749,6 +846,7 @@ async function getAlpacaBrokerSnapshot({ allowOffline = false, persistRiskLedger
     brokerConnected: true,
     liveRoutingEnabled: brokerMode === 'live',
     mode: brokerMode === 'live' ? 'live' : 'paper',
+    accountBinding: sanitizedAccountBinding(account),
     account: await accountContextFrom(account, { persistRiskLedger }),
     positions,
     openOrders,
@@ -781,33 +879,8 @@ async function getAlpacaBrokerSnapshot({ allowOffline = false, persistRiskLedger
 
 function readIndexBasketConfig() {
   const config = readJsonFile(indexBasketConfigPath)
-  if (!config?.components?.length) throw new Error(`Missing index basket config at ${relative(indexBasketConfigPath)}.`)
-  const seen = new Set()
-  const components = config.components.map((component) => {
-    const symbol = String(component?.symbol ?? '').trim()
-    const targetWeight = finiteNumber(component?.targetWeight)
-    if (!symbol || !alpacaLiveRiskPolicy.allowedInstruments.has(symbol) || symbol === 'UNG') {
-      throw new Error(`Index basket config contains unsupported component symbol "${symbol || 'missing'}".`)
-    }
-    if (seen.has(symbol)) throw new Error(`Index basket config contains duplicate component symbol ${symbol}.`)
-    if (targetWeight === null || targetWeight <= 0) {
-      throw new Error(`Index basket component ${symbol} must have a positive finite targetWeight.`)
-    }
-    seen.add(symbol)
-    return { ...component, symbol, targetWeight }
-  })
-  const totalWeight = components.reduce((sum, component) => sum + component.targetWeight, 0)
-  const symbols = [...seen].sort()
-  if (symbols.length !== 2 || symbols[0] !== 'QQQM' || symbols[1] !== 'VOO') {
-    throw new Error('Index basket config must contain exactly one VOO component and one QQQM component.')
-  }
-  if (!Number.isFinite(totalWeight) || Math.abs(totalWeight - 1) > 0.001) {
-    throw new Error(`Index basket component weights must sum to 1 within 0.001 (received ${round(totalWeight, 6)}).`)
-  }
-  return {
-    ...config,
-    components: components.map((component) => ({ ...component, targetWeight: component.targetWeight / totalWeight })),
-  }
+  if (!config) throw new Error(`Missing index basket config at ${relative(indexBasketConfigPath)}.`)
+  return validateIndexBasketConfig(config, { source: 'Index basket config' })
 }
 
 function readSignalIntent() {
@@ -1512,6 +1585,17 @@ function signalAgeBlock(signalSnapshot, asOf = currentTime()) {
   return null
 }
 
+function liveStrategyArtifactBlocks(signalSnapshot) {
+  try {
+    return strategyArtifactBindingBlocks(
+      signalSnapshot?.inference?.strategyArtifact,
+      loadAllYearStrategyArtifact(repoDir),
+    )
+  } catch (error) {
+    return [`current reviewed strategy artifact is unavailable: ${error.message}`]
+  }
+}
+
 function liveGitStateBlocks() {
   if (brokerMode !== 'live') return []
   const state = inspectGitWorkingTree(repoDir)
@@ -1863,6 +1947,9 @@ function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnap
     for (const detail of liveInferenceProvenanceBlocks(signalSnapshot, currentTime())) {
       blocks.push(`Current live forecast provenance is invalid: ${detail}.`)
     }
+    for (const detail of liveStrategyArtifactBlocks(signalSnapshot)) {
+      blocks.push(`Current live strategy artifact is invalid: ${detail}.`)
+    }
   }
 
   if (alpacaLiveRiskPolicy.requireAccountContext && (!brokerSnapshot?.account?.equityUsd || brokerSnapshot.account.equityUsd <= 0)) {
@@ -1961,6 +2048,11 @@ function finalSignalSnapshotBlocks(signalSnapshot, expectedSha256, asOf) {
   }
   for (const detail of liveInferenceProvenanceBlocks(signalSnapshot, asOf)) {
     blocks.push(`Current live forecast provenance is invalid: ${detail}.`)
+  }
+  if (brokerMode !== 'dry-run') {
+    for (const detail of liveStrategyArtifactBlocks(signalSnapshot)) {
+      blocks.push(`Current live strategy artifact is invalid: ${detail}.`)
+    }
   }
   const staleBlock = signalAgeBlock(signalSnapshot, asOf)
   if (staleBlock) blocks.push(staleBlock)
@@ -2495,12 +2587,23 @@ async function statusOnce() {
     persistRiskLedger: false,
   })
   const credentialsAvailable = Boolean(alpacaConfig.apiKey && alpacaConfig.secretKey)
-  const [marketData, portfolioHistoryResult] = await Promise.all([
+  const performanceCapturedAt = currentTime().toISOString()
+  const [marketData, portfolioHistoryResult, benchmarkHistoryResult, marketCalendarResult] = await Promise.all([
     credentialsAvailable ? getAlpacaLatestQuotes([...alpacaLiveRiskPolicy.allowedInstruments]) : null,
     credentialsAvailable
-      ? getAlpacaPortfolioHistory()
+      ? getAlpacaPortfolioHistory(performanceCapturedAt)
           .then((value) => ({ value, warning: null }))
           .catch((error) => ({ value: null, warning: `Portfolio history is unavailable: ${error.message}` }))
+      : { value: null, warning: null },
+    credentialsAvailable
+      ? getAlpacaBenchmarkHistory(performanceCapturedAt)
+          .then((value) => ({ value, warning: null }))
+          .catch((error) => ({ value: null, warning: `Index benchmark history is unavailable: ${error.message}` }))
+      : { value: null, warning: null },
+    credentialsAvailable
+      ? getAlpacaTradingCalendar()
+          .then((value) => ({ value, warning: null }))
+          .catch((error) => ({ value: null, warning: `US market calendar is unavailable: ${error.message}` }))
       : { value: null, warning: null },
   ])
   const cachedSnapshotWarning = !credentialsAvailable && snapshot?.sourceGeneratedAt
@@ -2518,6 +2621,7 @@ async function statusOnce() {
     baseUrl: alpacaConfig.baseUrl,
     paper: alpacaConfig.paper,
     brokerConnected: Boolean(credentialsAvailable && snapshot?.brokerConnected),
+    accountBinding: snapshot?.accountBinding ?? null,
     account: snapshot?.account ?? null,
     rawAccount: snapshot?.rawAccount ?? null,
     positions: snapshot?.positions ?? [],
@@ -2525,7 +2629,14 @@ async function statusOnce() {
     marketData,
     marketClock: snapshot?.marketClock ?? null,
     portfolioHistory: portfolioHistoryResult.value,
-    warnings: [portfolioHistoryResult.warning, cachedSnapshotWarning].filter(Boolean),
+    benchmarkHistory: benchmarkHistoryResult.value,
+    marketCalendar: marketCalendarResult.value,
+    warnings: [
+      portfolioHistoryResult.warning,
+      benchmarkHistoryResult.warning,
+      marketCalendarResult.warning,
+      cachedSnapshotWarning,
+    ].filter(Boolean),
     files: {
       accountSnapshot: relative(brokerSnapshotPath),
       accountStatus: relative(brokerAccountStatusPath),
@@ -2588,6 +2699,10 @@ async function runCommand() {
   try {
     releaseLock = await acquireBrokerLock()
     try {
+      assertAlpacaEndpointConfiguration()
+      if (!statusOnly) {
+        assertQoreExecutionHost({ allowLoopbackTest: localTestEndpointsConfirmed() })
+      }
       const result = statusOnly ? await statusOnce() : await reconcileOnce()
       printResult(result)
       if (resultShouldFailProcess(result)) process.exitCode = 1

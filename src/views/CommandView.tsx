@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MetricRail, type MetricDatum } from '../components/MetricRail'
 import { PerformanceChart } from '../components/PerformanceChart'
 import type { SmoothChartSeries } from '../components/SmoothZoomChart'
-import { getLiveTelemetry, refreshLiveTelemetry } from '../runtime/client'
-import type { LivePerformancePoint, LiveTelemetry } from '../runtime/types'
+import { getCommandConnection, getLiveTelemetry, refreshLiveTelemetry } from '../runtime/client'
+import type { CommandConnection, LivePerformancePoint, LiveTelemetry } from '../runtime/types'
 import { classForSigned, formatCurrency, formatNumber, signedPercent } from '../utils/format'
 
 const livePerformanceSeries: Array<SmoothChartSeries<LivePerformancePoint>> = [
@@ -150,6 +150,7 @@ function accountMetrics(telemetry: LiveTelemetry | null, points: LivePerformance
   const account = telemetry?.account
   const dayPnlPct = account?.dayPnlPct
   const displayedDayPnlPct = finiteNumericValue(dayPnlPct)
+  const displayedDayPnlUsd = finiteNumericValue(account?.dayPnlUsd)
   const first = points[0]
   const latest = points.at(-1)
   const baseEquityUsd = finiteNumericValue(telemetry?.portfolioHistory?.baseValueUsd) ?? first?.equityUsd ?? null
@@ -191,7 +192,9 @@ function accountMetrics(telemetry: LiveTelemetry | null, points: LivePerformance
     },
     {
       label: 'TODAY',
-      value: account && displayedDayPnlPct !== null ? signedPercent(displayedDayPnlPct) : '-',
+      value: account && displayedDayPnlPct !== null
+        ? `${currencyValue(displayedDayPnlUsd)} / ${signedPercent(displayedDayPnlPct)}`
+        : '-',
       tone: account && displayedDayPnlPct !== null ? classForSigned(displayedDayPnlPct) : 'warning',
     },
     {
@@ -285,6 +288,8 @@ function RiskReadout({ telemetry }: { telemetry: LiveTelemetry | null }) {
 
 export function CommandView() {
   const [telemetry, setTelemetry] = useState<LiveTelemetry | null>(null)
+  const [connection, setConnection] = useState<CommandConnection | null>(null)
+  const [connectionError, setConnectionError] = useState('')
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
 
@@ -303,21 +308,38 @@ export function CommandView() {
 
   useEffect(() => {
     let active = true
-    void getLiveTelemetry()
-      .then((next) => {
+    let timer = 0
+    const poll = async () => {
+      let connected = false
+      try {
+        const next = await getCommandConnection()
         if (!active) return
-        setTelemetry(next)
-        setError('')
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : 'Runtime API unavailable.')
-      })
-    const interval = window.setInterval(() => void load(false, false), 60_000)
+        setConnection(next)
+        setConnectionError('')
+        connected = next.connected
+      } catch (requestError) {
+        if (!active) return
+        setConnection(null)
+        setConnectionError(requestError instanceof Error ? requestError.message : 'Command bridge unavailable.')
+      }
+      if (active) timer = window.setTimeout(poll, connected ? 15_000 : 750)
+    }
+    void poll()
     return () => {
       active = false
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!connection?.connected) return
+    const initial = window.setTimeout(() => void load(false, false), 0)
+    const interval = window.setInterval(() => void load(false, false), 60_000)
+    return () => {
+      window.clearTimeout(initial)
       window.clearInterval(interval)
     }
-  }, [load])
+  }, [connection?.connected, load])
 
   const performance = useMemo(() => livePerformance(telemetry), [telemetry])
   const positions = Array.isArray(telemetry?.positions) ? telemetry.positions : []
@@ -338,8 +360,14 @@ export function CommandView() {
     || (historyAgeSeconds !== null && historyAgeSeconds > 120)
   )
   const stale = Boolean(telemetry?.stale) || (sourceAgeSeconds !== null && sourceAgeSeconds > 120)
-  const connected = Boolean(telemetry?.brokerConnected)
-  const statusTone = error || !connected ? 'negative' : stale ? 'warning' : 'positive'
+  const transportConnected = Boolean(connection?.connected)
+  const brokerConnected = Boolean(telemetry?.brokerConnected)
+  const connectionProblem = connection?.error || connectionError
+  const statusTone = connectionProblem || !transportConnected || !brokerConnected ? 'negative' : stale ? 'warning' : 'positive'
+  const connectionProgress = Math.max(0, Math.min(100, finiteNumericValue(connection?.progressPct) ?? 0))
+  const connectionLabel = transportConnected
+    ? brokerConnected ? `M1 / ${telemetry?.mode?.toUpperCase()} ONLINE` : 'M1 / BROKER OFFLINE'
+    : connection?.phase?.replaceAll('-', ' ').toUpperCase() ?? 'STARTING'
   const marketStatus = telemetry?.marketClock?.isOpen === true
     ? 'MARKET OPEN'
     : telemetry?.marketClock?.isOpen === false ? 'MARKET CLOSED' : 'MARKET UNKNOWN'
@@ -351,7 +379,7 @@ export function CommandView() {
         <dl className="view-status">
           <div>
             <dt>CONNECTION</dt>
-            <dd className={statusTone}>{connected ? `${telemetry?.mode?.toUpperCase()} / ${stale ? 'STALE' : 'ONLINE'}` : 'OFFLINE'}</dd>
+            <dd className={statusTone}>{connectionLabel}</dd>
           </div>
           <div>
             <dt>LAST ALPACA READ</dt>
@@ -359,13 +387,31 @@ export function CommandView() {
           </div>
           <div>
             <dt>API</dt>
-            <dd>READ ONLY</dd>
+            <dd>M1 READ ONLY</dd>
           </div>
         </dl>
       </header>
 
-      {error && <div className="warning-line negative"><strong>RUNTIME OFFLINE</strong><span>{error} Start QORE with the local launcher to connect the dashboard.</span></div>}
-      {!error && stale && sourceAgeSeconds !== null && <div className="warning-line"><strong>STALE BROKER STATE</strong><span>The most recent Alpaca snapshot is {formatNumber(sourceAgeSeconds / 60, 1)} minutes old. Refresh before acting on it.</span></div>}
+      <section className={`command-connection ${transportConnected ? 'connected' : connectionProblem ? 'failed' : ''}`} aria-live="polite">
+        <div className="command-connection-copy">
+          <strong>{transportConnected ? 'M1 TELEMETRY CONNECTED' : 'CONNECTING TO M1'}</strong>
+          <span>{connectionProblem || connection?.detail || 'Starting the local read-only bridge.'}</span>
+        </div>
+        <div
+          className="command-connection-track"
+          role="progressbar"
+          aria-label="M1 telemetry connection"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={connectionProgress}
+        >
+          <span style={{ width: `${connectionProgress}%` }} />
+        </div>
+        <span className="command-connection-percent">{formatNumber(connectionProgress, 0)}%</span>
+      </section>
+
+      {transportConnected && error && <div className="warning-line negative"><strong>M1 TELEMETRY OFFLINE</strong><span>{error}</span></div>}
+      {!error && transportConnected && stale && sourceAgeSeconds !== null && <div className="warning-line"><strong>STALE BROKER STATE</strong><span>The most recent Alpaca snapshot is {formatNumber(sourceAgeSeconds / 60, 1)} minutes old. Refresh before acting on it.</span></div>}
       {!error && historyProvenanceWarning && <div className="warning-line"><strong>HISTORY PROVENANCE</strong><span>Portfolio history was read at {timestampLabel(historySourceGeneratedAt)}; selected account data was read at {timestampLabel(telemetry?.sourceGeneratedAt)}.</span></div>}
       <div className="warning-line subtle" role="note"><strong>ACCOUNT-LEVEL DATA</strong><span>Deposits, manual trades, or unrelated positions affect Alpaca portfolio history. Use a dedicated account for strategy-pure performance.</span></div>
 
@@ -377,7 +423,7 @@ export function CommandView() {
         data={performance}
         series={livePerformanceSeries}
         empty="NO ALPACA HISTORY · CONNECT PAPER OR LIVE, THEN REFRESH"
-        actions={<button type="button" className="text-button primary" disabled={refreshing} onClick={() => void load(true)}>{refreshing ? 'REFRESHING…' : 'REFRESH ALPACA'}</button>}
+        actions={<button type="button" className="text-button primary" disabled={refreshing || !transportConnected} onClick={() => void load(true)}>{refreshing ? 'REFRESHING…' : 'REFRESH M1'}</button>}
       />
 
       <div className="data-grid">

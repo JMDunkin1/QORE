@@ -2,6 +2,8 @@
 
 QORE's current broker adapter routes `UNG`, `VOO`, and `QQQM` through an Alpaca **Trading API** account. It deliberately refuses `NG`, `MNG`, and `QG` futures. Use a dedicated Alpaca account if you want Command's portfolio history to represent QORE alone; deposits, manual trades, and unrelated positions affect the account-level curve.
 
+Order-capable broker commands are additionally restricted to Linux host `m1-server`. The main Mac may develop and backtest QORE and display sanitized M1 telemetry, but paper/live reconcile commands fail before broker access. Keep Alpaca credentials only in the M1 deployment's mode-`600` `.env.local`.
+
 Start in dry-run, then paper. Live routing is a separate reviewed decision.
 
 ## Credentials
@@ -67,7 +69,7 @@ Refresh current operational handoffs without calling the broker reconciler:
 npm run trade:prepare
 ```
 
-This refreshes or verifies current weather, market references, EIA storage state, validated GFS/GEFS all-year inference, signal intent, and risk state on their configured cadences. It does **not** retrain the checked-in strategy or submit an order.
+This refreshes or verifies current weather, rolling completed-session market history, market references, EIA storage state, promotion-eligible checked-in strategy status, validated GFS/GEFS all-year inference, signal intent, and risk state on their configured cadences. It does **not** retrain the checked-in strategy or submit an order. Paper/live inference is bound to the SHA-256 digest of the checked-in all-year `run-summary.json` and fails closed when its promotion gates do not pass or the artifact changes after inference.
 
 Then run the no-order checks and dry-run plan:
 
@@ -107,7 +109,7 @@ npm run trade:run
 
 The supervisor runs the live weather/inference handoff and then the broker reconciler. Failed upstream work stops that pass before broker work. It contains each job and its descendants in a process group, uses bounded TERM-to-KILL shutdown before releasing its single-process lock, and writes status under `.local/qore/live-trading-supervisor/`.
 
-The standalone weather/inference service is available as `npm run trade:weather`; use `npm run trade:weather:once` for a one-cycle diagnostic and `npm run trade:infer` for direct selected-contract inference.
+The standalone weather/inference service is available as `npm run trade:weather`; use `npm run trade:weather:once` for a one-cycle diagnostic and `npm run trade:infer` for direct selected-contract inference. Default inference first invokes the same collector exposed as `npm run trade:market-history`: Yahoo `NG=F`, `UNG`, `VOO`, and `QQQM` daily bars are fetched into `.local/qore/live-market-history/`, the VOO/QQQM basket is rebuilt there, and any target-date bar is excluded because it may still be in progress. The common completed VOO/QQQM dates are authoritative; both gas histories must cover the latest 42 of those sessions. A target weekday may receive a provisional row carrying the immediately preceding verified close, but any intervening weekday—including an unverified exchange holiday—fails closed. Set `QORE_LIVE_INFERENCE_SKIP_MARKET_REFRESH=1` only for a diagnostic that intentionally reuses a same-target-date local manifest; stale or mismatched local state remains invalid.
 
 ## Linux user service
 
@@ -163,6 +165,7 @@ npm run kill:clear -- --confirm=RESUME_TRADING --reason="review complete"
 QORE blocks submission when any required state is stale, missing, malformed, or unsafe, including:
 
 - validated GFS/GEFS inference is absent or not applied to the target;
+- the checked-in all-year artifact is not promotion-eligible, or its digest no longer matches the inference handoff;
 - signal intent is stale;
 - the explicit operator-state file is missing, malformed, or has the kill switch engaged;
 - the generated risk snapshot is missing, invalid, future-dated beyond tolerance, or older than the configured 15-minute default cap;
@@ -180,6 +183,7 @@ The runtime state is intentionally local:
 
 ```text
 .local/qore/live-weather/
+.local/qore/live-market-history/
 .local/qore/live-inference/all-year-target.json
 .local/qore/broker/account-snapshot.json
 .local/qore/broker/account-status.json
@@ -187,8 +191,9 @@ The runtime state is intentionally local:
 .local/qore/broker/orders.jsonl
 .local/qore/broker/risk-ledger.json
 .local/qore/live-trading-supervisor/status.json
+.local/qore/portfolio-reports/
 ```
 
-Do not commit these files. `account-status.json` contains read-only account/history telemetry, while `status.json` remains the reconcile/preflight result. Broker status never initializes or rewrites the risk ledger. The Command UI reads a sanitized loopback telemetry API; its **Refresh Alpaca** action invokes broker status only and cannot reconcile or submit orders.
+Do not commit these files. `account-status.json` contains read-only account, portfolio-history, and bounded VOO/QQQM benchmark telemetry, while `status.json` remains the reconcile/preflight result. Broker status never initializes or rewrites the risk ledger. The Command UI reads a sanitized loopback telemetry API; its **Refresh Alpaca** action invokes broker status only and cannot reconcile or submit orders. Portfolio reports use the same read-only status path and keep their artifacts and delivery receipts local.
 
 A broker-wide local lock prevents status and reconcile operations from interleaving their snapshots or order activity. QORE never reclaims an existing broker lock automatically. A signal received before any broker mutation removes an owned lock; a signal after a cancellation or submission starts deliberately preserves the lock because broker outcome may be ambiguous. An accepted cancellation also retains the lock until Alpaca proves the exact order is canceled with zero fill and the position is unchanged. In either stale-lock case, first verify and reconcile Alpaca state and confirm no broker process is running, then remove only `.local/qore/broker/operation.lock` manually. The supervisor similarly never reclaims its lock; verify no supervisor is running before manually removing a stale `.local/qore/live-trading-supervisor/supervisor.lock`.

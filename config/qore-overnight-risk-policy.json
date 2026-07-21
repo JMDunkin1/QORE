@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "contractId": "qore-overnight-risk-policy-v1",
+  "researchOnly": true,
+  "sourceTargetLedger": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+  "deployedPolicyId": "carry-100",
+  "cashPolicy": "capital removed from UNG at the adjusted close remains uninvested until the next causal target execution at the adjusted open",
+  "splitContract": {
+    "trainStartDate": "2021-01-01",
+    "trainEndDate": "2023-12-31",
+    "validationStartDate": "2024-01-01",
+    "validationEndDate": "2024-12-31",
+    "holdoutStartDate": "2025-01-01"
+  },
+  "candidateGrid": {
+    "fixedCashRetentionPct": [75, 50, 25, 0],
+    "directionalFlattening": ["long", "short"],
+    "weekendCashFlattening": true,
+    "laggedMeanAbsoluteGapLookbackSessions": [10, 15, 20, 30, 40, 60],
+    "laggedMeanAbsoluteGapThresholdPct": [2, 2.25, 2.5, 2.75, 3, 3.25, 3.5]
+  },
+  "selection": {
+    "scenarioId": "baseline",
+    "selectionUsedHoldout": false,
+    "eligibility": {
+      "requiresPositiveSelectionScore": true,
+      "minimumTrainCagrRetentionVsCarry": 0.9,
+      "minimumValidationCagrRetentionVsCarry": 0.9
+    },
+    "score": {
+      "id": "train-validation-balanced-risk-return-v1",
+      "description": "Average the train and validation improvements versus carry in Sharpe and Calmar; apply a small turnover penalty. Holdout is excluded.",
+      "trainSharpeImprovementWeight": 1,
+      "validationSharpeImprovementWeight": 1,
+      "trainCalmarImprovementWeight": 1,
+      "validationCalmarImprovementWeight": 1,
+      "incrementalAnnualizedTurnoverPenalty": 0.0025
+    },
+    "tieBreakers": [
+      "higher-selection-score",
+      "higher-validation-sharpe",
+      "higher-train-sharpe",
+      "lower-incremental-turnover",
+      "lexicographic-policy-id"
+    ]
+  },
+  "holdoutReporting": {
+    "reportingOnly": true,
+    "minimumSharpeVsCarryRatio": 1,
+    "maximumDrawdownNoWorseThanCarry": true,
+    "minimumCagrVsCarryRatio": 0.95
+  }
+}

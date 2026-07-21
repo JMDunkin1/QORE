@@ -4,7 +4,9 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { loadLocalEnv } from './local-env.mjs'
+import { assertEiaStorageReleaseCalendarCoverage } from './lib/eia-release-time.mjs'
 import { enrichForecastRows, inferAllYearTarget, numberFrom, round, selectedContracts } from './lib/qore-live-all-year-inference.mjs'
+import { assertPromotionEligibleStrategyArtifact } from './lib/qore-live-strategy-artifact.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
@@ -12,6 +14,15 @@ const dataRoot = path.join(repoDir, 'data', 'qore')
 const stateDir = path.resolve(process.env.QORE_LIVE_INFERENCE_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-inference'))
 const forecastRoot = path.join(stateDir, 'noaa-calendar')
 const outputPath = path.resolve(process.env.QORE_LIVE_INFERENCE_FILE ?? path.join(stateDir, 'all-year-target.json'))
+const marketHistoryStateDir = path.resolve(
+  process.env.QORE_LIVE_MARKET_HISTORY_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-market-history'),
+)
+const configuredGasMarketPath = process.env.QORE_LIVE_INFERENCE_GAS_MARKET_FILE
+  ? path.resolve(process.env.QORE_LIVE_INFERENCE_GAS_MARKET_FILE)
+  : null
+const configuredIndexMarketPath = process.env.QORE_LIVE_INFERENCE_INDEX_MARKET_FILE
+  ? path.resolve(process.env.QORE_LIVE_INFERENCE_INDEX_MARKET_FILE)
+  : null
 const storageFilePath = path.resolve(
   process.env.QORE_LIVE_INFERENCE_STORAGE_FILE ?? path.join(dataRoot, 'fundamentals', 'eia', 'working-gas-storage-lower48-weekly.csv'),
 )
@@ -21,6 +32,8 @@ const eiaSnapshotPath = process.env.QORE_LIVE_INFERENCE_EIA_SNAPSHOT_FILE
 const today = process.env.QORE_LIVE_INFERENCE_DATE ?? new Date().toISOString().slice(0, 10)
 const lookbackDays = Math.max(10, Number(process.env.QORE_LIVE_INFERENCE_LOOKBACK_DAYS ?? 16))
 const fetchTimeoutMs = Number(process.env.QORE_LIVE_INFERENCE_FETCH_TIMEOUT_MS ?? 45_000)
+const minimumMarketSessions = 42
+const maxMarketAgeDays = Number(process.env.QORE_LIVE_INFERENCE_MAX_MARKET_AGE_DAYS ?? 4)
 const month = Number(today.slice(5, 7))
 const summer = (month >= 5 && month <= 9) || [5, 6, 7, 8, 9].includes(Number(addDays(today, 7).slice(5, 7)))
 const requiredSources = summer ? selectedContracts.summer.sourceIds : selectedContracts.winterFollow.liveSourceIds
@@ -28,6 +41,15 @@ const collectedSources = summer ? requiredSources : selectedContracts.winterFoll
 const requiredLeads = summer ? [7] : [1, 2, 3, 7, 8, 9, 10]
 
 function addDays(date, count) { return new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10) }
+function truthy(value) { return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').toLowerCase()) }
+function interveningWeekdays(startDate, endDate) {
+  const dates = []
+  for (let date = addDays(startDate, 1); date < endDate; date = addDays(date, 1)) {
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay()
+    if (weekday > 0 && weekday < 6) dates.push(date)
+  }
+  return dates
+}
 function parseCsvLine(line) {
   const values = []; let value = ''; let quoted = false
   for (let index = 0; index < line.length; index += 1) {
@@ -128,13 +150,88 @@ async function loadForecastRows() {
 }
 async function marketDays() {
   const fileName = summer ? 'NG-F-qore-market.csv' : 'UNG-qore-market.csv'
-  const gasRows = await readCsv(path.join(dataRoot, 'market', 'yahoo', fileName))
-  const indexRows = await readCsv(path.join(dataRoot, 'market', 'yahoo', 'US-INDEX-BASKET-qore-market.csv'))
+  const gasFilePath = configuredGasMarketPath ?? path.join(marketHistoryStateDir, fileName)
+  const indexFilePath = configuredIndexMarketPath ?? path.join(marketHistoryStateDir, 'US-INDEX-BASKET-qore-market.csv')
+  let marketHistoryManifest = null
+  if (!configuredGasMarketPath) {
+    const manifestPath = path.join(marketHistoryStateDir, 'manifest.json')
+    if (!existsSync(manifestPath)) throw new Error(`Live market-history manifest is unavailable: ${manifestPath}. Run npm run trade:market-history.`)
+    marketHistoryManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    if (marketHistoryManifest.serviceId !== 'qore-live-market-history' || marketHistoryManifest.targetDate !== today
+      || marketHistoryManifest.completedSessionCutoffExclusive !== today) {
+      throw new Error(`Live market-history manifest is not valid for target ${today}. Run npm run trade:market-history.`)
+    }
+  }
+  if (!Number.isFinite(maxMarketAgeDays) || maxMarketAgeDays < 0) {
+    throw new Error(`QORE_LIVE_INFERENCE_MAX_MARKET_AGE_DAYS must be a non-negative number; received ${process.env.QORE_LIVE_INFERENCE_MAX_MARKET_AGE_DAYS}.`)
+  }
+  const throughTarget = (sourceRows, label) => {
+    const rows = sourceRows.filter((row) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date ?? '') || !Number.isFinite(Date.parse(`${row.date}T00:00:00Z`))) {
+        throw new Error(`${label} market history contains an invalid date: ${row.date || 'missing'}.`)
+      }
+      // The target-date daily bar may still be in progress. Even after the close,
+      // the causal target is built only from sessions completed before targetDate.
+      return row.date < today
+    }).sort((left, right) => left.date.localeCompare(right.date))
+    const seen = new Set()
+    for (const row of rows) {
+      if (seen.has(row.date)) throw new Error(`${label} market history contains duplicate date ${row.date}.`)
+      seen.add(row.date)
+    }
+    return rows
+  }
+  const gasRows = throughTarget(await readCsv(gasFilePath), summer ? 'NG=F' : 'UNG')
+  const indexRows = throughTarget(await readCsv(indexFilePath), 'US-INDEX-BASKET')
+  const validGasByDate = new Map(gasRows.filter((row) => numberFrom(row.close) > 0).map((row) => [row.date, row]))
+  const recentIndexRows = indexRows.slice(-minimumMarketSessions)
+  if (recentIndexRows.length < minimumMarketSessions) {
+    throw new Error(`Market history has only ${recentIndexRows.length} index sessions through ${today}; at least ${minimumMarketSessions} are required.`)
+  }
+  const missingRecentGasDates = recentIndexRows.filter((row) => !validGasByDate.has(row.date)).map((row) => row.date)
+  if (missingRecentGasDates.length) {
+    throw new Error(`Market history is missing a valid ${summer ? 'NG=F' : 'UNG'} row for recent index session(s): ${missingRecentGasDates.join(', ')}.`)
+  }
   const indexDates = new Set(indexRows.map((row) => row.date))
-  const rows = gasRows.filter((row) => indexDates.has(row.date) && numberFrom(row.close) > 0).map((row) => ({ date: row.date, gasClose: numberFrom(row.close) }))
+  const rows = gasRows.filter((row) => indexDates.has(row.date) && numberFrom(row.close) > 0)
+    .map((row) => ({ date: row.date, gasClose: numberFrom(row.close) }))
+  if (rows.length < minimumMarketSessions) {
+    throw new Error(`Market history has only ${rows.length} common sessions through ${today}; at least ${minimumMarketSessions} are required.`)
+  }
+  const latestIndexDate = indexRows.at(-1)?.date ?? null
+  const latestCommonDate = rows.at(-1)?.date ?? null
+  if (!latestIndexDate || latestCommonDate !== latestIndexDate) {
+    throw new Error(`Market history latest common date (${latestCommonDate ?? 'none'}) does not match latest index date (${latestIndexDate ?? 'none'}).`)
+  }
+  const missingInterveningWeekdays = interveningWeekdays(latestCommonDate, today)
+  if (missingInterveningWeekdays.length) {
+    throw new Error(`Market history cannot verify intervening weekday session(s) after latest shared close ${latestCommonDate} and before target ${today}: ${missingInterveningWeekdays.join(', ')}.`)
+  }
+  const marketAgeDays = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${latestCommonDate}T00:00:00Z`)) / 86400000
+  // Calendar age remains a second cap. Weekdays are conservatively assumed to be
+  // sessions, so an exchange holiday blocks until the rolling history verifies a
+  // later completed close instead of being silently bridged.
+  if (!Number.isFinite(marketAgeDays) || marketAgeDays < 0 || marketAgeDays > maxMarketAgeDays) {
+    throw new Error(`Market history is stale: latest shared close ${latestCommonDate} is ${round(marketAgeDays, 2)} calendar days before ${today} (maximum ${maxMarketAgeDays}).`)
+  }
   const weekday = new Date(`${today}T12:00:00Z`).getUTCDay()
-  if (weekday > 0 && weekday < 6 && rows.at(-1)?.date < today) rows.push({ date: today, gasClose: rows.at(-1).gasClose, provisional: true })
-  return rows
+  const provisionalTargetDate = weekday > 0 && weekday < 6 && latestCommonDate < today ? today : null
+  if (provisionalTargetDate) rows.push({ date: today, gasClose: rows.at(-1).gasClose, provisional: true })
+  return {
+    rows,
+    validation: {
+      gasSymbol: summer ? 'NG=F' : 'UNG', indexSymbol: 'US-INDEX-BASKET', targetDate: today,
+      minimumCommonSessions: minimumMarketSessions, commonSessionCount: rows.length - (provisionalTargetDate ? 1 : 0),
+      latestGasDate: gasRows.filter((row) => numberFrom(row.close) > 0).at(-1)?.date ?? null,
+      latestIndexDate, latestCommonDate, marketAgeDays: round(marketAgeDays, 2), maxMarketAgeDays,
+      recentIndexSessionsValidated: recentIndexRows.length, provisionalTargetDate,
+      completedSessionCutoffExclusive: today,
+      unverifiedInterveningWeekdays: missingInterveningWeekdays,
+      calendarPolicy: 'Every intervening weekday is conservatively treated as an expected exchange session; holidays fail closed until a later completed close is verified.',
+      historySource: configuredGasMarketPath ? 'configured-files' : marketHistoryManifest?.source ?? 'qore-live-market-history',
+      historyGeneratedAt: marketHistoryManifest?.generatedAt ?? null,
+    },
+  }
 }
 function completeIssueDates(rows) {
   const byIssue = new Map()
@@ -144,7 +241,7 @@ function completeIssueDates(rows) {
     const entry = byIssue.get(key) ?? new Map()
     entry.set(`${row.sourceId}|${row.leadDays}`, true); byIssue.set(key, entry)
   }
-  return [...byIssue.entries()].filter(([, keys]) => requiredSources.every((source) => requiredLeads.every((lead) => keys.has(`${source}|${lead}`))))
+  return [...byIssue.entries()].filter(([, keys]) => collectedSources.every((source) => requiredLeads.every((lead) => keys.has(`${source}|${lead}`))))
     .map(([date]) => date).sort()
 }
 
@@ -202,6 +299,11 @@ async function loadStorageRows() {
 }
 
 async function main() {
+  const strategyArtifact = assertPromotionEligibleStrategyArtifact(repoDir)
+  assertEiaStorageReleaseCalendarCoverage(today)
+  if (Boolean(configuredGasMarketPath) !== Boolean(configuredIndexMarketPath)) {
+    throw new Error('QORE_LIVE_INFERENCE_GAS_MARKET_FILE and QORE_LIVE_INFERENCE_INDEX_MARKET_FILE must be configured together.')
+  }
   await mkdir(forecastRoot, { recursive: true })
   const collections = []
   if (!['1', 'true', 'yes'].includes(String(process.env.QORE_LIVE_INFERENCE_SKIP_FETCH ?? '').toLowerCase())) {
@@ -214,23 +316,36 @@ async function main() {
   const inferenceRows = rows.filter((row) => validIssueDateSet.has(row.issueDate) && row.demandInputsComplete)
   const latestIssueDate = validIssueDates.at(-1) ?? null
   const issueAgeDays = latestIssueDate ? (Date.parse(today) - Date.parse(latestIssueDate)) / 86400000 : null
-  if (!latestIssueDate || issueAgeDays > 2) throw new Error(`Validated ${requiredSources.join('/')} 00z set is stale or incomplete (latest common issue: ${latestIssueDate ?? 'none'}).`)
-  const days = await marketDays()
+  if (!latestIssueDate || issueAgeDays > 2) throw new Error(`Validated ${collectedSources.join('/')} 00z demand-input set is stale or incomplete (latest common issue: ${latestIssueDate ?? 'none'}).`)
+  if (!configuredGasMarketPath && !truthy(process.env.QORE_LIVE_INFERENCE_SKIP_MARKET_REFRESH)) {
+    await run(process.execPath, ['scripts/qore-live-market-history.mjs'], {
+      QORE_LIVE_MARKET_HISTORY_DATE: today,
+      QORE_LIVE_MARKET_HISTORY_STATE_DIR: marketHistoryStateDir,
+    })
+  }
+  const { rows: days, validation: marketValidation } = await marketDays()
   const { rows: storageRows, validation: storageValidation } = await loadStorageRows()
   const actualWeatherRows = await loadActualWeatherRows()
   const target = inferAllYearTarget({ forecastRows: inferenceRows, actualWeatherRows, marketDays: days, storageRows, targetDate: today })
   const snapshot = {
-    generatedAt: new Date().toISOString(), serviceId: 'qore-live-all-year-inference', validated: true,
+    generatedAt: new Date().toISOString(), serviceId: 'qore-live-all-year-inference',
+    validated: strategyArtifact.binding.promotionEligible,
     inferenceMode: 'selected-contract-live-source-set-00z', liveForecastAppliedToTarget: true,
     strategyId: 'ngas-all-year-beta', season: summer ? 'summer' : 'winter', target,
+    strategyArtifact: strategyArtifact.binding,
     forecastValidation: {
       latestCommonIssueDate: latestIssueDate, issueAgeDays: round(issueAgeDays, 2), runHourUtc: '00',
       requiredSources, collectedSources, requiredLeads,
       scoreRowCount: inferenceRows.filter((row) => requiredLeads.includes(row.leadDays)).length,
     },
+    marketValidation,
     storageValidation,
     selectedContracts: summer ? { summer: selectedContracts.summer } : { winterFollow: selectedContracts.winterFollow, winterFade: selectedContracts.winterFade },
-    files: { snapshot: path.relative(repoDir, outputPath), forecastState: path.relative(repoDir, forecastRoot) },
+    files: {
+      snapshot: path.relative(repoDir, outputPath),
+      forecastState: path.relative(repoDir, forecastRoot),
+      marketHistory: configuredGasMarketPath ? null : path.relative(repoDir, marketHistoryStateDir),
+    },
     collection: { attempted: collections.length > 0, manifests: manifests.map((manifest) => ({ source: manifest.forecastSource, generatedAt: manifest.generatedAt, failures: manifest.failures?.length ?? 0 })) },
   }
   await writeJsonAtomic(outputPath, snapshot)

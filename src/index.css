@@ -210,6 +210,70 @@ a {
   white-space: nowrap;
 }
 
+.command-connection {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(180px, 1fr) 38px;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--amber);
+  background: rgba(5, 8, 6, 0.96);
+}
+
+.command-connection.connected {
+  border-left-color: var(--green);
+}
+
+.command-connection.failed {
+  border-left-color: var(--red);
+}
+
+.command-connection-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.command-connection-copy strong,
+.command-connection-percent {
+  color: var(--ink);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.command-connection-copy span {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.command-connection-track {
+  height: 5px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.command-connection-track span {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+  transition: width 220ms ease;
+}
+
+.command-connection.connected .command-connection-track span {
+  background: var(--green);
+}
+
+.command-connection.failed .command-connection-track span {
+  background: var(--red);
+}
+
+.command-connection-percent {
+  text-align: right;
+}
+
 .positive {
   color: var(--green) !important;
 }
@@ -863,6 +927,15 @@ tbody tr:hover {
 
   .view {
     padding: 30px 14px 58px;
+  }
+
+  .command-connection {
+    grid-template-columns: 1fr 38px;
+  }
+
+  .command-connection-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .view-header h1 {

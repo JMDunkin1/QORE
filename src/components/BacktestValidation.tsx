@@ -9,6 +9,21 @@ type SimulatedPath = {
   selected: boolean
 }
 
+type PromotionGateKey = keyof typeof allYearBacktest.validation.promotionGates
+
+const promotionGateLabels = {
+  positiveTrainEdge: 'POSITIVE TRAIN EDGE',
+  positiveValidationEdge: 'POSITIVE VALIDATION EDGE',
+  preHoldoutBootstrapSignificance: 'SELECTION BOOTSTRAP P < 0.05',
+  trainMaxDrawdown: 'TRAIN MAX DRAWDOWN',
+  validationMaxDrawdown: 'VALIDATION MAX DRAWDOWN',
+  summerComponent: 'SUMMER COMPONENT',
+  winterComponent: 'WINTER COMPONENT',
+  liveContract: 'LIVE CONTRACT',
+} as const satisfies Record<PromotionGateKey, string>
+
+const promotionGateEntries = Object.entries(promotionGateLabels) as Array<[PromotionGateKey, string]>
+
 function seededRandom(seed = 8_419) {
   let state = seed >>> 0
   return () => {
@@ -70,19 +85,21 @@ function signedPercent(value: number, digits = 3) {
 }
 
 function RealityCheckPanel() {
-  const check = allYearBacktest.validation.realityCheck
+  const check = allYearBacktest.validation.selectionRealityCheck
+  const gates = allYearBacktest.validation.promotionGates
+  const passedGateCount = promotionGateEntries.filter(([key]) => gates[key]).length
   return (
     <section className="validation-panel" aria-labelledby="all-year-bootstrap-title">
       <header className="validation-heading">
-        <h3 id="all-year-bootstrap-title">All-year active-edge bootstrap</h3>
+        <h3 id="all-year-bootstrap-title">Selection-safe active-edge bootstrap</h3>
         <dl>
           <div>
             <dt>P-VALUE</dt>
             <dd className={check.pValue < 0.05 ? 'positive' : 'warning'}>{formatNumber(check.pValue, 5)}</dd>
           </div>
           <div>
-            <dt>ITERATIONS</dt>
-            <dd>{formatNumber(check.iterations, 0)}</dd>
+            <dt>THROUGH</dt>
+            <dd>{check.sampleEndDate}</dd>
           </div>
         </dl>
       </header>
@@ -94,13 +111,38 @@ function RealityCheckPanel() {
         <div><dt>ACTIVE / ROWS</dt><dd>{formatNumber(check.activeOverlayDays, 0)} / {formatNumber(check.sampleCount, 0)}</dd></div>
         <div><dt>BLOCK</dt><dd>{formatNumber(check.blockLength, 0)} SESSIONS</dd></div>
       </dl>
-      <p className="section-note">{check.method}. The holdout remains report-only.</p>
+      <p className="section-note">
+        {check.method}. Only rows from {check.sampleStartDate} through {check.sampleEndDate} enter the all-year return gates.
+      </p>
+      <header className="validation-heading">
+        <h3>Selection-safe promotion gates</h3>
+        <dl>
+          <div>
+            <dt>PASSED</dt>
+            <dd className={passedGateCount === promotionGateEntries.length ? 'positive' : 'warning'}>
+              {passedGateCount} / {promotionGateEntries.length}
+            </dd>
+          </div>
+        </dl>
+      </header>
+      <dl className="gate-list" aria-label="All-year promotion gates">
+        {promotionGateEntries.map(([key, label]) => (
+          <div key={key}>
+            <dt>{label}</dt>
+            <dd className={gates[key] ? 'positive' : 'warning'}>{gates[key] ? 'PASS' : 'FAIL'}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="section-note">
+        Return gates use the selection prefix only. Component gates retain each component&apos;s separately sealed pre-holdout result.
+      </p>
     </section>
   )
 }
 
 function MonteCarloChart() {
   const plot = useMemo(() => buildMonteCarlo(allYearTrades.map((trade) => trade.netReturnPct)), [])
+  const reportOnlyCheck = allYearBacktest.validation.realityCheck
   const allValues = plot.paths.flatMap((path) => path.values)
   const logMin = Math.log10(Math.max(1, Math.min(...allValues)))
   const logMax = Math.log10(Math.max(...allValues))
@@ -111,11 +153,11 @@ function MonteCarloChart() {
   return (
     <section className="validation-panel" aria-labelledby="monte-carlo-title">
       <header className="validation-heading">
-        <h3 id="monte-carlo-title">Monte Carlo · 10-day blocks · log scale</h3>
+        <h3 id="monte-carlo-title">Full-calendar Monte Carlo · report-only</h3>
         <dl>
           <div>
-            <dt>POSITIVE FINAL</dt>
-            <dd>{formatNumber(plot.positiveFinalPct, 0)}%</dd>
+            <dt>REPORT-ONLY P</dt>
+            <dd className="warning">{formatNumber(reportOnlyCheck.pValue, 5)}</dd>
           </div>
           <div>
             <dt>PATHS</dt>
@@ -124,7 +166,7 @@ function MonteCarloChart() {
         </dl>
       </header>
       <div className="monte-carlo-chart">
-        <svg viewBox="0 0 1000 320" preserveAspectRatio="none" role="img" aria-label="Simulated all-year portfolio equity paths on a logarithmic scale">
+        <svg viewBox="0 0 1000 320" preserveAspectRatio="none" role="img" aria-label="Report-only simulated full-calendar portfolio equity paths on a logarithmic scale">
           <line x1="0" x2="1000" y1={y(100_000)} y2={y(100_000)} className="mc-baseline" />
           {plot.paths.map((path) => (
             <polyline
@@ -139,15 +181,20 @@ function MonteCarloChart() {
         <div><dt>P05 FINAL</dt><dd>{formatCurrency(plot.finalP05)}</dd></div>
         <div><dt>P50 FINAL</dt><dd>{formatCurrency(plot.finalP50)}</dd></div>
         <div><dt>P95 FINAL</dt><dd>{formatCurrency(plot.finalP95)}</dd></div>
+        <div><dt>POSITIVE FINAL</dt><dd>{formatNumber(plot.positiveFinalPct, 0)}%</dd></div>
         <div><dt>SIM / ROWS</dt><dd>{plot.simulationCount} / {plot.sampleCount}</dd></div>
+        <div><dt>REPORT THROUGH</dt><dd>{reportOnlyCheck.sampleEndDate}</dd></div>
       </dl>
+      <p className="section-note">
+        Uses the full calendar, including rows after the {allYearBacktest.validation.selectionMetrics.throughDate} selection cutoff. It is descriptive only, not promotion evidence or a live-wealth forecast.
+      </p>
     </section>
   )
 }
 
 export function BacktestValidation() {
   return (
-    <section className="validation-band" aria-label="Backtest validation">
+    <section className="validation-band" aria-label="Selection-safe validation and report-only diagnostics">
       <div className="validation-grid">
         <RealityCheckPanel />
         <MonteCarloChart />

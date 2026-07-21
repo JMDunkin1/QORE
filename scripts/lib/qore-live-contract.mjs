@@ -1,0 +1,336 @@
+import crypto from 'node:crypto'
+
+export const LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION = 1
+
+const SUMMER = {
+  candidateId: 'summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed',
+  architectureId: 'summer-weather-follow-and-fade',
+  useFollowLeg: true,
+  useReversionLeg: true,
+  sourceSetId: 'gfs-gefs-core',
+  sourceIds: ['gfs', 'gefs-mean'],
+  minGroups: 1,
+  minFamilies: 2,
+  sourceWeightMode: 'equal',
+  sizingMode: 'fixed',
+  anomalyThreshold: 5,
+  coverageThreshold: 0.25,
+  minConfidence: 0.5,
+  weatherFraction: 0.35,
+  reversionFraction: 0.35,
+  reversionDemandMode: 'cooling-demand-tiered',
+  followHoldDays: 3,
+  reversionHoldDays: 1,
+  minRealizedMovePct: 2,
+  freshHeatLookbackDays: 3,
+  volTargetPct: 0,
+  weatherResolutionMode: 'none',
+}
+
+const WINTER_FOLLOW = {
+  candidateId: 'dual-ncep-complex-bg-shrink-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-vol0-fixed',
+  sourceSetId: 'ncep-complex',
+  sourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'aigfs'],
+  sourceWeightMode: 'bg-shrink',
+  heatingDemandSourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs', 'gem-global'],
+  liveSourceIds: ['gfs', 'gefs-mean', 'aigfs'],
+  liveHeatingDemandSourceIds: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
+  anomalyThreshold: 5,
+  coverageThreshold: 0.5,
+  minConfidence: 0.5,
+  minGroups: 1,
+  minFamilies: 2,
+  weatherFraction: 0.25,
+  reversionFraction: 0.2,
+  followHoldDays: 3,
+  reversionHoldDays: 2,
+  minRealizedMovePct: 2,
+}
+
+const WINTER_FADE = {
+  ...WINTER_FOLLOW,
+  candidateId: 'fade-only-gfs-gefs-core-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-fixed',
+  sourceSetId: 'gfs-gefs-core',
+  sourceIds: ['gfs', 'gefs-mean'],
+  sourceWeightMode: 'equal',
+  useFollowLeg: false,
+  signalAlgorithm: 'weather-hybrid',
+}
+
+const SUMMER_IMPLEMENTATION = {
+  storageDeficitHeatMultiplier: 1.25,
+  storageDeficitHeatMaxFraction: 0.4375,
+  storageSeasonalLookbackYears: 5,
+  storageAvailabilityContract: 'versioned-release-calendar-before-session-open',
+  coolingDemand: {
+    baseF: 65,
+    solidAnomalyF: 5,
+    extremeAnomalyF: 8,
+    lowReversionSubtract: 0.15,
+    solidReversionAdd: 0.05,
+    extremeReversionAdd: 0.15,
+    minimumReversionFraction: 0.2,
+    solidMaximumReversionFraction: 0.45,
+    extremeMaximumReversionFraction: 0.5,
+  },
+}
+
+const WINTER_SELECTED = {
+  candidateId: 'ngas-alpha-short-fade-plus-cold-follow-vol-long-graded-shift-sizing-storage-drawdown-400bcf-hdd-follow-tiered-risk-125',
+  architectureId: 'frozen-input-blend',
+  useFollowLeg: true,
+  useReversionLeg: true,
+  sourceSetId: 'frozen-input-weather-experts',
+  sourceIds: [
+    'winter-alpha-weather-follow',
+    'winter-alpha-weather-reversion',
+    'winter-alpha-volatility-confirmation',
+  ],
+  sourceWeightMode: 'frozen-input-selected',
+  sizingMode: 'short-fade-plus-cold-follow-vol-long-graded-shift-sizing-storage-drawdown-400bcf-hdd-follow-tiered-risk-125',
+  holdPeriodPolicy: {
+    id: 'parent-selected',
+    kind: 'parent-selected',
+    followHoldDays: null,
+    reversionHoldDays: null,
+  },
+  weatherResolutionPolicy: { id: 'graded-shift-sizing', kind: 'graded-shift' },
+  coldFollowStoragePolicy: { id: 'storage-drawdown-400bcf', kind: 'season-drawdown', minSeasonDrawdownBcf: 400 },
+  followFreshnessPolicy: { id: 'none', kind: 'none', lookbackDays: null },
+  heatingDemandPolicy: { id: 'hdd-follow-tiered', kind: 'follow-tiered', minDemandAnomalyF: 4 },
+  indexRiskMode: 'full-index-fallback',
+  anomalyThreshold: null,
+  coverageThreshold: null,
+  minConfidence: null,
+  weatherFraction: 0.25,
+  reversionFraction: 0.2,
+  reversionLongScale: 1,
+  standaloneReversionScale: 1,
+  overlayRiskMultiplier: 1.25,
+  effectiveOverlayCap: 0.5625,
+  overlayCap: 0.45,
+  followHoldDays: 3,
+  reversionHoldDays: 2,
+  minRealizedMovePct: 2,
+  conflictPolicy: 'short-fade-plus-cold-follow-vol-long',
+}
+
+const WINTER_IMPLEMENTATION = {
+  weatherFollow: WINTER_FOLLOW,
+  weatherReversion: WINTER_FADE,
+  sourceReliability: { gfs: 0.6092, 'gefs-mean': 1.167 },
+  volatilityConfirmation: {
+    candidateId: 'lb40-z0.8-vol2.5-6',
+    lookbackSessions: 40,
+    minimumReversalZ: 0.8,
+    minimumVolatilityPct: 2.5,
+    maximumVolatilityPct: 6,
+  },
+  weatherResolution: {
+    sourceIds: ['gfs', 'gefs-mean'],
+    minimumLeadDays: 1,
+    maximumLeadDays: 3,
+    sameDirectionBaseScale: 0.75,
+    sameDirectionShiftDivisor: 8,
+    sameDirectionMinimumScale: 0.75,
+    sameDirectionMaximumScale: 1.25,
+    adverseBaseScale: 0.9,
+    adverseShiftDivisor: 10,
+    adverseMinimumScale: 0.45,
+    adverseMaximumScale: 0.9,
+    neutralScale: 0.85,
+    dropAdverseStandalone: true,
+  },
+  heatingDemand: {
+    baseF: 65,
+    minimumAnomalyF: 4,
+    moderateAnomalyF: 8,
+    strongAnomalyF: 12,
+    subMinimumScale: 0.65,
+    minimumScale: 1,
+    moderateScale: 1.1,
+    strongScale: 1.25,
+  },
+}
+
+export const selectedContracts = {
+  summer: SUMMER,
+  winterFollow: WINTER_FOLLOW,
+  winterFade: WINTER_FADE,
+}
+
+export const liveAllYearImplementation = {
+  summer: SUMMER_IMPLEMENTATION,
+  winter: WINTER_IMPLEMENTATION,
+}
+
+function projectPolicy(policy, fields) {
+  return Object.fromEntries(fields.map((field) => [field, policy?.[field] ?? null]))
+}
+
+function projectSelected(selected, fields) {
+  return Object.fromEntries(fields.map((field) => [field, selected?.[field] ?? null]))
+}
+
+const SUMMER_SELECTED_FIELDS = [
+  'candidateId',
+  'architectureId',
+  'useFollowLeg',
+  'useReversionLeg',
+  'sourceSetId',
+  'sourceIds',
+  'minGroups',
+  'minFamilies',
+  'sourceWeightMode',
+  'sizingMode',
+  'anomalyThreshold',
+  'coverageThreshold',
+  'minConfidence',
+  'weatherFraction',
+  'reversionFraction',
+  'reversionDemandMode',
+  'followHoldDays',
+  'reversionHoldDays',
+  'minRealizedMovePct',
+  'freshHeatLookbackDays',
+  'volTargetPct',
+  'weatherResolutionMode',
+]
+
+const WINTER_SELECTED_FIELDS = [
+  'candidateId',
+  'architectureId',
+  'useFollowLeg',
+  'useReversionLeg',
+  'sourceSetId',
+  'sourceIds',
+  'sourceWeightMode',
+  'sizingMode',
+  'indexRiskMode',
+  'anomalyThreshold',
+  'coverageThreshold',
+  'minConfidence',
+  'weatherFraction',
+  'reversionFraction',
+  'reversionLongScale',
+  'standaloneReversionScale',
+  'overlayRiskMultiplier',
+  'effectiveOverlayCap',
+  'overlayCap',
+  'followHoldDays',
+  'reversionHoldDays',
+  'minRealizedMovePct',
+  'conflictPolicy',
+]
+
+function canonicalSummerFromSummary(summary) {
+  const selected = projectSelected(summary?.selected, SUMMER_SELECTED_FIELDS)
+  const candidate = summary?.candidates?.find((row) => row?.candidateId === selected.candidateId)
+  return {
+    strategyId: summary?.strategyId ?? null,
+    selected,
+    implementation: {
+      ...SUMMER_IMPLEMENTATION,
+      storageDeficitHeatMultiplier: candidate?.storageDeficitHeatMultiplier ?? null,
+      storageDeficitHeatMaxFraction: candidate?.storageDeficitHeatMaxFraction ?? null,
+      storageSeasonalLookbackYears: candidate?.storageSeasonalLookbackYears ?? null,
+      storageAvailabilityContract: candidate?.storageAvailabilityContract ?? null,
+    },
+  }
+}
+
+function canonicalWinterFromSummary(summary) {
+  const selected = {
+    ...projectSelected(summary?.selected, WINTER_SELECTED_FIELDS),
+    holdPeriodPolicy: projectPolicy(summary?.selected?.holdPeriodPolicy, [
+      'id',
+      'kind',
+      'followHoldDays',
+      'reversionHoldDays',
+    ]),
+    weatherResolutionPolicy: projectPolicy(summary?.selected?.weatherResolutionPolicy, ['id', 'kind']),
+    coldFollowStoragePolicy: projectPolicy(summary?.selected?.coldFollowStoragePolicy, [
+      'id',
+      'kind',
+      'minSeasonDrawdownBcf',
+    ]),
+    followFreshnessPolicy: projectPolicy(summary?.selected?.followFreshnessPolicy, ['id', 'kind', 'lookbackDays']),
+    heatingDemandPolicy: projectPolicy(summary?.selected?.heatingDemandPolicy, ['id', 'kind', 'minDemandAnomalyF']),
+  }
+  const projectInput = (input) => ({
+    strategyId: input?.strategyId ?? null,
+    candidateId: input?.candidateId ?? null,
+  })
+  return {
+    strategyId: summary?.strategyId ?? null,
+    inputs: {
+      weatherReversion: projectInput(summary?.inputs?.weatherReversion),
+      weatherFollow: projectInput(summary?.inputs?.weatherFollow),
+      volatilityConfirmation: projectInput(summary?.inputs?.volatilityConfirmation),
+    },
+    selected,
+    implementation: WINTER_IMPLEMENTATION,
+  }
+}
+
+export function canonicalComponentLiveContractFromSummaries(summerSummary, winterSummary) {
+  return {
+    schemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+    summer: canonicalSummerFromSummary(summerSummary),
+    winter: canonicalWinterFromSummary(winterSummary),
+  }
+}
+
+export const executableLiveComponentContract = {
+  schemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+  summer: {
+    strategyId: 'ngas-summer-alpha',
+    selected: projectSelected(SUMMER, SUMMER_SELECTED_FIELDS),
+    implementation: SUMMER_IMPLEMENTATION,
+  },
+  winter: {
+    strategyId: 'ngas-winter-alpha',
+    inputs: {
+      weatherReversion: {
+        strategyId: 'winter-alpha-weather-reversion',
+        candidateId: WINTER_FADE.candidateId,
+      },
+      weatherFollow: {
+        strategyId: 'winter-alpha-weather-follow',
+        candidateId: WINTER_FOLLOW.candidateId,
+      },
+      volatilityConfirmation: {
+        strategyId: 'winter-alpha-volatility-confirmation',
+        candidateId: WINTER_IMPLEMENTATION.volatilityConfirmation.candidateId,
+      },
+    },
+    selected: {
+      ...projectSelected(WINTER_SELECTED, WINTER_SELECTED_FIELDS),
+      holdPeriodPolicy: WINTER_SELECTED.holdPeriodPolicy,
+      weatherResolutionPolicy: WINTER_SELECTED.weatherResolutionPolicy,
+      coldFollowStoragePolicy: WINTER_SELECTED.coldFollowStoragePolicy,
+      followFreshnessPolicy: WINTER_SELECTED.followFreshnessPolicy,
+      heatingDemandPolicy: WINTER_SELECTED.heatingDemandPolicy,
+    },
+    implementation: WINTER_IMPLEMENTATION,
+  },
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, canonicalize(value[key])]),
+  )
+}
+
+export function liveComponentContractDigestSha256(contract) {
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalize(contract))).digest('hex')
+}
+
+export const executableLiveComponentContractDigestSha256 = liveComponentContractDigestSha256(
+  executableLiveComponentContract,
+)

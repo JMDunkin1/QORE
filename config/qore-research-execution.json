@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "contractId": "qore-causal-etf-execution-v1",
+  "selectionScenarioId": "baseline",
+  "priceConvention": "Yahoo daily split-and-distribution-adjusted open and close",
+  "signalTiming": "prior close holdings earn close-to-open returns; the current target becomes effective at the current adjusted open",
+  "initialState": "already invested in the configured VOO/QQQM fallback at the prior close",
+  "deploymentFraction": 0.98,
+  "rebalanceDeadbandPct": 0.25,
+  "indexWeights": {
+    "VOO": 0.8,
+    "QQQM": 0.2
+  },
+  "turnoverConvention": "absolute signed pre-trade weight to target weight, summed across UNG, VOO, and QQQM",
+  "benchmarkConvention": "gross 80/20 VOO/QQQM daily target-weight close-to-close return",
+  "selectionRule": "cost and execution parameters are frozen before candidate evaluation and must never be optimized for return",
+  "costCalibration": "aggregate all-in research allowances; replace only with a separately versioned calibration built from stored historical quotes and fills",
+  "scenarios": {
+    "baseline": {
+      "selectionEligible": true,
+      "oneWayBps": {
+        "UNG": 3.2,
+        "VOO": 1,
+        "QQQM": 1
+      },
+      "annualBorrowRatePct": 0,
+      "borrowBasis": "default live routing opens UNG shorts only when Alpaca reports easy-to-borrow status"
+    },
+    "elevated": {
+      "selectionEligible": false,
+      "oneWayBps": {
+        "UNG": 5,
+        "VOO": 2,
+        "QQQM": 2
+      },
+      "annualBorrowRatePct": 0
+    },
+    "stress": {
+      "selectionEligible": false,
+      "oneWayBps": {
+        "UNG": 10,
+        "VOO": 5,
+        "QQQM": 5
+      },
+      "annualBorrowRatePct": 10
+    }
+  }
+}

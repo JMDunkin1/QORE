@@ -1,8 +1,24 @@
 #!/usr/bin/env node
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import Papa from 'papaparse'
+import {
+  applyExecutionStep,
+  createExecutionState,
+  executionAuditFields,
+  loadExecutionCalendar,
+  loadResearchExecutionContract,
+  targetWeightsForAllocation,
+} from './lib/qore-research-execution.mjs'
+import { validateComponentArtifact } from './lib/qore-component-artifact.mjs'
+import {
+  LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+  canonicalComponentLiveContractFromSummaries,
+  executableLiveComponentContractDigestSha256,
+  liveComponentContractDigestSha256,
+} from './lib/qore-live-contract.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -13,6 +29,7 @@ const SUMMER_SUMMARY_FILE = path.join(SUMMER_DIR, 'run-summary.json')
 const WINTER_SUMMARY_FILE = path.join(WINTER_DIR, 'run-summary.json')
 const SUMMER_TRADES_FILE = path.join(SUMMER_DIR, 'selected-trades.csv')
 const WINTER_TRADES_FILE = path.join(WINTER_DIR, 'selected-trades.csv')
+const OVERNIGHT_POLICY_FILE = path.join(REPO_ROOT, 'config/qore-overnight-risk-policy.json')
 
 const STRATEGY_ID = 'ngas-all-year-beta'
 const STRATEGY_NAME = 'NGAS All-Year Beta'
@@ -21,7 +38,22 @@ const TRADING_DAYS = 252
 const BOOTSTRAP_ITERATIONS = 20000
 const BLOCK_LENGTH = 10
 const MAX_DRAWDOWN_PROMOTION_FLOOR_PCT = -20
-const COMPONENT_RESEARCH_INSTRUMENTS = {
+const COMPONENT_ARTIFACT_SCHEMA_VERSION = 2
+const EXECUTION_CONTRACT = loadResearchExecutionContract(REPO_ROOT)
+const OVERNIGHT_POLICY_CONTRACT = JSON.parse(fs.readFileSync(OVERNIGHT_POLICY_FILE, 'utf8'))
+if (
+  OVERNIGHT_POLICY_CONTRACT?.schemaVersion !== 1 ||
+  !OVERNIGHT_POLICY_CONTRACT.contractId ||
+  OVERNIGHT_POLICY_CONTRACT.deployedPolicyId !== 'carry-100' ||
+  OVERNIGHT_POLICY_CONTRACT.selection?.selectionUsedHoldout !== false
+) {
+  throw new Error('The all-year artifact only supports the reviewed carry-100 overnight policy.')
+}
+const OVERNIGHT_POLICY_DIGEST = crypto
+  .createHash('sha256')
+  .update(fs.readFileSync(OVERNIGHT_POLICY_FILE))
+  .digest('hex')
+const COMPONENT_SIGNAL_INSTRUMENTS = {
   'ngas-summer-alpha': 'NG=F',
   'ngas-winter-alpha': 'UNG',
 }
@@ -95,6 +127,15 @@ function unique(values) {
   return [...new Set(values)]
 }
 
+function thesisKindsFromCsv(value) {
+  const values = Array.isArray(value) ? value : String(value ?? '').split('|')
+  return values.map((item) => String(item).trim()).filter(Boolean)
+}
+
+function priorCalendarDate(isoDate) {
+  return new Date(Date.parse(`${isoDate}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
+}
+
 function tradePosition(row) {
   const position = numberFrom(row.ungPosition, Number.NaN)
   if (Number.isFinite(position)) return position
@@ -103,10 +144,12 @@ function tradePosition(row) {
 }
 
 function isMaterialStrategyRow(row) {
+  const indexFraction = numberFrom(row.indexFraction, Math.max(0, 1 - Math.abs(tradePosition(row))))
+  const investedIndexFraction = numberFrom(row.investedIndexFraction, indexFraction)
   return (
     row.thesisKind !== 'index-fallback' ||
-    Math.abs(numberFrom(row.tradingCostPct)) > 0.000001 ||
-    Math.abs(tradePosition(row)) > 0.000001
+    Math.abs(tradePosition(row)) > 0.000001 ||
+    Math.abs(investedIndexFraction - indexFraction) > 0.000001
   )
 }
 
@@ -127,14 +170,25 @@ function componentVariantFor(strategyId) {
   return ''
 }
 
-function researchInstrumentFor(row, componentStrategyId) {
+function researchInstrumentFor(row) {
   if (row.thesisKind === 'index-fallback' && Math.abs(tradePosition(row)) <= 0.000001) {
     return 'US-INDEX-BASKET'
   }
-  return COMPONENT_RESEARCH_INSTRUMENTS[componentStrategyId] ?? 'unknown'
+  return 'UNG'
 }
 
-function splitNameForTrade(row, contractsByStrategyId) {
+function signalInstrumentFor(componentStrategyId) {
+  return COMPONENT_SIGNAL_INSTRUMENTS[componentStrategyId] ?? 'unknown'
+}
+
+function investedIndexFractionFor(row) {
+  const position = tradePosition(row)
+  const maximumIndexFraction = Math.max(0, 1 - Math.abs(position))
+  const indexFraction = numberFrom(row.indexFraction, maximumIndexFraction)
+  return Math.min(numberFrom(row.investedIndexFraction, indexFraction), maximumIndexFraction)
+}
+
+function componentSplitNameForTrade(row, contractsByStrategyId) {
   const contract = contractsByStrategyId.get(row.componentStrategyId)
   if (!contract) return 'all'
   if (row.entryTradeDate >= contract.holdoutStart) return 'holdout'
@@ -142,7 +196,30 @@ function splitNameForTrade(row, contractsByStrategyId) {
   return 'train'
 }
 
-function createCompositeRows(summerRows, winterRows, contractsByStrategyId) {
+function allYearSplitContract(componentSummaries) {
+  const trainEnd = componentSummaries.map((summary) => summary.contract.trainEnd).sort()[0]
+  const componentHoldoutStarts = componentSummaries.map((summary) => summary.contract.holdoutStart).sort()
+  const selectionEnd = priorCalendarDate(componentHoldoutStarts[0])
+  const holdoutStart = componentHoldoutStarts.at(-1)
+  const validationEnd = priorCalendarDate(holdoutStart)
+  if (
+    !trainEnd ||
+    !selectionEnd ||
+    !holdoutStart ||
+    !(trainEnd < selectionEnd && selectionEnd <= validationEnd && validationEnd < holdoutStart)
+  ) {
+    throw new Error('Component split dates do not define a valid conservative all-year calendar split.')
+  }
+  return { trainEnd, selectionEnd, validationEnd, holdoutStart }
+}
+
+function calendarSplitNameForDate(entryTradeDate, splitContract) {
+  if (entryTradeDate >= splitContract.holdoutStart) return 'holdout'
+  if (entryTradeDate > splitContract.trainEnd) return 'validation'
+  return 'train'
+}
+
+function createCompositeRows(summerRows, winterRows, contractsByStrategyId, splitContract, executionByDate, scenarioId = EXECUTION_CONTRACT.selectionScenarioId) {
   const summerByDate = byEntryDate(summerRows, 'NGAS Summer Alpha')
   const winterByDate = byEntryDate(winterRows, 'NGAS Winter Alpha')
   const entryDates = unique([...summerByDate.keys(), ...winterByDate.keys()]).sort()
@@ -162,9 +239,12 @@ function createCompositeRows(summerRows, winterRows, contractsByStrategyId) {
       winterRow &&
       !summerIsMaterial &&
       !winterIsMaterial &&
-      Math.abs(numberFrom(summerRow.netReturnPct) - numberFrom(winterRow.netReturnPct)) > 0.0001
+      (
+        Math.abs(tradePosition(summerRow) - tradePosition(winterRow)) > 0.000001 ||
+        Math.abs(investedIndexFractionFor(summerRow) - investedIndexFractionFor(winterRow)) > 0.000001
+      )
     ) {
-      throw new Error(`${STRATEGY_NAME} fallback mismatch on ${entryDate}; refusing to pick between different idle rows.`)
+      throw new Error(`${STRATEGY_NAME} fallback target mismatch on ${entryDate}; refusing to pick between different idle allocations.`)
     }
 
     const sourceRow = summerIsMaterial ? summerRow : winterIsMaterial ? winterRow : summerRow ?? winterRow
@@ -178,22 +258,54 @@ function createCompositeRows(summerRows, winterRows, contractsByStrategyId) {
       variant: 'all-year-beta',
       componentStrategyId,
       componentVariant: componentVariantFor(componentStrategyId),
-      researchInstrument: researchInstrumentFor(sourceRow, componentStrategyId),
+      researchInstrument: researchInstrumentFor(sourceRow),
+      signalInstrument: signalInstrumentFor(componentStrategyId),
+      componentGrossReturnPct: numberFrom(sourceRow.grossReturnPct),
+      componentTradingCostPct: numberFrom(sourceRow.tradingCostPct),
+      componentNetReturnPct: numberFrom(sourceRow.netReturnPct),
       materialRow,
-      activeReturnPct: round(numberFrom(sourceRow.netReturnPct) - numberFrom(sourceRow.indexReturnPct), 4),
     }
-    row.split = splitNameForTrade(row, contractsByStrategyId)
+    row.componentSplit = componentSplitNameForTrade(row, contractsByStrategyId)
+    row.split = calendarSplitNameForDate(row.entryTradeDate, splitContract)
     rows.push(row)
   }
 
   let equity = INITIAL_CAPITAL
   let peak = INITIAL_CAPITAL
+  let executionState = createExecutionState(EXECUTION_CONTRACT)
+  let priorCloseThesisKind = 'index-fallback'
+  let priorCloseComponentThesisKinds = []
   for (const row of rows) {
+    const executionDay = executionByDate.get(row.entryTradeDate)
+    if (!executionDay) throw new Error(`${STRATEGY_NAME} is missing UNG/VOO/QQQM execution data for ${row.entryTradeDate}.`)
+    const gasPosition = tradePosition(row)
+    const investedIndexFraction = investedIndexFractionFor(row)
+    row.investedIndexFraction = round(investedIndexFraction, 4)
+    const targetWeights = targetWeightsForAllocation(EXECUTION_CONTRACT, { gasPosition, investedIndexFraction })
+    const execution = applyExecutionStep({
+      state: executionState,
+      day: executionDay,
+      targetWeights,
+      contract: EXECUTION_CONTRACT,
+      scenarioId,
+    })
+    executionState = execution.state
+    row.ungReturnPct = round(executionDay.symbols.UNG.closeToCloseReturnPct, 4)
+    row.indexReturnPct = round(executionDay.indexReturnPct, 4)
+    row.grossReturnPct = round(execution.grossReturnPct, 4)
+    row.tradingCostPct = round(execution.tradingCostPct + execution.borrowCostPct, 4)
+    row.netReturnPct = round(execution.netReturnPct, 4)
+    row.activeReturnPct = round(execution.netReturnPct - executionDay.indexReturnPct, 4)
+    row.priorCloseThesisKind = priorCloseThesisKind
+    row.priorCloseComponentThesisKinds = priorCloseComponentThesisKinds
+    Object.assign(row, executionAuditFields(execution, executionDay, EXECUTION_CONTRACT))
     equity = Math.max(1, equity * (1 + numberFrom(row.netReturnPct) / 100))
     peak = Math.max(peak, equity)
     row.equity = round(equity, 2)
     row.equityPct = round((equity / INITIAL_CAPITAL - 1) * 100, 4)
     row.drawdownPct = round(((equity - peak) / peak) * 100, 4)
+    priorCloseThesisKind = row.thesisKind
+    priorCloseComponentThesisKinds = thesisKindsFromCsv(row.componentThesisKinds)
   }
 
   return rows
@@ -244,13 +356,9 @@ function metricsFromReturns(rows, returnKey = 'netReturnPct') {
     profitFactor: round(profitFactor(returns), 2),
     tradeCount: activeTradeCount,
     exposurePct: returnKey === 'netReturnPct' ? round(mean(orderedRows.map((row) => Math.abs(tradePosition(row)))) * 100, 1) : 0,
-    turnover:
-      returnKey === 'netReturnPct'
-        ? round(
-            orderedRows.reduce((sum, row, index) => sum + Math.abs(tradePosition(row) - tradePosition(orderedRows[index - 1] ?? { thesisKind: 'index-fallback' })), 0),
-            2,
-          )
-        : 0,
+    turnover: returnKey === 'netReturnPct' ? round(orderedRows.reduce((sum, row) => sum + numberFrom(row.totalTurnover), 0), 2) : 0,
+    gasTurnover: returnKey === 'netReturnPct' ? round(orderedRows.reduce((sum, row) => sum + numberFrom(row.gasTurnover), 0), 2) : 0,
+    indexTurnover: returnKey === 'netReturnPct' ? round(orderedRows.reduce((sum, row) => sum + numberFrom(row.indexTurnover), 0), 2) : 0,
     var95Pct: round(var95 * 100, 2),
     cvar95Pct: round(mean(cvarSlice) * 100, 2),
     averageDailyPnlPct: round(averageDailyReturn * 100, 3),
@@ -282,6 +390,22 @@ function splitRows(rows) {
     holdout: rows.filter((row) => row.split === 'holdout'),
     all: rows,
   }
+}
+
+function chronologicalSelectionRows(rows, splitContract) {
+  const firstReportingOnlyIndex = rows.findIndex((row) => row.entryTradeDate > splitContract.selectionEnd)
+  const selectionRows = firstReportingOnlyIndex < 0 ? rows : rows.slice(0, firstReportingOnlyIndex)
+  const reportingOnlyRows = firstReportingOnlyIndex < 0 ? [] : rows.slice(firstReportingOnlyIndex)
+  if (selectionRows.some((row) => row.componentSplit === 'holdout')) {
+    throw new Error('All-year eligibility contains a component holdout row.')
+  }
+  if (
+    selectionRows.some((row) => row.entryTradeDate > splitContract.selectionEnd) ||
+    reportingOnlyRows.some((row) => row.entryTradeDate <= splitContract.selectionEnd)
+  ) {
+    throw new Error('All-year eligibility is not a chronological prefix ending at the component-safe selection boundary.')
+  }
+  return selectionRows
 }
 
 function splitEdges(splits) {
@@ -343,6 +467,10 @@ function pctSummary(values) {
 
 function blockBootstrapRealityCheck(rows, { seed = 1987 } = {}) {
   const activeReturns = rows.map((row) => (numberFrom(row.netReturnPct) - numberFrom(row.indexReturnPct)) / 100)
+  const inputDateDigest = crypto
+    .createHash('sha256')
+    .update(rows.map((row) => row.entryTradeDate).join('\n'))
+    .digest('hex')
   const observed = mean(activeReturns)
   const centered = activeReturns.map((value) => value - observed)
   const meanBootstrapMeans = blockBootstrapMeans(activeReturns, { seed })
@@ -367,6 +495,9 @@ function blockBootstrapRealityCheck(rows, { seed = 1987 } = {}) {
     nullConfidenceIntervalDailyEdgePct: pctSummary(nullBootstrapMeans),
     nullMaxMeanDailyEdgePct: null,
     sampleCount: activeReturns.length,
+    sampleStartDate: rows[0]?.entryTradeDate ?? '',
+    sampleEndDate: rows.at(-1)?.entryTradeDate ?? '',
+    inputDateDigest,
     activeOverlayDays: rows.filter((row) => row.thesisKind !== 'index-fallback').length,
     materialRows: rows.filter(isMaterialStrategyRow).length,
     minimumResolvablePValue: round(1 / (BOOTSTRAP_ITERATIONS + 1), 5),
@@ -394,12 +525,16 @@ function displayCurveRows(rows) {
       position,
       signal: round(numberFrom(row.confidence) * Math.sign(position), 4),
       netReturnPct: row.netReturnPct,
+      priorCloseReturnContributionPct: row.priorCloseReturnContributionPct,
+      currentSessionReturnContributionPct: row.currentSessionReturnContributionPct,
       indexReturnPct: row.indexReturnPct,
       split: row.split,
       thesisKind: row.thesisKind,
+      priorCloseThesisKind: row.priorCloseThesisKind,
       equityUsd: row.equity,
       component: row.componentVariant,
       researchInstrument: row.researchInstrument,
+      signalInstrument: row.signalInstrument,
       direction: row.direction,
       sourceId: row.sourceId,
       confidence: row.confidence,
@@ -407,11 +542,14 @@ function displayCurveRows(rows) {
   })
 }
 
-function formatCandidateRow(selected, summaryMetrics) {
+function formatCandidateRow(selected, summaryMetrics, eligible, selectionEvaluation) {
+  const selectionMetrics = selectionEvaluation.metrics
+  const selectionIndexMetrics = selectionEvaluation.indexMetrics
+  const selectionEdges = selectionEvaluation.edges
   return {
     candidateId: STRATEGY_ID,
-    eligible: true,
-    trainValidationRank: round(selected.splitEdges.train + selected.splitEdges.validation, 4),
+    eligible,
+    trainValidationRank: round(selectionEdges.train + selectionEdges.validation, 4),
     architectureId: 'summer-winter-composite-artifact',
     sourceSetId: 'ngas-summer-alpha+ngas-winter-alpha',
     sourceWeightMode: 'component-selected',
@@ -424,16 +562,16 @@ function formatCandidateRow(selected, summaryMetrics) {
     indexFallbackRows: summaryMetrics.indexFallbackRows,
     summerGasRows: selected.componentTradeCounts.summer,
     winterGasRows: selected.componentTradeCounts.winter,
-    trainReturnPct: selected.trainMetrics.totalReturnPct,
-    trainIndexReturnPct: selected.indexMetrics.train.totalReturnPct,
-    trainEdgePct: selected.splitEdges.train,
-    trainSharpe: selected.trainMetrics.sharpe,
-    trainMaxDrawdownPct: selected.trainMetrics.maxDrawdownPct,
-    validationReturnPct: selected.validationMetrics.totalReturnPct,
-    validationIndexReturnPct: selected.indexMetrics.validation.totalReturnPct,
-    validationEdgePct: selected.splitEdges.validation,
-    validationSharpe: selected.validationMetrics.sharpe,
-    validationMaxDrawdownPct: selected.validationMetrics.maxDrawdownPct,
+    trainReturnPct: selectionMetrics.train.totalReturnPct,
+    trainIndexReturnPct: selectionIndexMetrics.train.totalReturnPct,
+    trainEdgePct: selectionEdges.train,
+    trainSharpe: selectionMetrics.train.sharpe,
+    trainMaxDrawdownPct: selectionMetrics.train.maxDrawdownPct,
+    validationReturnPct: selectionMetrics.validation.totalReturnPct,
+    validationIndexReturnPct: selectionIndexMetrics.validation.totalReturnPct,
+    validationEdgePct: selectionEdges.validation,
+    validationSharpe: selectionMetrics.validation.sharpe,
+    validationMaxDrawdownPct: selectionMetrics.validation.maxDrawdownPct,
     holdoutReturnPct: selected.holdoutMetrics.totalReturnPct,
     holdoutIndexReturnPct: selected.indexMetrics.holdout.totalReturnPct,
     holdoutEdgePct: selected.splitEdges.holdout,
@@ -461,11 +599,13 @@ ${STRATEGY_NAME} is the checked-in all-year artifact for the existing NGAS Summe
 
 - Architecture: Summer/Winter composite artifact.
 - Source ledgers: ${selected.componentStrategyIds.join(' + ')}.
-- Research instruments: Summer gas rows use NG=F; Winter gas rows use UNG; idle rows use the US-INDEX-BASKET fallback.
+- Signal and P&L instruments: Summer keeps NG=F as a signal input, but every gas-sleeve return and both seasonal validation paths use UNG. Idle rows use the VOO/QQQM fallback.
+- Execution: prior-close holdings earn the overnight move; current UNG/VOO/QQQM targets become effective at the split-adjusted session open under ${summary.contract.execution.contractId}.
+- Overnight policy: ${summary.contract.overnightRisk.deployedPolicyId}. The separately versioned audit reports a train/validation recommendation, but close-side execution remains research-only; prior-close holdings therefore stay in place until the next causal open execution.
 - Row policy: ${selected.rowSelectionPolicy}
 - Material row definition: ${selected.materialRowDefinition}
 - Selection: no independent all-year parameter search; the component ledgers remain selected by their own train/validation contracts.
-- P-value: direct standalone all-year centered circular block bootstrap, not Fisher-combined component p-values.
+- P-values: a direct component-safe centered circular block bootstrap through ${summary.contract.selectionEnd} controls eligibility; a separate full-calendar bootstrap is report-only. Neither uses Fisher-combined component p-values.
 
 ## Metrics
 
@@ -483,14 +623,16 @@ ${STRATEGY_NAME} is the checked-in all-year artifact for the existing NGAS Summe
 | NGAS Summer Alpha | ${selected.componentTradeCounts.summer} |
 | NGAS Winter Alpha | ${selected.componentTradeCounts.winter} |
 | Index fallback | ${selected.indexFallbackRows} |
-| Material or cost-bearing rows | ${selected.materialRows} |
+| Material target rows | ${selected.materialRows} |
 
 ## Anti-Overfit Check
 
 - Candidate count: ${summary.search.candidateCount}.
 - Eligible candidates: ${summary.search.eligibleCandidateCount}.
-- Holdout was not used for any all-year selection: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
-- Primary p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
+- Return-based promotion gates use only rows through ${summary.contract.selectionEnd}: positive train edge ${summary.validation.promotionGates.positiveTrainEdge ? 'pass' : 'fail'}; positive validation edge ${summary.validation.promotionGates.positiveValidationEdge ? 'pass' : 'fail'}; component-safe bootstrap p-value below 0.05 ${summary.validation.promotionGates.preHoldoutBootstrapSignificance ? 'pass' : 'fail'}; train and validation max drawdowns above ${summary.contract.maxDrawdownPromotionFloorPct}% ${summary.validation.promotionGates.trainMaxDrawdown && summary.validation.promotionGates.validationMaxDrawdown ? 'pass' : 'fail'}. Component gates use each component's own sealed pre-holdout result: Summer ${summary.validation.promotionGates.summerComponent ? 'pass' : 'fail'}; Winter ${summary.validation.promotionGates.winterComponent ? 'pass' : 'fail'}; canonical live contract ${summary.validation.promotionGates.liveContract ? 'pass' : 'fail'}.
+- Public holdout starts ${summary.contract.holdoutStart}, when both components are in holdout. Composite returns after the selection boundary are report-only at the all-year layer: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
+- Component-safe selection p-value: ${summary.validation.selectionRealityCheck.pValue} (${summary.validation.selectionRealityCheck.method}).
+- Full-calendar diagnostic p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
 - Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
 - Selection-adjusted p-value: ${summary.validation.realityCheck.selectionAdjustedPValue ?? 'n/a'}.
 - Observed active edge: ${summary.validation.realityCheck.observedAverageDailyEdgePct}% per day / ${summary.validation.realityCheck.observedAnnualizedEdgePct}% annualized.
@@ -500,7 +642,9 @@ ${STRATEGY_NAME} is the checked-in all-year artifact for the existing NGAS Summe
 
 ## Verdict
 
-Load this as an active research-baseline artifact, not broker-ready. It preserves the current Summer/Winter row behavior exactly while making the all-year path reproducible as a checked-in ledger with its own direct bootstrap p-value.
+${summary.status === 'research-baseline'
+  ? 'Load this as an active research-baseline artifact, not broker-ready. It uses a single executable ETF return contract and still requires non-overlapping paper evidence.'
+  : 'Keep this in needs-validation status. The causal ETF ledger is reproducible, but one or more promotion gates fail after the accounting repair.'}
 `
 }
 
@@ -509,17 +653,66 @@ function main() {
   const winterSummary = JSON.parse(readText(WINTER_SUMMARY_FILE))
   const summer = parseCsvWithHeaders(SUMMER_TRADES_FILE)
   const winter = parseCsvWithHeaders(WINTER_TRADES_FILE)
+  validateComponentArtifact({
+    label: 'NGAS Summer Alpha',
+    expectedStrategyId: 'ngas-summer-alpha',
+    requiredSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
+    summary: summerSummary,
+    trades: summer,
+    executionContract: EXECUTION_CONTRACT,
+  })
+  validateComponentArtifact({
+    label: 'NGAS Winter Alpha',
+    expectedStrategyId: 'ngas-winter-alpha',
+    requiredSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
+    summary: winterSummary,
+    trades: winter,
+    executionContract: EXECUTION_CONTRACT,
+  })
+  const executionByDate = new Map(loadExecutionCalendar(REPO_ROOT, { startDate: '2021-01-01' }).map((day) => [day.date, day]))
   const contractsByStrategyId = new Map([
     [summerSummary.strategyId, summerSummary.contract],
     [winterSummary.strategyId, winterSummary.contract],
   ])
-  const rows = createCompositeRows(summer.rows, winter.rows, contractsByStrategyId)
+  const splitContract = allYearSplitContract([summerSummary, winterSummary])
+  const liveComponentContract = canonicalComponentLiveContractFromSummaries(summerSummary, winterSummary)
+  const liveComponentContractDigest = liveComponentContractDigestSha256(liveComponentContract)
+  const liveComponentContractMatchesExecutable =
+    liveComponentContractDigest === executableLiveComponentContractDigestSha256
+  const rows = createCompositeRows(summer.rows, winter.rows, contractsByStrategyId, splitContract, executionByDate)
   const splits = splitRows(rows)
   const edges = splitEdges(splits)
   const annualEdges = splitAnnualEdges(splits)
   const metricsBySplit = Object.fromEntries(Object.entries(splits).map(([split, splitRowsForMetrics]) => [split, metricsFromReturns(splitRowsForMetrics)]))
   const indexMetricsBySplit = Object.fromEntries(Object.entries(splits).map(([split, splitRowsForMetrics]) => [split, metricsFromReturns(splitRowsForMetrics, 'indexReturnPct')]))
+  const selectionRows = chronologicalSelectionRows(rows, splitContract)
+  const selectionSplits = splitRows(selectionRows)
+  const selectionEdges = splitEdges(selectionSplits)
+  const selectionMetricsBySplit = Object.fromEntries(
+    Object.entries(selectionSplits).map(([split, splitRowsForMetrics]) => [split, metricsFromReturns(splitRowsForMetrics)]),
+  )
+  const selectionIndexMetricsBySplit = Object.fromEntries(
+    Object.entries(selectionSplits).map(([split, splitRowsForMetrics]) => [split, metricsFromReturns(splitRowsForMetrics, 'indexReturnPct')]),
+  )
+  const selectionRealityCheck = blockBootstrapRealityCheck(selectionRows)
   const realityCheck = blockBootstrapRealityCheck(rows)
+  const frictionScenarios = Object.fromEntries(
+    Object.keys(EXECUTION_CONTRACT.scenarios).map((scenarioId) => {
+      const scenarioRows = scenarioId === EXECUTION_CONTRACT.selectionScenarioId
+        ? rows
+        : createCompositeRows(summer.rows, winter.rows, contractsByStrategyId, splitContract, executionByDate, scenarioId)
+      const scenarioSplits = splitRows(scenarioRows)
+      const scenarioMetrics = Object.fromEntries(
+        Object.entries(scenarioSplits).map(([split, splitRowsForMetrics]) => [split, metricsFromReturns(splitRowsForMetrics)]),
+      )
+      return [scenarioId, {
+        selectionEligible: EXECUTION_CONTRACT.scenarios[scenarioId].selectionEligible,
+        oneWayBps: EXECUTION_CONTRACT.scenarios[scenarioId].oneWayBps,
+        annualBorrowRatePct: EXECUTION_CONTRACT.scenarios[scenarioId].annualBorrowRatePct,
+        metrics: scenarioMetrics,
+      }]
+    }),
+  )
   const summaryMetrics = {
     gasOverlayRows: rows.filter((row) => row.thesisKind !== 'index-fallback').length,
     materialRows: rows.filter(isMaterialStrategyRow).length,
@@ -546,8 +739,8 @@ function main() {
     },
     splitEdges: edges,
     splitAnnualEdges: annualEdges,
-    rowSelectionPolicy: 'For each entry date, pick the material Summer Alpha row, else the material Winter Alpha row, else the identical no-cost index fallback row.',
-    materialRowDefinition: 'A source row is material when it has a non-index thesis, non-zero gas position, or non-zero trading cost.',
+    rowSelectionPolicy: 'For each entry date, pick the material Summer Alpha row, else the material Winter Alpha row, else the shared index-fallback target. The all-year ledger then recomputes every executed leg and cost.',
+    materialRowDefinition: 'A source row is material when it has a non-index thesis, non-zero gas target, or an explicit index-to-cash allocation change. All-year costs are recomputed after target selection.',
     componentTradeCounts: {
       summer: rows.filter((row) => row.componentStrategyId === summerSummary.strategyId && row.thesisKind !== 'index-fallback').length,
       winter: rows.filter((row) => row.componentStrategyId === winterSummary.strategyId && row.thesisKind !== 'index-fallback').length,
@@ -556,11 +749,28 @@ function main() {
     materialRows: summaryMetrics.materialRows,
     sourceUniverse: sourceUniverseFor(rows),
   }
-  const candidateRow = formatCandidateRow(selected, summaryMetrics)
+  const promotionGates = {
+    positiveTrainEdge: selectionEdges.train > 0,
+    positiveValidationEdge: selectionEdges.validation > 0,
+    preHoldoutBootstrapSignificance: selectionRealityCheck.pValue < 0.05,
+    trainMaxDrawdown: selectionMetricsBySplit.train.maxDrawdownPct > MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
+    validationMaxDrawdown: selectionMetricsBySplit.validation.maxDrawdownPct > MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
+    summerComponent: summerSummary.search.eligibleCandidateCount > 0,
+    winterComponent: winterSummary.search.eligibleCandidateCount > 0,
+    liveContract: liveComponentContractMatchesExecutable,
+  }
+  const eligible = Object.values(promotionGates).every(Boolean)
+  const candidateRow = formatCandidateRow(selected, summaryMetrics, eligible, {
+    metrics: selectionMetricsBySplit,
+    indexMetrics: selectionIndexMetricsBySplit,
+    edges: selectionEdges,
+  })
   const summary = {
+    artifactSchemaVersion: 3,
     generatedAt,
     strategyId: STRATEGY_ID,
     displayName: STRATEGY_NAME,
+    status: eligible ? 'research-baseline' : 'needs-validation',
     data: {
       summerSummaryFile: path.relative(REPO_ROOT, SUMMER_SUMMARY_FILE),
       summerSelectedTrades: path.relative(REPO_ROOT, SUMMER_TRADES_FILE),
@@ -571,28 +781,32 @@ function main() {
       marketDays: rows.length,
     },
     contract: {
-      trainEnd: 'component-specific',
-      validationEnd: 'component-specific',
-      holdoutStart: 'component-specific',
+      trainEnd: splitContract.trainEnd,
+      selectionEnd: splitContract.selectionEnd,
+      validationEnd: splitContract.validationEnd,
+      holdoutStart: splitContract.holdoutStart,
       summerTrainEnd: summerSummary.contract.trainEnd,
       summerValidationEnd: summerSummary.contract.validationEnd,
       summerHoldoutStart: summerSummary.contract.holdoutStart,
       winterTrainEnd: winterSummary.contract.trainEnd,
       winterValidationEnd: winterSummary.contract.validationEnd,
       winterHoldoutStart: winterSummary.contract.holdoutStart,
-      fallback: 'Unallocated capital remains in the configured target-weight US-INDEX-BASKET ETF fallback close-to-close.',
+      fallback: 'Unallocated deployable capital is routed to the configured VOO/QQQM target-weight index basket; the broker cash buffer remains uninvested.',
       selectionPolicy: 'No independent all-year optimization. The artifact freezes the exact Summer/Winter material-row selector into its own ledger.',
-      signalTiming: 'Component source rows keep their source-lane timing contracts; this artifact only selects one already-validated daily source row per entry date.',
-      overfitControl: 'No all-year holdout rows are used for selection. The p-value is a direct centered circular block bootstrap on the generated all-year active-edge return stream.',
+      signalTiming:
+        'Component source rows keep their source-lane signal timing. Prior holdings earn close-to-open returns; selected current targets earn adjusted-open-to-close returns.',
+      overfitControl: "All-year return-based eligibility uses one chronological calendar-wide train/validation prefix ending before the earliest component holdout. Public holdout reporting begins only at the latest component holdout, so every public holdout row is holdout for its source component. Later composite returns and the full-calendar bootstrap are reporting-only at the all-year layer; component eligibility remains determined by each component's own pre-holdout contract.",
       researchInstruments: {
         summer: {
           componentStrategyId: summerSummary.strategyId,
-          gasSymbol: 'NG=F',
-          contract: 'Yahoo continuous front-month natural-gas futures proxy',
+          gasSymbol: 'UNG',
+          signalSymbol: 'NG=F',
+          contract: 'NG=F signal features with Yahoo UNG ETF P&L',
         },
         winter: {
           componentStrategyId: winterSummary.strategyId,
           gasSymbol: 'UNG',
+          signalSymbol: 'UNG',
           contract: 'Yahoo UNG ETF historical series',
         },
         indexFallback: {
@@ -604,16 +818,58 @@ function main() {
         gasSymbol: 'UNG',
         contract: 'Alpaca equity/ETF execution',
       },
+      execution: {
+        contractId: EXECUTION_CONTRACT.contractId,
+        contractDigest: EXECUTION_CONTRACT.digest,
+        scenarioId: EXECUTION_CONTRACT.selectionScenarioId,
+        priceConvention: EXECUTION_CONTRACT.priceConvention,
+        initialState: EXECUTION_CONTRACT.initialState,
+        deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
+        rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
+        indexWeights: EXECUTION_CONTRACT.indexWeights,
+        turnoverConvention: EXECUTION_CONTRACT.turnoverConvention,
+        benchmarkConvention: EXECUTION_CONTRACT.benchmarkConvention,
+        selectionRule: EXECUTION_CONTRACT.selectionRule,
+        costCalibration: EXECUTION_CONTRACT.costCalibration,
+        scenarios: EXECUTION_CONTRACT.scenarios,
+      },
+      overnightRisk: {
+        contractId: OVERNIGHT_POLICY_CONTRACT.contractId,
+        contractDigest: OVERNIGHT_POLICY_DIGEST,
+        deployedPolicyId: OVERNIGHT_POLICY_CONTRACT.deployedPolicyId,
+        behavior: 'Retain the complete prior-close UNG position overnight; execute the next causal target at the adjusted session open.',
+        candidatePoliciesResearchOnly: true,
+        selectionUsedHoldout: false,
+        holdoutUse: 'The sealed 2025+ holdout is descriptive only and cannot change a policy recommendation or all-year eligibility.',
+        evaluationSummary: 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-summary.json',
+        candidateSummary: 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-candidate-summary.csv',
+      },
+      liveInference: {
+        componentContractSchemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+        componentContract: liveComponentContract,
+        componentContractDigestSha256: liveComponentContractDigest,
+        executableContractDigestSha256: executableLiveComponentContractDigestSha256,
+      },
       maxDrawdownPromotionFloorPct: MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
     },
     selected,
     search: {
       candidateCount: 1,
-      eligibleCandidateCount: 1,
+      eligibleCandidateCount: eligible ? 1 : 0,
+      selectionStatus: eligible ? 'fixed-composite-passes-promotion-gates' : 'fixed-composite-retained-needs-validation',
       selectionUsedHoldout: false,
     },
     validation: {
+      selectionRealityCheck,
+      selectionMetrics: {
+        throughDate: splitContract.selectionEnd,
+        strategy: selectionMetricsBySplit,
+        index: selectionIndexMetricsBySplit,
+        splitEdges: selectionEdges,
+      },
       realityCheck,
+      promotionGates,
+      frictionScenarios,
       componentRealityChecks: {
         [summerSummary.strategyId]: summerSummary.validation.realityCheck,
         [winterSummary.strategyId]: winterSummary.validation.realityCheck,
@@ -624,6 +880,9 @@ function main() {
       displayCurve: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'display-curve.csv')),
       candidateSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'candidate-summary.csv')),
       runSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'run-summary.json')),
+      frictionStressSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'friction-stress-summary.csv')),
+      overnightRiskSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'overnight-risk-summary.json')),
+      overnightRiskCandidateSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'overnight-risk-candidate-summary.csv')),
     },
     candidates: [candidateRow],
   }
@@ -634,10 +893,15 @@ function main() {
     'componentStrategyId',
     'componentVariant',
     'researchInstrument',
+    'signalInstrument',
+    'componentGrossReturnPct',
+    'componentTradingCostPct',
+    'componentNetReturnPct',
     ...summer.headers,
     ...winter.headers,
     'materialRow',
     'activeReturnPct',
+    'componentSplit',
     'split',
   ])
 
@@ -645,6 +909,24 @@ function main() {
   const curveRows = displayCurveRows(rows)
   writeText(path.join(OUTPUT_DIR, 'display-curve.csv'), rowsToCsv(curveRows, Object.keys(curveRows[0] ?? {})))
   writeText(path.join(OUTPUT_DIR, 'candidate-summary.csv'), rowsToCsv([candidateRow], Object.keys(candidateRow)))
+  const frictionStressRows = Object.entries(frictionScenarios).map(([scenarioId, scenario]) => ({
+    scenarioId,
+    selectionEligible: scenario.selectionEligible,
+    ungOneWayBps: scenario.oneWayBps.UNG,
+    vooOneWayBps: scenario.oneWayBps.VOO,
+    qqqmOneWayBps: scenario.oneWayBps.QQQM,
+    annualBorrowRatePct: scenario.annualBorrowRatePct,
+    totalReturnPct: scenario.metrics.all.totalReturnPct,
+    cagrPct: scenario.metrics.all.cagrPct,
+    sharpe: scenario.metrics.all.sharpe,
+    maxDrawdownPct: scenario.metrics.all.maxDrawdownPct,
+    holdoutReturnPct: scenario.metrics.holdout.totalReturnPct,
+    holdoutCagrPct: scenario.metrics.holdout.cagrPct,
+  }))
+  writeText(
+    path.join(OUTPUT_DIR, 'friction-stress-summary.csv'),
+    rowsToCsv(frictionStressRows, Object.keys(frictionStressRows[0] ?? {})),
+  )
   writeText(path.join(OUTPUT_DIR, 'run-summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
   writeText(path.join(OUTPUT_DIR, 'report.md'), buildReport(summary))
 

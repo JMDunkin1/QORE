@@ -8,6 +8,7 @@ import { loadLocalEnv } from './local-env.mjs'
 import { inspectGitWorkingTree } from './lib/qore-git-state.mjs'
 import { liveInferenceProvenanceBlocks } from './lib/qore-live-inference-provenance.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
+import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
@@ -178,12 +179,22 @@ if (!supervisorPrestart && dataManifest) {
 
 const signalHandoff = readJson(signalIntentPath)
 const inferenceProvenanceBlocks = liveInferenceProvenanceBlocks(signalHandoff)
+let strategyArtifactBlocks
+try {
+  strategyArtifactBlocks = strategyArtifactBindingBlocks(
+    signalHandoff?.inference?.strategyArtifact,
+    loadAllYearStrategyArtifact(repoDir),
+  )
+} catch (error) {
+  strategyArtifactBlocks = [`current reviewed strategy artifact is unavailable: ${error.message}`]
+}
+const liveInferenceBlocks = [...inferenceProvenanceBlocks, ...strategyArtifactBlocks]
 if (
   !supervisorPrestart
   && signalHandoff?.inference?.strategyId === 'ngas-all-year-beta'
   && signalHandoff.inference.validated === true
   && signalHandoff.inference.liveForecastAppliedToTarget === true
-  && (mode === 'dry-run' || inferenceProvenanceBlocks.length === 0)
+  && (mode === 'dry-run' || liveInferenceBlocks.length === 0)
 ) {
   add('live-strategy-inference', 'Current forecast strategy inference', 'pass', 'The current validated forecast was applied to the target-weight inference.')
 } else if (!supervisorPrestart) {
@@ -192,7 +203,7 @@ if (
     'Current forecast strategy inference',
     mode === 'dry-run' ? 'warn' : 'block',
     signalHandoff
-      ? `The configured signal handoff does not contain validated production live inference (${path.relative(repoDir, signalIntentPath)}): ${inferenceProvenanceBlocks.join('; ') || 'identity/validation flags are incomplete'}. Paper/live routing remains blocked.`
+      ? `The configured signal handoff does not contain validated production live inference (${path.relative(repoDir, signalIntentPath)}): ${liveInferenceBlocks.join('; ') || 'identity/validation flags are incomplete'}. Paper/live routing remains blocked.`
       : `The configured signal handoff is missing or malformed (${path.relative(repoDir, signalIntentPath)}). Paper/live routing remains blocked.`,
   )
 }

@@ -6,8 +6,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
-import { nominalEiaStorageReleaseAt } from './lib/eia-release-time.mjs'
+import { assertEiaStorageReleaseCalendarCoverage, eiaStorageReleaseAt } from './lib/eia-release-time.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
+import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
 import { omitApiKeyFields, redactSecretText } from './lib/secret-redaction.mjs'
 
 const repoDir = process.cwd()
@@ -269,6 +270,20 @@ function validatedLiveTargetContract(target, inference) {
     targetDate: strictDate(target?.targetDate, 'target.targetDate'),
     validatedIssueDate: strictDate(inference?.forecastValidation?.latestCommonIssueDate, 'forecastValidation.latestCommonIssueDate'),
   }
+}
+
+function validatedStrategyArtifactBinding(inference) {
+  let currentArtifact
+  try {
+    currentArtifact = loadAllYearStrategyArtifact(repoDir)
+  } catch (error) {
+    throw new Error(`Validated live inference cannot verify its reviewed strategy artifact: ${error.message}`)
+  }
+  const blocks = strategyArtifactBindingBlocks(inference?.strategyArtifact, currentArtifact)
+  if (blocks.length) {
+    throw new Error(`Validated live inference strategy artifact is invalid: ${blocks.join('; ')}.`)
+  }
+  return currentArtifact.binding
 }
 
 function relative(filePath) {
@@ -913,6 +928,7 @@ async function reconcileSignalIntent() {
   if (!inference?.validated || !inference.liveForecastAppliedToTarget || !inference.target) {
     throw new Error(`Validated live strategy inference is unavailable: ${inference?.error ?? 'no successful inference snapshot'}`)
   }
+  const strategyArtifact = validatedStrategyArtifactBinding(inference)
   const eia = latestJobOutputs.eiaStorageReleaseWindow
   if (eia?.latestStorage && !storageInferenceIsCoherent(inference, eia)) {
     throw new Error(`Live strategy inference storage input does not match polled EIA release ${eia.latestStorage.date}.`)
@@ -965,7 +981,8 @@ async function reconcileSignalIntent() {
       season: inference.season,
       targetDate: latest.targetDate,
       liveForecastAppliedToTarget: true,
-      validated: true,
+      validated: strategyArtifact.promotionEligible,
+      strategyArtifact,
       forecastValidation: inference.forecastValidation,
       componentStrategyId: latest.componentStrategyId,
       windowId: latest.windowId,
@@ -991,11 +1008,13 @@ async function collectStrategyInference() {
   if (!result.ok) throw new Error(result.stderr || result.stdout || 'Live all-year inference failed.')
   const snapshot = await readJsonIfExists(liveInferencePath)
   if (!snapshot?.validated || !snapshot.liveForecastAppliedToTarget) throw new Error(snapshot?.error ?? 'Inference snapshot was not validated.')
+  validatedStrategyArtifactBinding(snapshot)
   return snapshot
 }
 
 async function collectEiaStorageReleaseWindow() {
   const generatedAt = new Date().toISOString()
+  const releaseCalendarCoverage = assertEiaStorageReleaseCalendarCoverage(generatedAt.slice(0, 10))
   const eiaApiKey = process.env.EIA_API_KEY ?? 'DEMO_KEY'
   const localRows = parseCsv(await readFile(localEiaStoragePath, 'utf8'))
   const localLatest = latestRow(localRows)
@@ -1035,6 +1054,7 @@ async function collectEiaStorageReleaseWindow() {
     generatedAt,
     serviceId: 'qore-live-eia-storage-release-window',
     source: liveLatest ? 'EIA Open Data API' : 'local-cache',
+    releaseCalendarCoverage,
     liveFetchAttempted: jobSettingBool('eiaStorageReleaseWindow', 'fetchLive', true),
     liveError,
     latestStorage: latest
@@ -1055,7 +1075,7 @@ async function collectEiaStorageReleaseWindow() {
       : null,
     riskContext: latest
       ? {
-          reportedAt: nominalEiaStorageReleaseAt(latest.date),
+          reportedAt: eiaStorageReleaseAt(latest.date),
           storageVsSeasonalAverageBcf: null,
         }
       : null,

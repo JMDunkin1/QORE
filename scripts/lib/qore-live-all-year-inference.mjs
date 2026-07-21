@@ -1,32 +1,20 @@
-const SUMMER = {
-  candidateId: 'summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed',
-  sourceSetId: 'gfs-gefs-core', sourceIds: ['gfs', 'gefs-mean'], sourceWeightMode: 'equal',
-  anomalyThreshold: 5, coverageThreshold: 0.25, minConfidence: 0.5, minGroups: 1, minFamilies: 2,
-  weatherFraction: 0.35, reversionFraction: 0.35, followHoldDays: 3, reversionHoldDays: 1,
-  minRealizedMovePct: 2, freshHeatLookbackDays: 3,
-}
+import {
+  eiaReportAvailableAtOpen,
+  nasaPowerActualAvailableAtOpen,
+} from './qore-signal-availability.mjs'
+import { eiaStorageReleaseAt } from './eia-release-time.mjs'
+import {
+  executableLiveComponentContract,
+  liveAllYearImplementation,
+  selectedContracts,
+} from './qore-live-contract.mjs'
 
-const WINTER_FOLLOW = {
-  candidateId: 'dual-ncep-complex-bg-shrink-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-vol0-fixed',
-  sourceSetId: 'ncep-complex', sourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'aigfs'], sourceWeightMode: 'bg-shrink',
-  heatingDemandSourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs', 'gem-global'],
-  liveSourceIds: ['gfs', 'gefs-mean', 'aigfs'],
-  liveHeatingDemandSourceIds: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
-  anomalyThreshold: 5, coverageThreshold: 0.5, minConfidence: 0.5, minGroups: 1, minFamilies: 2,
-  weatherFraction: 0.25, reversionFraction: 0.2, followHoldDays: 3, reversionHoldDays: 2, minRealizedMovePct: 2,
-}
+export { selectedContracts }
 
-const WINTER_FADE = {
-  ...WINTER_FOLLOW,
-  candidateId: 'fade-only-gfs-gefs-core-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-fixed',
-  sourceSetId: 'gfs-gefs-core', sourceIds: ['gfs', 'gefs-mean'], sourceWeightMode: 'equal',
-  useFollowLeg: false,
-  signalAlgorithm: 'weather-hybrid',
-}
-
-const WINTER_RELIABILITY = new Map([['gfs', 0.6092], ['gefs-mean', 1.167]])
-
-export const selectedContracts = { summer: SUMMER, winterFollow: WINTER_FOLLOW, winterFade: WINTER_FADE }
+const { summer: SUMMER_IMPLEMENTATION, winter: WINTER_IMPLEMENTATION } = liveAllYearImplementation
+const { summer: SUMMER, winterFollow: WINTER_FOLLOW, winterFade: WINTER_FADE } = selectedContracts
+const WINTER_SELECTION = executableLiveComponentContract.winter.selected
+const WINTER_RELIABILITY = new Map(Object.entries(WINTER_IMPLEMENTATION.sourceReliability))
 
 export function numberFrom(value, fallback = 0) {
   const parsed = Number(value)
@@ -45,7 +33,6 @@ function std(values) {
   const avg = mean(values)
   return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (values.length - 1))
 }
-function addDays(date, count) { return new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10) }
 function calendarDaysBetween(start, end) { return (Date.parse(end) - Date.parse(start)) / 86400000 }
 function sourceFamily(sourceId) { return sourceId === 'gefs-mean' ? 'gefs' : sourceId }
 function sourceGroup(sourceId) { return ['gfs', 'gefs-mean', 'graphcastgfs', 'aigfs'].includes(sourceId) ? 'ncep' : sourceId }
@@ -63,11 +50,13 @@ export function enrichForecastRows(scoreRows, locationRows, season) {
       ? rows.filter(predicate).reduce((sum, item) => sum + numberFrom(item.weight), 0) / sampledWeight
       : 0
     const cooling = rows.map((item) => ({
-      value: Math.max(0, numberFrom(item.forecastMeanF) - 65) - Math.max(0, numberFrom(item.normalMeanF) - 65),
+      value: Math.max(0, numberFrom(item.forecastMeanF) - SUMMER_IMPLEMENTATION.coolingDemand.baseF) -
+        Math.max(0, numberFrom(item.normalMeanF) - SUMMER_IMPLEMENTATION.coolingDemand.baseF),
       weight: numberFrom(item.weight),
     }))
     const heating = rows.map((item) => ({
-      value: Math.max(0, 65 - numberFrom(item.forecastMeanF)) - Math.max(0, 65 - numberFrom(item.normalMeanF)),
+      value: Math.max(0, WINTER_IMPLEMENTATION.heatingDemand.baseF - numberFrom(item.forecastMeanF)) -
+        Math.max(0, WINTER_IMPLEMENTATION.heatingDemand.baseF - numberFrom(item.normalMeanF)),
       weight: numberFrom(item.weight),
     }))
     return {
@@ -209,7 +198,12 @@ function schedule(days, signals, candidate, season) {
     if (fresh && candidate.useFollowLeg !== false) {
       for (let index = entry; index <= followEnd; index += 1) {
         let fraction = candidate.weatherFraction
-        if (season === 'summer' && isHeat && days[index].summerStorageDeficit) fraction = Math.min(0.4375, fraction * 1.25)
+        if (season === 'summer' && isHeat && days[index].summerStorageDeficit) {
+          fraction = Math.min(
+            SUMMER_IMPLEMENTATION.storageDeficitHeatMaxFraction,
+            fraction * SUMMER_IMPLEMENTATION.storageDeficitHeatMultiplier,
+          )
+        }
         put(index, { ...signal, position: signal.direction * fraction, windowId: 'weather-follow', rank: signal.rank + 10 })
       }
     }
@@ -223,8 +217,12 @@ function schedule(days, signals, candidate, season) {
     for (let index = reversionEntry; index <= Math.min(days.length - 1, reversionEntry + candidate.reversionHoldDays - 1); index += 1) {
       let fraction = candidate.reversionFraction
       if (season === 'summer' && isHeat) {
-        fraction = signal.coolingDemandAnomalyF >= 8 ? Math.min(0.5, fraction + 0.15)
-          : signal.coolingDemandAnomalyF >= 5 ? Math.min(0.45, fraction + 0.05) : Math.min(fraction, Math.max(0.2, fraction - 0.15))
+        const demand = SUMMER_IMPLEMENTATION.coolingDemand
+        fraction = signal.coolingDemandAnomalyF >= demand.extremeAnomalyF
+          ? Math.min(demand.extremeMaximumReversionFraction, fraction + demand.extremeReversionAdd)
+          : signal.coolingDemandAnomalyF >= demand.solidAnomalyF
+            ? Math.min(demand.solidMaximumReversionFraction, fraction + demand.solidReversionAdd)
+            : Math.min(fraction, Math.max(demand.minimumReversionFraction, fraction - demand.lowReversionSubtract))
       }
       const position = season === 'summer' ? -signal.direction * fraction : -Math.sign(move || signal.direction) * fraction
       put(index, { ...signal, position, windowId: 'weather-reversion', thesisKind: position > 0 ? 'reversion-long' : 'reversion-short', realizedMovePct: round(move), rank: signal.rank + 5 })
@@ -233,34 +231,82 @@ function schedule(days, signals, candidate, season) {
   return byDate
 }
 
-function winterStorageAllowed(storageRows, date) {
-  const rows = storageRows.map((row) => ({ date: row.date, value: numberFrom(row.storageBcf) })).filter((row) => row.value > 0).sort((a, b) => a.date.localeCompare(b.date))
-  const released = rows.filter((row) => addDays(row.date, ((4 - new Date(`${row.date}T00:00:00Z`).getUTCDay() + 7) % 7) || 7) <= date).at(-1)
+function versionedStorageRows(storageRows) {
+  const rows = storageRows
+    .map((row) => ({
+      ...row,
+      date: row.date,
+      value: numberFrom(row.storageBcf),
+      releasedAt: eiaStorageReleaseAt(row.date),
+    }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  if (!rows.length) throw new Error('EIA storage input is empty; refusing to infer a storage-aware target.')
+  const missingRelease = rows.find((row) => !row.releasedAt)
+  if (missingRelease) {
+    throw new Error(`Missing versioned EIA release timestamp for storage period ${missingRelease.date}`)
+  }
+  const outOfOrderRelease = rows.find(
+    (row, index) => index > 0 && Date.parse(row.releasedAt) < Date.parse(rows[index - 1].releasedAt),
+  )
+  if (outOfOrderRelease) {
+    throw new Error(`EIA release timestamps are not chronological at storage period ${outOfOrderRelease.date}`)
+  }
+  return rows
+}
+
+function latestStorageAvailableAtOpen(rows, date) {
+  let low = 0
+  let high = rows.length - 1
+  let latest = null
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const row = rows[middle]
+    if (eiaReportAvailableAtOpen(row.releasedAt, date)) {
+      latest = row
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return latest
+}
+
+function winterStorageAllowed(rows, date) {
+  const released = latestStorageAvailableAtOpen(rows, date)
   if (!released) return { allowed: false, drawdownBcf: null }
   const month = Number(released.date.slice(5, 7)); const year = Number(released.date.slice(0, 4)); const seasonYear = month >= 11 ? year : year - 1
   const season = rows.filter((row) => row.date >= `${seasonYear}-11-01` && row.date <= released.date)
   const drawdownBcf = Math.max(...season.map((row) => row.value)) - released.value
-  return { allowed: drawdownBcf >= 400, drawdownBcf: round(drawdownBcf, 2), storageDate: released.date }
+  return {
+    allowed: drawdownBcf >= WINTER_SELECTION.coldFollowStoragePolicy.minSeasonDrawdownBcf,
+    drawdownBcf: round(drawdownBcf, 2),
+    storageDate: released.date,
+    storageReleaseAt: released.releasedAt,
+    releaseCalendarStatus: 'versioned',
+  }
 }
 
 function volatilityDirection(days, date) {
   const index = days.findIndex((day) => day.date === date)
   if (index < 2) return { direction: 0 }
+  const contract = WINTER_IMPLEMENTATION.volatilityConfirmation
   const returns = []
-  for (let cursor = Math.max(1, index - 41); cursor < index - 1; cursor += 1) returns.push(((days[cursor].gasClose - days[cursor - 1].gasClose) / days[cursor - 1].gasClose) * 100)
+  for (let cursor = Math.max(1, index - contract.lookbackSessions - 1); cursor < index - 1; cursor += 1) returns.push(((days[cursor].gasClose - days[cursor - 1].gasClose) / days[cursor - 1].gasClose) * 100)
   const previousReturnPct = ((days[index - 1].gasClose - days[index - 2].gasClose) / days[index - 2].gasClose) * 100
   const volatilityPct = std(returns)
   const reversalZ = volatilityPct ? previousReturnPct / volatilityPct : 0
-  const qualifies = volatilityPct >= 2.5 && volatilityPct <= 6 && Math.abs(reversalZ) >= 0.8
+  const qualifies = volatilityPct >= contract.minimumVolatilityPct && volatilityPct <= contract.maximumVolatilityPct && Math.abs(reversalZ) >= contract.minimumReversalZ
   return { direction: qualifies ? -Math.sign(previousReturnPct) : 0, previousReturnPct: round(previousReturnPct), volatilityPct: round(volatilityPct), reversalZ: round(reversalZ), qualifies }
 }
 
 function winterWeatherResolution(forecastRows, actualWeatherRows, fadeRow, fadePosition, entryDate, standalone) {
   if (!fadeRow || fadePosition === 0) return { position: fadePosition, action: 'no-reversion', scale: 1 }
-  const actual = fadeRow.targetDate < entryDate
+  const contract = WINTER_IMPLEMENTATION.weatherResolution
+  const actual = nasaPowerActualAvailableAtOpen(fadeRow.targetDate, entryDate)
     ? actualWeatherRows.find((row) => row.date === fadeRow.targetDate && Number.isFinite(numberFrom(row.weightedAnomalyF, Number.NaN)))
     : null
-  const eligible = actual ? [] : forecastRows.filter((row) => ['gfs', 'gefs-mean'].includes(row.sourceId) && row.leadDays >= 1 && row.leadDays <= 3 && row.targetDate === fadeRow.targetDate && row.issueDate <= entryDate)
+  const eligible = actual ? [] : forecastRows.filter((row) => contract.sourceIds.includes(row.sourceId) && row.leadDays >= contract.minimumLeadDays && row.leadDays <= contract.maximumLeadDays && row.targetDate === fadeRow.targetDate && row.issueDate <= entryDate)
   const latestIssue = actual ? fadeRow.targetDate : eligible.map((row) => row.issueDate).sort().at(-1)
   const closeRows = actual ? [] : eligible.filter((row) => row.issueDate === latestIssue)
   if (!actual && !closeRows.length) return { position: fadePosition, action: 'missing-kept', scale: 1 }
@@ -272,11 +318,22 @@ function winterWeatherResolution(forecastRows, actualWeatherRows, fadeRow, fadeP
   const weatherGasDirection = shiftF < 0 ? 1 : shiftF > 0 ? -1 : 0
   const same = weatherGasDirection !== 0 && weatherGasDirection === Math.sign(fadePosition)
   const adverse = weatherGasDirection !== 0 && weatherGasDirection === -Math.sign(fadePosition)
-  if (standalone && adverse) {
+  if (standalone && adverse && contract.dropAdverseStandalone) {
     return { position: 0, action: 'standalone-adverse-dropped', scale: 0, source: actual ? 'actual' : 'close-forecast', issueDate: latestIssue, resolutionAnomalyF: round(resolutionAnomalyF, 3), shiftF: round(shiftF, 3) }
   }
-  const scale = same ? clamp(0.75 + Math.abs(shiftF) / 8, 0.75, 1.25)
-    : adverse ? clamp(0.9 - Math.abs(shiftF) / 10, 0.45, 0.9) : 0.85
+  const scale = same
+    ? clamp(
+        contract.sameDirectionBaseScale + Math.abs(shiftF) / contract.sameDirectionShiftDivisor,
+        contract.sameDirectionMinimumScale,
+        contract.sameDirectionMaximumScale,
+      )
+    : adverse
+      ? clamp(
+          contract.adverseBaseScale - Math.abs(shiftF) / contract.adverseShiftDivisor,
+          contract.adverseMinimumScale,
+          contract.adverseMaximumScale,
+        )
+      : contract.neutralScale
   return {
     position: fadePosition * scale,
     action: same ? 'confirm-scaled' : adverse ? 'adverse-shrunk' : 'neutral-shrunk',
@@ -284,15 +341,25 @@ function winterWeatherResolution(forecastRows, actualWeatherRows, fadeRow, fadeP
   }
 }
 
-function summerStorageDeficit(storageRows, date) {
-  const cutoff = addDays(date, -7)
-  const rows = storageRows.map((row) => ({ ...row, value: numberFrom(row.storageBcf) })).filter((row) => row.date <= cutoff && row.value > 0).sort((a, b) => a.date.localeCompare(b.date))
-  const latest = rows.at(-1)
-  if (!latest) return false
+function summerStorageContext(storageRows, date) {
+  const latest = latestStorageAvailableAtOpen(storageRows, date)
+  if (!latest) {
+    return {
+      summerStorageDeficit: false,
+      storageDate: '',
+      storageReleaseAt: '',
+      releaseCalendarStatus: 'versioned',
+    }
+  }
   const day = Math.floor((Date.parse(latest.date) - Date.parse(`${latest.date.slice(0, 4)}-01-01`)) / 86400000)
-  const peers = rows.filter((row) => Number(row.date.slice(0, 4)) < Number(latest.date.slice(0, 4)) && Number(row.date.slice(0, 4)) >= Number(latest.date.slice(0, 4)) - 5)
+  const peers = storageRows.filter((row) => Number(row.date.slice(0, 4)) < Number(latest.date.slice(0, 4)) && Number(row.date.slice(0, 4)) >= Number(latest.date.slice(0, 4)) - SUMMER_IMPLEMENTATION.storageSeasonalLookbackYears)
     .filter((row) => Math.floor((Date.parse(row.date) - Date.parse(`${row.date.slice(0, 4)}-01-01`)) / 86400000 / 7) === Math.floor(day / 7))
-  return peers.length >= 3 && latest.value <= mean(peers.map((row) => row.value))
+  return {
+    summerStorageDeficit: peers.length >= 3 && latest.value <= mean(peers.map((row) => row.value)),
+    storageDate: latest.date,
+    storageReleaseAt: latest.releasedAt,
+    releaseCalendarStatus: 'versioned',
+  }
 }
 
 const scheduleCache = new WeakMap()
@@ -304,11 +371,13 @@ function preparedSchedules(forecastRows, marketDays, storageRows) {
   if (!storageCache) { storageCache = new WeakMap(); marketCache.set(marketDays, storageCache) }
   let prepared = storageCache.get(storageRows)
   if (prepared) return prepared
-  const days = marketDays.map((day) => ({ ...day, summerStorageDeficit: summerStorageDeficit(storageRows, day.date) }))
+  const releasedStorageRows = versionedStorageRows(storageRows)
+  const days = marketDays.map((day) => ({ ...day, ...summerStorageContext(releasedStorageRows, day.date) }))
   const summerRows = forecastRows.filter((row) => Number(row.targetDate.slice(5, 7)) >= 5 && Number(row.targetDate.slice(5, 7)) <= 9 && row.leadDays === 7)
   const winterRows = forecastRows.filter((row) => [11, 12, 1, 2, 3].includes(Number(row.issueDate.slice(5, 7))) && row.leadDays >= 7 && row.leadDays <= 10)
   prepared = {
     days,
+    releasedStorageRows,
     summer: schedule(days, signalsFor(summerRows, SUMMER, 'summer'), SUMMER, 'summer'),
     follow: schedule(days, signalsFor(winterRows, WINTER_FOLLOW, 'winter'), WINTER_FOLLOW, 'winter'),
     fade: schedule(days, signalsFor(winterRows, WINTER_FADE, 'winter'), WINTER_FADE, 'winter'),
@@ -325,12 +394,21 @@ export function inferAllYearTarget({ forecastRows, actualWeatherRows = [], marke
   const follow = prepared.follow.get(targetDate) ?? null
   const fade = prepared.fade.get(targetDate) ?? null
   let component = 'index-fallback'; let position = 0; let selected = null; const diagnostics = {}
+  const targetDay = days.find((day) => day.date === targetDate)
+  if (targetDay && month >= 5 && month <= 9) {
+    diagnostics.storage = {
+      storageDate: targetDay.storageDate,
+      storageReleaseAt: targetDay.storageReleaseAt,
+      storageDeficit: targetDay.summerStorageDeficit,
+      releaseCalendarStatus: targetDay.releaseCalendarStatus,
+    }
+  }
   if (summer) {
     component = 'ngas-summer-alpha'; position = summer.position; selected = summer
   } else if ([11, 12, 1, 2, 3].includes(month)) {
     const followRow = follow?.windowId === 'weather-follow' ? follow : null
     const fadeRow = fade?.windowId === 'weather-reversion' ? fade : null
-    const storage = winterStorageAllowed(storageRows, targetDate)
+    const storage = winterStorageAllowed(prepared.releasedStorageRows, targetDate)
     const vol = volatilityDirection(days, targetDate)
     diagnostics.storage = storage; diagnostics.volatility = vol
     diagnostics.rawRows = {
@@ -356,15 +434,28 @@ export function inferAllYearTarget({ forecastRows, actualWeatherRows = [], marke
     fadePosition = resolution.position
     if (resolution.scale === 0 && followRow?.thesisKind !== 'cold-long') followPosition = 0
     diagnostics.weatherResolution = resolution
-    position = clamp(followPosition + fadePosition, -0.45, 0.45)
+    position = clamp(followPosition + fadePosition, -WINTER_SELECTION.overlayCap, WINTER_SELECTION.overlayCap)
     if (followRow && followPosition) {
       const demand = numberFrom(followRow.heatingDemandAnomalyF)
       const confirms = Math.sign(demand) === (followRow.thesisKind === 'cold-long' ? 1 : -1)
-      const scale = !confirms ? 0 : Math.abs(demand) >= 12 ? 1.25 : Math.abs(demand) >= 8 ? 1.1 : Math.abs(demand) >= 4 ? 1 : 0.65
-      position = clamp(position - followPosition + followPosition * scale, -0.45, 0.45)
+      const demandContract = WINTER_IMPLEMENTATION.heatingDemand
+      const scale = !confirms ? 0
+        : Math.abs(demand) >= demandContract.strongAnomalyF ? demandContract.strongScale
+          : Math.abs(demand) >= demandContract.moderateAnomalyF ? demandContract.moderateScale
+            : Math.abs(demand) >= demandContract.minimumAnomalyF ? demandContract.minimumScale
+              : demandContract.subMinimumScale
+      position = clamp(
+        position - followPosition + followPosition * scale,
+        -WINTER_SELECTION.overlayCap,
+        WINTER_SELECTION.overlayCap,
+      )
       diagnostics.heatingDemand = { anomalyF: round(demand), scale }
     }
-    position = clamp(position * 1.25, -0.5625, 0.5625)
+    position = clamp(
+      position * WINTER_SELECTION.overlayRiskMultiplier,
+      -WINTER_SELECTION.effectiveOverlayCap,
+      WINTER_SELECTION.effectiveOverlayCap,
+    )
     if (position) { component = 'ngas-winter-alpha'; selected = Math.abs(followPosition) >= Math.abs(fadePosition) ? followRow : fadeRow }
   }
   return {
