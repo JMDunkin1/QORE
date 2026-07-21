@@ -17,6 +17,27 @@ import {
   eiaStorageReleaseAt,
   loadEiaStorageReleaseCalendar,
 } from './lib/eia-release-time.mjs'
+import {
+  downsideDeviation,
+  laggedRollingAnnualizedVolPct,
+  volatilityTargetedFraction,
+} from './lib/qore-research-statistics.mjs'
+import {
+  SUMMER_FORECAST_LOCATION_UNIVERSE,
+  summarizeSummerForecastCoverage,
+  summarizeSummerForecastLocationBreadth,
+} from './lib/qore-summer-forecast-coverage.mjs'
+import {
+  SUMMER_SHADOW_CHALLENGER,
+  SUMMER_SHADOW_CHALLENGER_DIGEST_SHA256,
+  SUMMER_SHADOW_COMPARATOR_COMPONENT_CONTRACT,
+  reversionMoveScale,
+  summerShadowCandidate,
+} from './lib/qore-summer-shadow-challenger.mjs'
+import {
+  COMPONENT_ARTIFACT_SCHEMA_VERSION,
+  buildComponentSelectedTradesBinding,
+} from './lib/qore-component-artifact.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -290,6 +311,7 @@ function locationBreadthByScore(filePath) {
         coolingDemandWeight: 0,
         coolingDemandSolidWeight: 0,
         coolingDemandExtremeCount: 0,
+        locationRows: [],
       }
     const weight = numberFrom(row.weight)
     const anomalyF = numberFrom(row.forecastAnomalyF, Number.NaN)
@@ -305,6 +327,7 @@ function locationBreadthByScore(filePath) {
       if (coolingDemand >= COOLING_DEMAND_SOLID_ANOMALY_F) current.coolingDemandSolidWeight += weight
       if (coolingDemand >= COOLING_DEMAND_EXTREME_ANOMALY_F) current.coolingDemandExtremeCount += 1
     }
+    current.locationRows.push({ locationId: row.locationId, weight: row.weight })
     grouped.set(key, current)
   }
 
@@ -319,6 +342,8 @@ function locationBreadthByScore(filePath) {
         coolingDemandAnomalyF: value.coolingDemandWeight ? value.coolingDemandWeightedSum / value.coolingDemandWeight : 0,
         coolingDemandCoveragePct: value.coolingDemandWeight ? value.coolingDemandSolidWeight / value.coolingDemandWeight : 0,
         coolingDemandExtremeCount: value.coolingDemandExtremeCount,
+        locationRows: value.locationRows,
+        locationBreadth: summarizeSummerForecastLocationBreadth(value.locationRows),
       },
     ]),
   )
@@ -341,6 +366,9 @@ function loadForecastScores() {
       const leadDays = numberFrom(row.leadDays)
       if (row.windowId !== 'rumor' || leadDays !== 7 || !isCoolingSeason(row.targetDate)) continue
       const warm = breadth.get(scoreKey(row))
+      const weightedAnomalyF = numberFrom(row.weightedAnomalyF, Number.NaN)
+      const sampledWeight = numberFrom(row.sampledWeight, Number.NaN)
+      const locationCount = numberFrom(row.locationCount, Number.NaN)
       scores.push({
         sourceId: calendar.id,
         sourceLabel: calendar.label,
@@ -351,7 +379,7 @@ function loadForecastScores() {
         leadDays,
         windowId: row.windowId,
         modelId: row.modelId,
-        weightedAnomalyF: numberFrom(row.weightedAnomalyF),
+        weightedAnomalyF: Number.isFinite(weightedAnomalyF) ? weightedAnomalyF : 0,
         coldCoveragePct: warm?.coldCoveragePct ?? 0,
         coldExtremeCount: warm?.coldExtremeCount ?? 0,
         warmCoveragePct: warm?.warmCoveragePct ?? 0,
@@ -359,8 +387,17 @@ function loadForecastScores() {
         coolingDemandAnomalyF: warm?.coolingDemandAnomalyF ?? 0,
         coolingDemandCoveragePct: warm?.coolingDemandCoveragePct ?? 0,
         coolingDemandExtremeCount: warm?.coolingDemandExtremeCount ?? 0,
-        sampledWeight: numberFrom(row.sampledWeight),
-        locationCount: numberFrom(row.locationCount),
+        sampledWeight: Number.isFinite(sampledWeight) ? sampledWeight : 0,
+        locationCount: Number.isFinite(locationCount) ? locationCount : 0,
+        locationRows: warm?.locationRows ?? [],
+        coverageInputComplete:
+          warm !== undefined &&
+          warm.locationBreadth.complete &&
+          Number.isFinite(weightedAnomalyF) &&
+          Number.isFinite(sampledWeight) &&
+          Math.abs(sampledWeight - warm.locationBreadth.expectedSampledWeight) < 1e-9 &&
+          Number.isFinite(locationCount) &&
+          locationCount === SUMMER_FORECAST_LOCATION_UNIVERSE.locations.length,
       })
     }
   }
@@ -572,11 +609,6 @@ function marketReturnByDate(rows) {
   return result
 }
 
-function rollingVolPct(rows, index, lookback = 20) {
-  const returns = rows.slice(Math.max(0, index - lookback + 1), index + 1).map((row) => row.signalReturnPct / 100)
-  return std(returns) * Math.sqrt(TRADING_DAYS) * 100
-}
-
 function loadAlignedMarketDays() {
   const signalRows = loadMarketRows(GAS_SIGNAL_FILE)
   const indexRows = loadMarketRows(INDEX_MARKET_FILE)
@@ -609,9 +641,13 @@ function loadAlignedMarketDays() {
     }
   })
 
+  const signalReturnsPct = rows.map((row) => row.signalReturnPct)
   return rows.map((row, index) => ({
     ...row,
-    signalVolAnnualPct: round(rollingVolPct(rows, index), 4),
+    signalVolAnnualPct: round(
+      laggedRollingAnnualizedVolPct(signalReturnsPct, index, 20, TRADING_DAYS),
+      4,
+    ),
   }))
 }
 
@@ -752,8 +788,12 @@ function scaledFraction(baseFraction, confidence, mode, day, targetVolPct) {
   if (mode === 'fixed') return baseFraction
   const confidenceScale = confidence
   if (mode === 'confidence-scaled') return baseFraction * confidenceScale
-  const volScale = day.signalVolAnnualPct > 0 ? clamp(targetVolPct / day.signalVolAnnualPct, 0.35, 1.25) : 1
-  return baseFraction * confidenceScale * volScale
+  return volatilityTargetedFraction({
+    annualizedVolPct: day.signalVolAnnualPct,
+    baseFraction,
+    confidence: confidenceScale,
+    targetVolPct,
+  })
 }
 
 function heatStorageAdjustedFraction(baseFraction, signal, day) {
@@ -939,6 +979,8 @@ function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
     const realizedMovePct = priorClose && exitClose ? ((exitClose - priorClose) / priorClose) * 100 : 0
     if (Math.abs(realizedMovePct) < candidate.minRealizedMovePct) continue
     if (Math.sign(realizedMovePct) !== signal.direction) continue
+    const moveScale = reversionMoveScale(realizedMovePct, candidate)
+    if (moveScale <= 0) continue
 
     const reversionEntryIndex = followEndIndex + 1
     if (signal.thesisKind === 'summer-heat-long' && days[reversionEntryIndex]?.storageDeficitHeatTilt) continue
@@ -952,7 +994,7 @@ function scheduleOverlay(days, signals, candidate, weatherResolutionData) {
         candidate.volTargetPct,
       )
       const demandReversionFraction = demandAdjustedReversionFraction(baseReversionFraction, signal, candidate)
-      const rawReversionPosition = -signal.direction * demandReversionFraction
+      const rawReversionPosition = -signal.direction * demandReversionFraction * moveScale
       const weatherResolution = weatherResolutionDecision(signal, rawReversionPosition, days[index].date, candidate, weatherResolutionData)
       const reversionPosition = rawReversionPosition * weatherResolution.scale
       if (weatherResolution.action && !['none', 'missing-kept'].includes(weatherResolution.action)) weatherResolutionAdjustedRows += 1
@@ -1188,7 +1230,6 @@ function metricsFromCurve(curve, tradeCount) {
   }
 
   const returns = curve.map((point) => point.dailyPnlPct / 100)
-  const negativeReturns = returns.filter((value) => value < 0)
   let rebasedEquity = 1
   let rebasedPeak = 1
   let maxDrawdown = 0
@@ -1201,7 +1242,7 @@ function metricsFromCurve(curve, tradeCount) {
   const years = Math.max(daysBetween(curve[0].date, curve.at(-1).date) / 365.25, 1 / 365.25)
   const annualReturn = (1 + totalReturn) ** (1 / years) - 1
   const annualVol = std(returns) * Math.sqrt(TRADING_DAYS)
-  const downsideVol = std(negativeReturns) * Math.sqrt(TRADING_DAYS)
+  const downsideVol = downsideDeviation(returns) * Math.sqrt(TRADING_DAYS)
   const gains = returns.filter((value) => value > 0).reduce((sum, value) => sum + value, 0)
   const losses = Math.abs(returns.filter((value) => value < 0).reduce((sum, value) => sum + value, 0))
   const var95 = percentile(returns, 0.05)
@@ -1710,6 +1751,13 @@ function reversionDemandModeDescription(mode) {
 function buildReport(summary) {
   const selected = summary.selected
   const topCandidates = summary.candidates.slice(0, 12)
+  const forecastCoverage = summary.validation.forecastCoverage
+  const forecastCoverageSources = forecastCoverage.sources
+    .map(
+      (source) =>
+        `${source.sourceId}: ${source.completeIssueDateCount}/${source.requiredIssueDateCount} complete, ${source.missingIssueDateCount} missing`,
+    )
+    .join('; ')
 
   return `# NGAS Summer Alpha Lane
 
@@ -1790,6 +1838,9 @@ Train/validation side gates used for selection:
 - Single-candidate p-value: ${summary.validation.realityCheck.singleCandidatePValue}.
 - Selection-adjusted p-value: ${summary.validation.realityCheck.selectionAdjustedPValue ?? 'n/a'} across ${summary.validation.realityCheck.candidateFamilySize} near-top eligible candidates.
 - Bootstrap setup: ${summary.validation.realityCheck.iterations} iterations, ${summary.validation.realityCheck.blockLength}-session circular blocks.
+- Forecast-coverage promotion gate: ${forecastCoverage.complete ? 'pass' : 'fail'} (${forecastCoverage.status}); ${forecastCoverage.fullyCoveredIssueDateCount}/${forecastCoverage.requiredIssueDateCount} required issue dates are complete across every active source.
+- Forecast coverage by source: ${forecastCoverageSources}.
+- Missing forecast issue span: ${forecastCoverage.firstMissingIssueDate ?? 'none'} through ${forecastCoverage.lastMissingIssueDate ?? 'none'}; missing periods remain index fallback in the research ledger and cannot qualify the component for promotion.
 
 ## Top Train/Validation-Ranked Candidates
 
@@ -1804,7 +1855,9 @@ ${topCandidates
 
 ## Verdict
 
-Load this as an active needs-more-validation strategy, not broker-ready. It uses NG=F only for the Summer price-confirmation signal and calculates every gas-sleeve return with executable UNG history under the frozen causal-open cost contract. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
+${summary.promotion.eligible
+  ? 'The component promotion gates pass, but this remains a research strategy and is not independently broker-routable.'
+  : 'Keep this component blocked from promotion. Missing required forecast inputs cannot be interpreted as evidence that an index fallback was the strategy target.'} It uses NG=F only for the Summer price-confirmation signal and calculates every gas-sleeve return with executable UNG history under the frozen causal-open cost contract. The cool-short side remains diagnostic until there are enough confirmed cooling-season cool events to validate it without overfitting.
 `
 }
 
@@ -1828,10 +1881,16 @@ function main() {
     ...sourceSet,
     sourceIds: sourceSet.sourceIds.filter((sourceId) => presentSources.has(sourceId)),
   })).filter((sourceSet) => sourceSet.sourceIds.length)
+  const activeSourceSetDefinition = SOURCE_SETS.find((sourceSet) => sourceSet.id === ACTIVE_FAMILY_SOURCE_SET_ID)
   const activeSourceSet = sourceSets.find((sourceSet) => sourceSet.id === ACTIVE_FAMILY_SOURCE_SET_ID)
-  if (!activeSourceSet) {
+  if (!activeSourceSetDefinition || !activeSourceSet) {
     throw new Error(`Active Summer Alpha source set ${ACTIVE_FAMILY_SOURCE_SET_ID} is unavailable in the current forecast data.`)
   }
+  const forecastCoverage = summarizeSummerForecastCoverage({
+    scores,
+    requiredSourceIds: activeSourceSetDefinition.sourceIds,
+    marketEndDate: days.at(-1)?.date,
+  })
 
   const activeFamilyBase = {
     sourceSetId: activeSourceSet.id,
@@ -1903,9 +1962,22 @@ function main() {
         { keepRows: true },
       ),
     )
+  const shadowCandidateDefinition = summerShadowCandidate(
+    SUMMER_SHADOW_COMPARATOR_COMPONENT_CONTRACT.selected,
+  )
+  const shadowEvaluation = summarizeCandidate(
+    days,
+    rowsByIssueDate,
+    indexBenchmarks,
+    shadowCandidateDefinition,
+    reliability.weights,
+    signalCache,
+    weatherResolutionData,
+  )
   const summaryCandidates = candidates.map(formatCandidateRow)
+  const statisticallyEligibleCandidateCount = candidates.filter((candidate) => candidate.eligible).length
   const summary = {
-    artifactSchemaVersion: 2,
+    artifactSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     strategyId: STRATEGY_ID,
     data: {
@@ -2003,17 +2075,48 @@ function main() {
       eventRows: undefined,
       curve: undefined,
     },
+    researchOnly: {
+      prospectiveShadowChallenger: {
+        ...SUMMER_SHADOW_CHALLENGER,
+        contractDigestSha256: SUMMER_SHADOW_CHALLENGER_DIGEST_SHA256,
+        comparator: {
+          candidateId: selected.candidateId,
+          selectedContractUnchanged: true,
+        },
+        historicalEvaluation: {
+          evidenceStatus: SUMMER_SHADOW_CHALLENGER.evaluation.historicalEvidenceStatus,
+          candidateId: SUMMER_SHADOW_CHALLENGER.challengerCandidateId,
+          eligibleDiagnostic: shadowEvaluation.eligible,
+          trainMetrics: shadowEvaluation.trainMetrics,
+          validationMetrics: shadowEvaluation.validationMetrics,
+          holdoutMetrics: shadowEvaluation.holdoutMetrics,
+          allMetrics: shadowEvaluation.allMetrics,
+          splitEdges: shadowEvaluation.splitEdges,
+          legCounts: shadowEvaluation.legCounts,
+          signalCount: shadowEvaluation.signalCount,
+          overlayDayCount: shadowEvaluation.overlayDayCount,
+        },
+      },
+    },
     search: {
       candidateCount: candidates.length,
-      eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
+      eligibleCandidateCount: statisticallyEligibleCandidateCount,
       weatherResolutionVariantPoolSize: WEATHER_RESOLUTION_VARIANT_POOL_SIZE,
       weatherResolutionComparison: 'current active Summer Alpha family with no close-in fade check versus graded close-in fade check',
       selectionUsedHoldout: false,
+    },
+    promotion: {
+      eligible: statisticallyEligibleCandidateCount > 0 && forecastCoverage.promotionEligible,
+      gates: {
+        statisticallyEligibleCandidate: statisticallyEligibleCandidateCount > 0,
+        forecastCoverageComplete: forecastCoverage.promotionEligible,
+      },
     },
     validation: {
       sideMetrics: sideMetrics(selected.rows),
       yearMetrics: yearMetrics(selected.curve),
       realityCheck: blockBootstrapRealityCheck(selected.curve, realityCheckFamily),
+      forecastCoverage,
     },
     outputFiles: {
       selectedTrades: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'selected-trades.csv')),
@@ -2024,7 +2127,7 @@ function main() {
     candidates: summaryCandidates.slice(0, 75),
   }
 
-  writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), rowsToCsv(selected.rows, [
+  const selectedTradesText = rowsToCsv(selected.rows, [
     'strategyId',
     'signalDate',
     'issueDate',
@@ -2107,7 +2210,16 @@ function main() {
     'weatherResolutionShiftF',
     'weatherResolutionAction',
     'weatherResolutionScale',
-  ]))
+  ])
+  summary.data.selectedTradesArtifact = buildComponentSelectedTradesBinding({
+    repoRoot: REPO_ROOT,
+    file: summary.outputFiles.selectedTrades,
+    raw: selectedTradesText,
+    rows: selected.rows,
+    executionContract: EXECUTION_CONTRACT,
+    label: 'NGAS Summer Alpha',
+  })
+  writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), selectedTradesText)
 
   writeText(path.join(OUTPUT_DIR, 'selected-events.csv'), rowsToCsv(selected.eventRows, [
     'leg',
@@ -2229,6 +2341,8 @@ function main() {
     edge: summary.selected.splitEdges,
     legCounts: summary.selected.legCounts,
     realityCheck: summary.validation.realityCheck,
+    forecastCoverage: summary.validation.forecastCoverage,
+    promotion: summary.promotion,
     outputFiles: summary.outputFiles,
   }, null, 2))
 }

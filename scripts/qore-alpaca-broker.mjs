@@ -9,6 +9,11 @@ import { inspectGitWorkingTree } from './lib/qore-git-state.mjs'
 import { assertQoreExecutionHost } from './lib/qore-execution-host.mjs'
 import { liveInferenceProvenanceBlocks } from './lib/qore-live-inference-provenance.mjs'
 import { validateIndexBasketConfig } from './lib/qore-index-basket.mjs'
+import {
+  brokerExecutionProfileDigestSha256,
+  loadReviewedBrokerExecutionProfile,
+  resolveBrokerExecutionProfile,
+} from './lib/qore-broker-execution-profile.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
 
@@ -41,63 +46,38 @@ const bootstrapRiskLedger = args.has('--bootstrap-risk-ledger')
 const jsonOutput = args.has('--json')
 const once = args.has('--once') || args.has('--reconcile') || (!loop && !statusOnly)
 const loopIntervalMs = positiveNumber(process.env.QORE_BROKER_RECONCILE_INTERVAL_MS, 60_000)
-const allocationPct = boundedNumber(process.env.QORE_LIVE_ACCOUNT_ALLOCATION_PCT, 100, 0, 100)
-const minOrderUsd = positiveNumber(process.env.QORE_LIVE_MIN_ORDER_USD, 10)
-const rebalanceDeadbandPct = boundedNumber(process.env.QORE_LIVE_REBALANCE_DEADBAND_PCT, 0.25, 0, 100)
-const minCashBufferPct = boundedNumber(process.env.QORE_LIVE_MIN_CASH_BUFFER_PCT, 2, 0, 100)
-const maxOrderUsd = optionalPositiveNumber(process.env.QORE_LIVE_MAX_ORDER_USD)
-const fractionalOrders = !falsey(process.env.QORE_ALPACA_FRACTIONAL_ORDERS)
-const allowShorts = truthy(process.env.QORE_ALPACA_ALLOW_SHORTS)
-const allowHardToBorrow = truthy(process.env.QORE_ALPACA_ALLOW_HARD_TO_BORROW)
+let reviewedBrokerExecution
+let resolvedBrokerExecutionProfile
+let resolvedBrokerExecutionProfileDigestSha256
+let allocationPct
+let minOrderUsd
+let rebalanceDeadbandPct
+let minCashBufferPct
+let maxOrderUsd
+let fractionalOrders
+let allowShorts
+let allowHardToBorrow
 const allowStaleSignal = truthy(process.env.QORE_ALLOW_STALE_SIGNAL)
 const allowOutsideMarketQueue = truthy(process.env.QORE_ALLOW_OUTSIDE_MARKET_QUEUE)
-const replaceOpenOrders = truthy(process.env.QORE_ALPACA_REPLACE_OPEN_ORDERS)
-const timeInForce = process.env.QORE_ALPACA_TIME_IN_FORCE ?? 'day'
-const orderType = process.env.QORE_ALPACA_ORDER_TYPE ?? 'market'
+let replaceOpenOrders
+let timeInForce
+let orderType
 const alpacaDataBaseUrl = (process.env.QORE_ALPACA_DATA_BASE_URL ?? 'https://data.alpaca.markets').replace(/\/$/, '')
-const alpacaMarketDataFeed = process.env.QORE_ALPACA_MARKET_DATA_FEED ?? 'iex'
-const alpacaRequestTimeoutMs = positiveNumber(process.env.QORE_ALPACA_REQUEST_TIMEOUT_MS, 15_000)
-const maxQuoteAgeMinutes = positiveNumber(process.env.QORE_LIVE_MAX_QUOTE_AGE_MINUTES, 5)
-const maxQuoteFutureSkewSeconds = positiveNumber(process.env.QORE_LIVE_MAX_QUOTE_FUTURE_SKEW_SECONDS, 5)
-const maxClockAgeSeconds = positiveNumber(process.env.QORE_ALPACA_CLOCK_MAX_AGE_SECONDS, 30)
-const maxClockFutureSkewSeconds = positiveNumber(process.env.QORE_ALPACA_CLOCK_MAX_FUTURE_SKEW_SECONDS, 5)
-const maxRiskSnapshotAgeSeconds = positiveNumber(process.env.QORE_LIVE_MAX_RISK_SNAPSHOT_AGE_SECONDS, 15 * 60)
-const maxRiskSnapshotFutureSkewSeconds = positiveNumber(process.env.QORE_LIVE_MAX_RISK_SNAPSHOT_FUTURE_SKEW_SECONDS, 30)
-const maxDailyLossPct = positiveNumber(process.env.QORE_LIVE_MAX_DAILY_LOSS_PCT, 12)
-const maxTrailingDrawdownPct = positiveNumber(process.env.QORE_LIVE_MAX_TRAILING_DRAWDOWN_PCT, 25)
-const maxGrossExposurePct = positiveNumber(process.env.QORE_LIVE_MAX_GROSS_EXPOSURE_PCT, 100)
+let alpacaMarketDataFeed
+let alpacaRequestTimeoutMs
+let maxQuoteAgeMinutes
+let maxQuoteFutureSkewSeconds
+let maxClockAgeSeconds
+let maxClockFutureSkewSeconds
+let maxRiskSnapshotAgeSeconds
+let maxRiskSnapshotFutureSkewSeconds
+let maxDailyLossPct
+let maxTrailingDrawdownPct
+let maxGrossExposurePct
 const alpacaPaperBaseUrl = 'https://paper-api.alpaca.markets'
 const alpacaLiveBaseUrl = 'https://api.alpaca.markets'
 
-const alpacaLiveRiskPolicy = {
-  id: 'alpaca-live-etf-reconciler-v1',
-  allowedInstruments: new Set(['UNG', 'VOO', 'QQQM']),
-  maxConfidence: 1,
-  minConfidence: 0,
-  maxSignalAgeDays: 1,
-  maxWeatherIssueAgeHours: 36,
-  maxMarketDataAgeMinutes: 1440,
-  maxStorageDataAgeDays: 10,
-  maxAllowedSpreadBps: 75,
-  maxQuoteAgeMinutes,
-  maxQuoteFutureSkewSeconds,
-  maxClockAgeSeconds,
-  maxClockFutureSkewSeconds,
-  maxRiskSnapshotAgeSeconds,
-  maxRiskSnapshotFutureSkewSeconds,
-  maxDailyLossPct,
-  maxTrailingDrawdownPct,
-  maxGrossExposurePct,
-  minReferencePriceUsd: 1,
-  minWeatherSourceCount: 2,
-  minWeatherCoveragePct: 70,
-  minWeatherDirectionalAccuracyPct: 52,
-  requireFreshWeatherContext: true,
-  requireStorageContext: true,
-  requireMarketContext: true,
-  requireAccountContext: true,
-  requireOperatorContext: true,
-}
+let alpacaLiveRiskPolicy
 
 const alpacaConfig = alpacaConnectionConfig(brokerMode)
 const exposureSafetyAmounts = Symbol('qore-exposure-safety-amounts')
@@ -138,10 +118,37 @@ function optionalPositiveNumber(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function boundedNumber(value, fallback, min, max) {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.max(min, Math.min(max, parsed))
+function initializeBrokerExecutionProfile() {
+  reviewedBrokerExecution = loadReviewedBrokerExecutionProfile(repoDir)
+  resolvedBrokerExecutionProfile = resolveBrokerExecutionProfile(reviewedBrokerExecution.profile)
+  resolvedBrokerExecutionProfileDigestSha256 = brokerExecutionProfileDigestSha256(resolvedBrokerExecutionProfile)
+  allocationPct = resolvedBrokerExecutionProfile.sizing.accountAllocationPct
+  minOrderUsd = resolvedBrokerExecutionProfile.sizing.minOrderUsd
+  rebalanceDeadbandPct = resolvedBrokerExecutionProfile.sizing.rebalanceDeadbandPct
+  minCashBufferPct = resolvedBrokerExecutionProfile.sizing.minCashBufferPct
+  maxOrderUsd = resolvedBrokerExecutionProfile.sizing.maxOrderUsd
+  fractionalOrders = resolvedBrokerExecutionProfile.orders.fractionalNonShortOrders
+  allowShorts = resolvedBrokerExecutionProfile.orders.shortExposureEnabled
+  allowHardToBorrow = resolvedBrokerExecutionProfile.orders.hardToBorrowAllowed
+  replaceOpenOrders = resolvedBrokerExecutionProfile.orders.replaceOpenOrders
+  timeInForce = resolvedBrokerExecutionProfile.orders.timeInForce
+  orderType = resolvedBrokerExecutionProfile.orders.type
+  alpacaMarketDataFeed = resolvedBrokerExecutionProfile.venue.marketDataFeed
+  alpacaRequestTimeoutMs = resolvedBrokerExecutionProfile.transport.requestTimeoutMs
+  maxQuoteAgeMinutes = resolvedBrokerExecutionProfile.risk.maxQuoteAgeMinutes
+  maxQuoteFutureSkewSeconds = resolvedBrokerExecutionProfile.risk.maxQuoteFutureSkewSeconds
+  maxClockAgeSeconds = resolvedBrokerExecutionProfile.risk.maxClockAgeSeconds
+  maxClockFutureSkewSeconds = resolvedBrokerExecutionProfile.risk.maxClockFutureSkewSeconds
+  maxRiskSnapshotAgeSeconds = resolvedBrokerExecutionProfile.risk.maxRiskSnapshotAgeSeconds
+  maxRiskSnapshotFutureSkewSeconds = resolvedBrokerExecutionProfile.risk.maxRiskSnapshotFutureSkewSeconds
+  maxDailyLossPct = resolvedBrokerExecutionProfile.risk.maxDailyLossPct
+  maxTrailingDrawdownPct = resolvedBrokerExecutionProfile.risk.maxTrailingDrawdownPct
+  maxGrossExposurePct = resolvedBrokerExecutionProfile.risk.maxGrossExposurePct
+  alpacaLiveRiskPolicy = {
+    id: resolvedBrokerExecutionProfile.implementationPolicyId,
+    allowedInstruments: new Set(resolvedBrokerExecutionProfile.universe.allowedSymbols),
+    ...resolvedBrokerExecutionProfile.risk,
+  }
 }
 
 function round(value, digits = 4) {
@@ -414,6 +421,13 @@ function localTestEndpointsConfirmed() {
   )
 }
 
+function reviewedArtifactOverridesConfigured() {
+  return Boolean(
+    process.env.QORE_VALIDATION_INTEGRITY_FILE
+    || process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE,
+  )
+}
+
 function assertAlpacaEndpointConfiguration() {
   if (localTestEndpointsConfirmed()) return
   const expectedTradingUrl = brokerMode === 'live' ? alpacaLiveBaseUrl : alpacaPaperBaseUrl
@@ -423,6 +437,24 @@ function assertAlpacaEndpointConfiguration() {
   }
   if (alpacaDataBaseUrl !== 'https://data.alpaca.markets') {
     throw new Error('Alpaca market data requires the exact endpoint https://data.alpaca.markets.')
+  }
+  if (reviewedArtifactOverridesConfigured()) {
+    throw new Error(
+      'Reviewed-artifact test overrides are restricted to explicitly confirmed loopback trading and market-data endpoints.',
+    )
+  }
+}
+
+function assertResolvedBrokerExecutionProfile() {
+  if (statusOnly || brokerMode === 'dry-run') return
+  if (
+    localTestEndpointsConfirmed()
+    && truthy(process.env.QORE_TEST_ALLOW_BROKER_PROFILE_DRIFT)
+  ) return
+  if (resolvedBrokerExecutionProfileDigestSha256 !== reviewedBrokerExecution.profileDigestSha256) {
+    throw new Error(
+      `Resolved broker execution profile ${resolvedBrokerExecutionProfileDigestSha256} does not match the reviewed profile ${reviewedBrokerExecution.profileDigestSha256}. Review and reseal the route before paper/live execution.`,
+    )
   }
 }
 
@@ -1590,6 +1622,7 @@ function liveStrategyArtifactBlocks(signalSnapshot) {
     return strategyArtifactBindingBlocks(
       signalSnapshot?.inference?.strategyArtifact,
       loadAllYearStrategyArtifact(repoDir),
+      { mode: brokerMode },
     )
   } catch (error) {
     return [`current reviewed strategy artifact is unavailable: ${error.message}`]
@@ -2703,6 +2736,8 @@ async function runCommand() {
       if (!statusOnly) {
         assertQoreExecutionHost({ allowLoopbackTest: localTestEndpointsConfirmed() })
       }
+      initializeBrokerExecutionProfile()
+      assertResolvedBrokerExecutionProfile()
       const result = statusOnly ? await statusOnce() : await reconcileOnce()
       printResult(result)
       if (resultShouldFailProcess(result)) process.exitCode = 1

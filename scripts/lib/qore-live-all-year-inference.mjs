@@ -8,6 +8,12 @@ import {
   liveAllYearImplementation,
   selectedContracts,
 } from './qore-live-contract.mjs'
+import {
+  SUMMER_SHADOW_CHALLENGER,
+  SUMMER_SHADOW_CHALLENGER_DIGEST_SHA256,
+  reversionMoveScale,
+  summerShadowCandidate,
+} from './qore-summer-shadow-challenger.mjs'
 
 export { selectedContracts }
 
@@ -212,6 +218,8 @@ function schedule(days, signals, candidate, season) {
     const move = priorClose && exitClose ? ((exitClose - priorClose) / priorClose) * 100 : 0
     if (Math.abs(move) < candidate.minRealizedMovePct) continue
     if (season === 'summer' && Math.sign(move) !== signal.direction) continue
+    const moveScale = season === 'summer' ? reversionMoveScale(move, candidate) : 1
+    if (moveScale <= 0) continue
     const reversionEntry = followEnd + 1
     if (season === 'summer' && isHeat && days[reversionEntry]?.summerStorageDeficit) continue
     for (let index = reversionEntry; index <= Math.min(days.length - 1, reversionEntry + candidate.reversionHoldDays - 1); index += 1) {
@@ -224,7 +232,9 @@ function schedule(days, signals, candidate, season) {
             ? Math.min(demand.solidMaximumReversionFraction, fraction + demand.solidReversionAdd)
             : Math.min(fraction, Math.max(demand.minimumReversionFraction, fraction - demand.lowReversionSubtract))
       }
-      const position = season === 'summer' ? -signal.direction * fraction : -Math.sign(move || signal.direction) * fraction
+      const position = season === 'summer'
+        ? -signal.direction * fraction * moveScale
+        : -Math.sign(move || signal.direction) * fraction
       put(index, { ...signal, position, windowId: 'weather-reversion', thesisKind: position > 0 ? 'reversion-long' : 'reversion-short', realizedMovePct: round(move), rank: signal.rank + 5 })
     }
   }
@@ -384,6 +394,50 @@ function preparedSchedules(forecastRows, marketDays, storageRows) {
   }
   storageCache.set(storageRows, prepared)
   return prepared
+}
+
+export function inferSummerShadowTarget({ forecastRows, marketDays, storageRows, targetDate }) {
+  const candidate = summerShadowCandidate(SUMMER)
+  const releasedStorageRows = versionedStorageRows(storageRows)
+  const days = marketDays.map((day) => ({ ...day, ...summerStorageContext(releasedStorageRows, day.date) }))
+  const summerRows = forecastRows.filter(
+    (row) => Number(row.targetDate.slice(5, 7)) >= 5
+      && Number(row.targetDate.slice(5, 7)) <= 9
+      && row.leadDays === 7,
+  )
+  const scheduled = schedule(days, signalsFor(summerRows, candidate, 'summer'), candidate, 'summer')
+  const selected = scheduled.get(targetDate) ?? null
+  const position = selected?.position ?? 0
+  const targetDay = days.find((day) => day.date === targetDate)
+  return {
+    strategyId: 'ngas-summer-shadow-challenger',
+    componentStrategyId: position ? 'research-only-summer-shadow' : 'index-fallback',
+    candidateId: SUMMER_SHADOW_CHALLENGER.challengerCandidateId,
+    challengerContractDigestSha256: SUMMER_SHADOW_CHALLENGER_DIGEST_SHA256,
+    executionEligible: false,
+    targetDate,
+    direction: position > 0 ? 'long' : position < 0 ? 'short' : 'flat',
+    gasPosition: round(position),
+    indexFraction: round(Math.max(0, 1 - Math.abs(position))),
+    cashFraction: 0,
+    signalDate: selected?.issueDate ?? targetDate,
+    confidence: selected?.confidence ?? 0,
+    windowId: selected?.windowId ?? 'index-fallback',
+    thesisKind: selected?.thesisKind ?? 'index-fallback',
+    sourceIds: selected?.sourceIds ?? [],
+    weightedAnomalyF: selected?.weightedAnomalyF ?? 0,
+    realizedMovePct: selected?.realizedMovePct ?? null,
+    diagnostics: {
+      storage: targetDay
+        ? {
+            storageDate: targetDay.storageDate,
+            storageReleaseAt: targetDay.storageReleaseAt,
+            storageDeficit: targetDay.summerStorageDeficit,
+            releaseCalendarStatus: targetDay.releaseCalendarStatus,
+          }
+        : null,
+    },
+  }
 }
 
 export function inferAllYearTarget({ forecastRows, actualWeatherRows = [], marketDays, storageRows, targetDate }) {

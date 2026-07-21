@@ -46,7 +46,7 @@ QORE_ALPACA_ALLOW_HARD_TO_BORROW=0
 
 Alpaca does not support fractional short sales, so negative `UNG` targets use whole shares. QORE blocks a target when the account cannot short, Alpaca reports `UNG` unshortable, or it is hard-to-borrow without explicit permission.
 
-Review the sizing and risk defaults in `.env.live.example` and `config/qore-live-broker-settings.json`. Keep a cash buffer. Open-order replacement is disabled by default; enabling it replaces a matching order only after Alpaca confirms that exact order is terminally canceled with zero filled quantity and the position remains unchanged.
+Review the sizing and risk defaults in `.env.live.example` and `config/qore-live-broker-settings.json`. Keep a cash buffer. Paper/live execution must exactly match the sealed broker profile; an environment change to sizing, short policy, order mechanics, data feed, or risk limits blocks until the versioned profile is deliberately updated, rebuilt, and resealed. The reviewed all-year profile requires explicit `QORE_ALPACA_ALLOW_SHORTS=1`; leaving the safer default `0` fails closed. Open-order replacement remains disabled; enabling it also requires a reviewed profile change and reseal, and replacement proceeds only after Alpaca confirms that exact order is terminally canceled with zero filled quantity and the position remains unchanged.
 
 ### First-time risk-ledger bootstrap
 

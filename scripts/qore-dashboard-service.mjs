@@ -8,9 +8,16 @@ import { loadLocalEnv } from './local-env.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 
 const repoDir = path.resolve(process.env.QORE_REPO_DIR ?? process.cwd())
-loadLocalEnv(repoDir)
-
 const snapshotOnly = process.argv.slice(2).includes('--snapshot-json')
+try {
+  loadLocalEnv(repoDir)
+} catch (error) {
+  if (!snapshotOnly || error?.code !== 'EACCES') throw error
+  // The read-only SSH bridge intentionally runs without access to broker secrets.
+  // Inherited environment values and the default .local paths remain sufficient
+  // for a sanitized telemetry snapshot.
+}
+
 const host = '127.0.0.1'
 const port = validPort(process.env.QORE_DASHBOARD_SERVICE_PORT ?? process.env.QORE_API_PORT) ?? 4775
 const staleAfterMs = positiveNumber(process.env.QORE_DASHBOARD_STALE_AFTER_MS, 15 * 60 * 1000)

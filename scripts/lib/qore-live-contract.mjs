@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
+import { SUMMER_FORECAST_LOCATION_UNIVERSE } from './qore-summer-location-universe.mjs'
 
-export const LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION = 1
+export const LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION = 2
 
 const SUMMER = {
   candidateId: 'summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed',
@@ -58,6 +59,7 @@ const WINTER_FADE = {
 }
 
 const SUMMER_IMPLEMENTATION = {
+  forecastLocationUniverse: SUMMER_FORECAST_LOCATION_UNIVERSE,
   storageDeficitHeatMultiplier: 1.25,
   storageDeficitHeatMaxFraction: 0.4375,
   storageSeasonalLookbackYears: 5,
@@ -223,19 +225,76 @@ const WINTER_SELECTED_FIELDS = [
   'conflictPolicy',
 ]
 
+function reviewedMaximumPositionFraction(label, values) {
+  if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 1)) {
+    throw new Error(`${label} contains an invalid executable position fraction.`)
+  }
+  return Math.max(...values)
+}
+
+function summerPositionCaps(selected, implementation) {
+  const ordinaryFollowFraction = reviewedMaximumPositionFraction(
+    'Summer ordinary weather-follow contract',
+    [selected.weatherFraction],
+  )
+  const heatFollowFraction = reviewedMaximumPositionFraction(
+    'Summer heat-follow contract',
+    [ordinaryFollowFraction, implementation.storageDeficitHeatMaxFraction],
+  )
+  const heatReversionFraction = reviewedMaximumPositionFraction(
+    'Summer heat-reversion contract',
+    [
+      selected.reversionFraction,
+      implementation.coolingDemand.solidMaximumReversionFraction,
+      implementation.coolingDemand.extremeMaximumReversionFraction,
+    ],
+  )
+  return {
+    'weather-follow': {
+      'summer-heat-long': heatFollowFraction,
+      'summer-cold-short': ordinaryFollowFraction,
+    },
+    'weather-reversion': {
+      'reversion-long': selected.reversionFraction,
+      'reversion-short': heatReversionFraction,
+    },
+  }
+}
+
+function winterPositionCaps(selected) {
+  const overlayFraction = reviewedMaximumPositionFraction(
+    'Winter live component contract',
+    [selected.effectiveOverlayCap],
+  )
+  return {
+    'weather-follow': {
+      'cold-long': overlayFraction,
+      'warm-short': overlayFraction,
+    },
+    'weather-reversion': {
+      'reversion-long': overlayFraction,
+      'reversion-short': overlayFraction,
+    },
+  }
+}
+
 function canonicalSummerFromSummary(summary) {
   const selected = projectSelected(summary?.selected, SUMMER_SELECTED_FIELDS)
   const candidate = summary?.candidates?.find((row) => row?.candidateId === selected.candidateId)
+  const implementation = {
+    ...SUMMER_IMPLEMENTATION,
+    forecastLocationUniverse:
+      summary?.validation?.forecastCoverage?.policy?.locationUniverse ?? null,
+    storageDeficitHeatMultiplier: candidate?.storageDeficitHeatMultiplier ?? null,
+    storageDeficitHeatMaxFraction: candidate?.storageDeficitHeatMaxFraction ?? null,
+    storageSeasonalLookbackYears: candidate?.storageSeasonalLookbackYears ?? null,
+    storageAvailabilityContract: candidate?.storageAvailabilityContract ?? null,
+  }
   return {
     strategyId: summary?.strategyId ?? null,
     selected,
-    implementation: {
-      ...SUMMER_IMPLEMENTATION,
-      storageDeficitHeatMultiplier: candidate?.storageDeficitHeatMultiplier ?? null,
-      storageDeficitHeatMaxFraction: candidate?.storageDeficitHeatMaxFraction ?? null,
-      storageSeasonalLookbackYears: candidate?.storageSeasonalLookbackYears ?? null,
-      storageAvailabilityContract: candidate?.storageAvailabilityContract ?? null,
-    },
+    implementation,
+    positionCaps: summerPositionCaps(selected, implementation),
   }
 }
 
@@ -261,6 +320,7 @@ function canonicalWinterFromSummary(summary) {
     strategyId: input?.strategyId ?? null,
     candidateId: input?.candidateId ?? null,
   })
+  const implementation = WINTER_IMPLEMENTATION
   return {
     strategyId: summary?.strategyId ?? null,
     inputs: {
@@ -269,7 +329,8 @@ function canonicalWinterFromSummary(summary) {
       volatilityConfirmation: projectInput(summary?.inputs?.volatilityConfirmation),
     },
     selected,
-    implementation: WINTER_IMPLEMENTATION,
+    implementation,
+    positionCaps: winterPositionCaps(selected),
   }
 }
 
@@ -287,6 +348,10 @@ export const executableLiveComponentContract = {
     strategyId: 'ngas-summer-alpha',
     selected: projectSelected(SUMMER, SUMMER_SELECTED_FIELDS),
     implementation: SUMMER_IMPLEMENTATION,
+    positionCaps: summerPositionCaps(
+      projectSelected(SUMMER, SUMMER_SELECTED_FIELDS),
+      SUMMER_IMPLEMENTATION,
+    ),
   },
   winter: {
     strategyId: 'ngas-winter-alpha',
@@ -313,7 +378,31 @@ export const executableLiveComponentContract = {
       heatingDemandPolicy: WINTER_SELECTED.heatingDemandPolicy,
     },
     implementation: WINTER_IMPLEMENTATION,
+    positionCaps: winterPositionCaps(projectSelected(WINTER_SELECTED, WINTER_SELECTED_FIELDS)),
   },
+}
+
+export const executableLiveGasPositionCaps = Object.freeze({
+  summer: Object.freeze(Object.fromEntries(
+    Object.entries(executableLiveComponentContract.summer.positionCaps)
+      .map(([windowId, caps]) => [windowId, Object.freeze({ ...caps })]),
+  )),
+  winter: Object.freeze(Object.fromEntries(
+    Object.entries(executableLiveComponentContract.winter.positionCaps)
+      .map(([windowId, caps]) => [windowId, Object.freeze({ ...caps })]),
+  )),
+})
+
+export function executableLiveGasPositionCapForTarget({
+  season,
+  componentStrategyId,
+  windowId,
+  thesisKind,
+}) {
+  if (componentStrategyId === 'index-fallback') return 0
+  const seasonContract = executableLiveComponentContract[season]
+  if (!seasonContract || componentStrategyId !== seasonContract.strategyId) return null
+  return executableLiveGasPositionCaps[season]?.[windowId]?.[thesisKind] ?? null
 }
 
 function canonicalize(value) {

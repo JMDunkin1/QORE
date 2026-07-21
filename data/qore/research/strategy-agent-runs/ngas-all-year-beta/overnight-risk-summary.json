@@ -15,7 +15,7 @@
   "inputDigests": {
     "policyConfigSha256": "6ba02387ce9ff2eaada0dfbcf429e426b0310eee71d5d82fddeb7a1bc06c72f0",
     "executionContractSha256": "60e7d69ed6c8838825d944001122127faec8557edcbf5839413a80b862512f2f",
-    "selectedTargetsSha256": "3e9d3334a473da70da4afde6b53954c8907c7f3e73d805b89cc18fdb8b3687e8"
+    "selectedTargetsSha256": "8b7afadf30dec45279cd0444f1e45bd92995d203ea49d63e6318a1cc0930222d"
   },
   "frozenSelectionScore": {
     "id": "train-validation-balanced-risk-return-v1",

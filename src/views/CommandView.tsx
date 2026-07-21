@@ -38,18 +38,6 @@ const livePerformanceSeries: Array<SmoothChartSeries<LivePerformancePoint>> = [
     strokeWidth: 1.5,
     valueFormatter: (value) => signedPercent(value),
   },
-  {
-    axis: 'right',
-    color: '#718077',
-    dashArray: '5 5',
-    dataKey: 'equityUsd',
-    id: 'equityUsd',
-    label: 'Equity USD',
-    mode: 'line',
-    strokeOpacity: 0.75,
-    strokeWidth: 1.2,
-    valueFormatter: formatCurrency,
-  },
 ]
 
 function timestampLabel(value: string | null | undefined) {
@@ -148,8 +136,7 @@ function livePerformance(telemetry: LiveTelemetry | null): LivePerformancePoint[
 
 function accountMetrics(telemetry: LiveTelemetry | null, points: LivePerformancePoint[]): MetricDatum[] {
   const account = telemetry?.account
-  const dayPnlPct = account?.dayPnlPct
-  const displayedDayPnlPct = finiteNumericValue(dayPnlPct)
+  const displayedDayPnlPct = finiteNumericValue(account?.dayPnlPct)
   const displayedDayPnlUsd = finiteNumericValue(account?.dayPnlUsd)
   const first = points[0]
   const latest = points.at(-1)
@@ -160,15 +147,54 @@ function accountMetrics(telemetry: LiveTelemetry | null, points: LivePerformance
   const historyPnl = finiteNumericValue(telemetry?.portfolioHistory?.points.at(-1)?.profitLossUsd)
   const totalPnlUsd = historyPnl ?? (latest && baseEquityUsd !== null ? latest.equityUsd - baseEquityUsd : null)
   const positions = Array.isArray(telemetry?.positions) ? telemetry.positions : []
-  const marketValues = positions.map((position) => finiteNumericValue(position?.marketValueUsd))
+  const ungPosition = positions.find((position) => position.symbol.toUpperCase() === 'UNG')
+  const ungPnlUsd = finiteNumericValue(ungPosition?.unrealizedPnlUsd)
+  const ungPnlPct = finiteNumericValue(ungPosition?.unrealizedPnlPct)
+  const hasUngPosition = Boolean(ungPosition)
+
+  return [
+    {
+      label: 'OPEN UNG P&L',
+      value: hasUngPosition
+        ? ungPnlUsd !== null && ungPnlPct !== null ? `${formatCurrency(ungPnlUsd)} / ${signedPercent(ungPnlPct)}` : '-'
+        : `${formatCurrency(0)} / ${signedPercent(0)}`,
+      detail: hasUngPosition ? 'CURRENT POSITION · UNREALIZED' : 'NO OPEN UNG POSITION',
+      emphasis: true,
+      tone: hasUngPosition ? ungPnlUsd === null ? 'warning' : classForSigned(ungPnlUsd) : 'neutral',
+    },
+    {
+      label: 'ACCOUNT RETURN',
+      value: points.length > 1 && totalReturnPct !== null ? signedPercent(totalReturnPct) : '-',
+      detail: totalPnlUsd !== null ? `${formatCurrency(totalPnlUsd)} ACCOUNT P&L` : 'ALPACA HISTORY',
+      tone: points.length > 1 && totalPnlUsd !== null ? 'neutral' : 'warning',
+    },
+    {
+      label: 'TODAY',
+      value: account && displayedDayPnlPct !== null ? signedPercent(displayedDayPnlPct) : '-',
+      detail: displayedDayPnlUsd !== null ? `${formatCurrency(displayedDayPnlUsd)} ACCOUNT P&L` : 'CURRENT SESSION',
+      tone: account && displayedDayPnlPct !== null ? 'neutral' : 'warning',
+    },
+    {
+      label: 'DRAWDOWN',
+      value: percentValue(account?.trailingDrawdownPct),
+      detail: 'TRAILING ACCOUNT PEAK',
+      tone: finiteNumericValue(account?.trailingDrawdownPct) === null ? 'warning' : classForSigned(finiteNumericValue(account?.trailingDrawdownPct) ?? 0),
+    },
+  ]
+}
+
+function AccountDetails({ telemetry }: { telemetry: LiveTelemetry | null }) {
+  const account = telemetry?.account
+  const positions = Array.isArray(telemetry?.positions) ? telemetry.positions : []
+  const accountEquityUsd = finiteNumericValue(account?.equityUsd)
+  const marketValues = positions.map((position) => finiteNumericValue(position.marketValueUsd))
   const grossExposureUsd = marketValues.every((value) => value !== null)
     ? marketValues.reduce<number>((sum, value) => sum + Math.abs(value ?? 0), 0)
     : null
-  const accountEquityUsd = finiteNumericValue(account?.equityUsd)
   const grossExposurePct = grossExposureUsd !== null && accountEquityUsd !== null && accountEquityUsd > 0
     ? (grossExposureUsd / accountEquityUsd) * 100
     : null
-  const unrealizedValues = positions.map((position) => finiteNumericValue(position?.unrealizedPnlUsd))
+  const unrealizedValues = positions.map((position) => finiteNumericValue(position.unrealizedPnlUsd))
   const unrealizedPnlUsd = unrealizedValues.every((value) => value !== null)
     ? unrealizedValues.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null
@@ -177,51 +203,24 @@ function accountMetrics(telemetry: LiveTelemetry | null, points: LivePerformance
     ? (cashUsd / accountEquityUsd) * 100
     : null
 
-  return [
-    {
-      label: 'ALPACA EQUITY',
-      value: currencyValue(account?.equityUsd),
-      tone: accountEquityUsd !== null ? 'positive' : 'warning',
-    },
-    {
-      label: 'P&L / RETURN',
-      value: points.length > 1 && totalPnlUsd !== null && totalReturnPct !== null
-        ? `${formatCurrency(totalPnlUsd)} / ${signedPercent(totalReturnPct)}`
-        : '-',
-      tone: points.length > 1 && totalPnlUsd !== null ? classForSigned(totalPnlUsd) : 'warning',
-    },
-    {
-      label: 'TODAY',
-      value: account && displayedDayPnlPct !== null
-        ? `${currencyValue(displayedDayPnlUsd)} / ${signedPercent(displayedDayPnlPct)}`
-        : '-',
-      tone: account && displayedDayPnlPct !== null ? classForSigned(displayedDayPnlPct) : 'warning',
-    },
-    {
-      label: 'CASH / EQUITY',
-      value: account ? `${currencyValue(cashUsd)} / ${numberValue(cashPct, 1, '%')}` : '-',
-    },
-    {
-      label: 'BUY POWER / SHORT',
-      value: account
-        ? `${currencyValue(account.buyingPowerUsd)} / ${account.shortingEnabled === true ? 'YES' : account.shortingEnabled === false ? 'NO' : 'UNKNOWN'}`
-        : '-',
-    },
-    {
-      label: 'TRAILING DD',
-      value: percentValue(account?.trailingDrawdownPct),
-      tone: finiteNumericValue(account?.trailingDrawdownPct) === null ? 'warning' : classForSigned(finiteNumericValue(account?.trailingDrawdownPct) ?? 0),
-    },
-    {
-      label: 'EXPOSURE / VALUE',
-      value: account ? `${numberValue(grossExposurePct, 1, '%')} / ${currencyValue(grossExposureUsd)}` : '-',
-    },
-    {
-      label: 'UNREALIZED / POS',
-      value: positions.length ? `${currencyValue(unrealizedPnlUsd)} / ${positions.length}` : '- / 0',
-      tone: unrealizedPnlUsd === null ? 'warning' : classForSigned(unrealizedPnlUsd),
-    },
-  ]
+  return (
+    <details className="disclosure-section">
+      <summary>
+        <span>Account details</span>
+        <small>{currencyValue(accountEquityUsd)} EQUITY</small>
+      </summary>
+      <div className="disclosure-body">
+        <dl className="terminal-readout secondary-readout">
+          <div><dt>ALPACA EQUITY</dt><dd>{currencyValue(accountEquityUsd)}</dd></div>
+          <div><dt>CASH / EQUITY</dt><dd>{`${currencyValue(cashUsd)} / ${numberValue(cashPct, 1, '%')}`}</dd></div>
+          <div><dt>BUYING POWER</dt><dd>{currencyValue(account?.buyingPowerUsd)}</dd></div>
+          <div><dt>GROSS EXPOSURE</dt><dd>{`${currencyValue(grossExposureUsd)} / ${numberValue(grossExposurePct, 1, '%')}`}</dd></div>
+          <div><dt>UNREALIZED / POSITIONS</dt><dd>{`${currencyValue(unrealizedPnlUsd)} / ${positions.length}`}</dd></div>
+          <div><dt>SHORTING</dt><dd>{account?.shortingEnabled === true ? 'ENABLED' : account?.shortingEnabled === false ? 'DISABLED' : 'UNKNOWN'}</dd></div>
+        </dl>
+      </div>
+    </details>
+  )
 }
 
 function StrategyReadout({ telemetry }: { telemetry: LiveTelemetry | null }) {
@@ -229,22 +228,27 @@ function StrategyReadout({ telemetry }: { telemetry: LiveTelemetry | null }) {
   const intent = record(intentContainer?.intent) ?? intentContainer
   const inferenceContainer = record(telemetry?.strategy?.inference)
   const inference = record(inferenceContainer?.inference) ?? inferenceContainer
+  const validated = inference?.validated === true
+  const inferenceLabel = validated ? 'VALIDATED' : inference ? 'NOT VALIDATED' : 'NO SNAPSHOT'
 
   return (
     <section className="data-section" aria-labelledby="live-strategy-title">
       <header className="section-header compact">
         <h2 id="live-strategy-title">Current target</h2>
+        <span className={`plain-status ${validated ? 'positive' : 'warning'}`}>{inferenceLabel}</span>
       </header>
-      <dl className="terminal-readout">
-        <div><dt>SIGNAL DATE</dt><dd>{textValue(intent?.signalDate)}</dd></div>
-        <div><dt>TARGET DATE</dt><dd>{textValue(intent?.targetDate)}</dd></div>
-        <div><dt>DIRECTION</dt><dd>{textValue(intent?.direction).toUpperCase()}</dd></div>
-        <div><dt>CONFIDENCE</dt><dd>{targetValue(intent?.confidence, 100, 1, '%')}</dd></div>
-        <div><dt>UNG TARGET</dt><dd>{targetValue(intent?.gasPosition, 1, 3, 'x')}</dd></div>
-        <div><dt>INDEX TARGET</dt><dd>{targetValue(intent?.indexFraction, 100, 1, '%')}</dd></div>
-        <div><dt>CASH TARGET</dt><dd>{targetValue(intent?.cashFraction, 100, 1, '%')}</dd></div>
-        <div><dt>INFERENCE</dt><dd>{inference?.validated === true ? 'VALIDATED' : inference ? 'NOT VALIDATED' : 'NO SNAPSHOT'}</dd></div>
-      </dl>
+      <div className="target-summary">
+        <div className="target-primary">
+          <span>UNG TARGET</span>
+          <strong>{targetValue(intent?.gasPosition, 1, 3, 'x')}</strong>
+          <small>{textValue(intent?.direction, 'NO TARGET').toUpperCase()}</small>
+        </div>
+        <dl className="target-facts">
+          <div><dt>EFFECTIVE</dt><dd>{textValue(intent?.targetDate)}</dd></div>
+          <div><dt>CONFIDENCE</dt><dd>{targetValue(intent?.confidence, 100, 1, '%')}</dd></div>
+          <div><dt>INDEX / CASH</dt><dd>{`${targetValue(intent?.indexFraction, 100, 1, '%')} / ${targetValue(intent?.cashFraction, 100, 1, '%')}`}</dd></div>
+        </dl>
+      </div>
       {!intent && <p className="section-note warning">No current signal-intent file. Run the live preparation workflow before evaluating orders.</p>}
     </section>
   )
@@ -257,31 +261,38 @@ function RiskReadout({ telemetry }: { telemetry: LiveTelemetry | null }) {
   const warnings = telemetry?.risk?.warnings ?? []
   const killSwitchEngaged = telemetry?.risk?.killSwitchEngaged
   const killSwitchLabel = killSwitchEngaged === true ? 'ENGAGED' : killSwitchEngaged === false ? 'CLEAR' : 'UNKNOWN'
-  const killSwitchTone = killSwitchEngaged === true ? 'negative' : killSwitchEngaged === false ? 'positive' : 'warning'
+  const passes = (value: unknown) => value === true || value === 'ready' || value === 'connected'
+  const allReady = rows.length > 0 && rows.every(([, value]) => passes(value))
+  const blocked = killSwitchEngaged === true || blocks.length > 0 || rows.some(([, value]) => !passes(value))
+  const riskLabel = blocked ? 'BLOCKED' : allReady && killSwitchEngaged === false ? 'READY' : 'UNKNOWN'
+  const riskTone = blocked ? 'negative' : riskLabel === 'READY' ? 'positive' : 'warning'
   return (
     <section className="data-section" aria-labelledby="risk-title">
       <header className="section-header compact">
-        <h2 id="risk-title">Risk gates</h2>
-        <span className={`plain-status ${killSwitchTone}`}>
-          KILL SWITCH {killSwitchLabel}
+        <h2 id="risk-title">Trading safety</h2>
+        <span className={`plain-status ${riskTone}`}>
+          {riskLabel} · KILL {killSwitchLabel}
         </span>
       </header>
-      {rows.length ? (
-        <dl className="gate-list">
-          {rows.map(([label, value]) => {
-            const pass = value === true || value === 'ready' || value === 'connected'
-            return <div key={label}><dt>{label.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase()}</dt><dd className={pass ? 'positive' : 'warning'}>{textValue(value).toUpperCase()}</dd></div>
-          })}
-        </dl>
-      ) : (
-        <div className="inline-empty">NO RISK SNAPSHOT</div>
-      )}
       {(blocks.length > 0 || warnings.length > 0) && (
         <div className="runtime-messages">
           {blocks.map((message) => <p key={`block-${message}`} className="negative">BLOCK // {message}</p>)}
           {warnings.map((message) => <p key={`warn-${message}`} className="warning">WARN // {message}</p>)}
         </div>
       )}
+      {rows.length ? (
+        <details className="inline-disclosure" open={blocked}>
+          <summary>{rows.length} RISK GATES</summary>
+          <dl className="gate-list">
+            {rows.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase()}</dt>
+                <dd className={passes(value) ? 'positive' : 'warning'}>{textValue(value).toUpperCase()}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      ) : <div className="inline-empty">NO RISK SNAPSHOT</div>}
     </section>
   )
 }
@@ -361,12 +372,15 @@ export function CommandView() {
   )
   const stale = Boolean(telemetry?.stale) || (sourceAgeSeconds !== null && sourceAgeSeconds > 120)
   const transportConnected = Boolean(connection?.connected)
-  const brokerConnected = Boolean(telemetry?.brokerConnected)
+  const brokerKnown = telemetry !== null
+  const brokerConnected = telemetry?.brokerConnected === true
   const connectionProblem = connection?.error || connectionError
-  const statusTone = connectionProblem || !transportConnected || !brokerConnected ? 'negative' : stale ? 'warning' : 'positive'
+  const statusTone = connectionProblem || !transportConnected || (brokerKnown && !brokerConnected)
+    ? 'negative'
+    : !brokerKnown || stale ? 'warning' : 'positive'
   const connectionProgress = Math.max(0, Math.min(100, finiteNumericValue(connection?.progressPct) ?? 0))
   const connectionLabel = transportConnected
-    ? brokerConnected ? `M1 / ${telemetry?.mode?.toUpperCase()} ONLINE` : 'M1 / BROKER OFFLINE'
+    ? !brokerKnown ? 'M1 / CHECKING BROKER' : brokerConnected ? `M1 / ${telemetry.mode.toUpperCase()} ONLINE` : 'M1 / BROKER OFFLINE'
     : connection?.phase?.replaceAll('-', ' ').toUpperCase() ?? 'STARTING'
   const marketStatus = telemetry?.marketClock?.isOpen === true
     ? 'MARKET OPEN'
@@ -375,56 +389,52 @@ export function CommandView() {
   return (
     <main className="view" id="command-view">
       <header className="view-header">
-        <h1>Command</h1>
-        <dl className="view-status">
-          <div>
-            <dt>CONNECTION</dt>
-            <dd className={statusTone}>{connectionLabel}</dd>
-          </div>
-          <div>
-            <dt>LAST ALPACA READ</dt>
-            <dd>{timestampLabel(telemetry?.sourceGeneratedAt)}</dd>
-          </div>
-          <div>
-            <dt>API</dt>
-            <dd>M1 READ ONLY</dd>
-          </div>
-        </dl>
+        <div className="view-heading">
+          <span>ACTUAL ALPACA ACCOUNT</span>
+          <h1>Command</h1>
+        </div>
+        <div className="view-status-line" aria-label="Command status">
+          <span className={statusTone}>{connectionLabel}</span>
+          <span>{marketStatus}</span>
+          <span>UPDATED {timestampLabel(telemetry?.sourceGeneratedAt)}</span>
+        </div>
       </header>
 
-      <section className={`command-connection ${transportConnected ? 'connected' : connectionProblem ? 'failed' : ''}`} aria-live="polite">
-        <div className="command-connection-copy">
-          <strong>{transportConnected ? 'M1 TELEMETRY CONNECTED' : 'CONNECTING TO M1'}</strong>
-          <span>{connectionProblem || connection?.detail || 'Starting the local read-only bridge.'}</span>
-        </div>
-        <div
-          className="command-connection-track"
-          role="progressbar"
-          aria-label="M1 telemetry connection"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={connectionProgress}
-        >
-          <span style={{ width: `${connectionProgress}%` }} />
-        </div>
-        <span className="command-connection-percent">{formatNumber(connectionProgress, 0)}%</span>
-      </section>
+      {(!transportConnected || connectionProblem || (brokerKnown && !brokerConnected)) && (
+        <section className={`command-connection ${connectionProblem || (brokerKnown && !brokerConnected) ? 'failed' : transportConnected ? 'connected' : ''}`} aria-live="polite">
+          <div className="command-connection-copy">
+            <strong>{transportConnected ? brokerConnected ? 'M1 TELEMETRY CONNECTED' : 'M1 BRIDGE CONNECTED · BROKER OFFLINE' : 'CONNECTING TO M1'}</strong>
+            <span>{connectionProblem || connection?.detail || 'Starting the local read-only bridge.'}</span>
+          </div>
+          <div
+            className="command-connection-track"
+            role="progressbar"
+            aria-label="M1 telemetry connection"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={connectionProgress}
+          >
+            <span style={{ width: `${connectionProgress}%` }} />
+          </div>
+          <span className="command-connection-percent">{formatNumber(connectionProgress, 0)}%</span>
+        </section>
+      )}
 
       {transportConnected && error && <div className="warning-line negative"><strong>M1 TELEMETRY OFFLINE</strong><span>{error}</span></div>}
       {!error && transportConnected && stale && sourceAgeSeconds !== null && <div className="warning-line"><strong>STALE BROKER STATE</strong><span>The most recent Alpaca snapshot is {formatNumber(sourceAgeSeconds / 60, 1)} minutes old. Refresh before acting on it.</span></div>}
       {!error && historyProvenanceWarning && <div className="warning-line"><strong>HISTORY PROVENANCE</strong><span>Portfolio history was read at {timestampLabel(historySourceGeneratedAt)}; selected account data was read at {timestampLabel(telemetry?.sourceGeneratedAt)}.</span></div>}
-      <div className="warning-line subtle" role="note"><strong>ACCOUNT-LEVEL DATA</strong><span>Deposits, manual trades, or unrelated positions affect Alpaca portfolio history. Use a dedicated account for strategy-pure performance.</span></div>
 
       <MetricRail metrics={accountMetrics(telemetry, performance)} ariaLabel="Actual Alpaca account metrics" />
 
       <PerformanceChart
-        title="Alpaca performance"
-        meta={`${marketStatus} · ${performance.length} DAYS · HISTORY ${timestampLabel(historySourceGeneratedAt)}`}
+        title="Live account"
+        meta={`${performance.length} DAYS · ACCOUNT LEVEL`}
         data={performance}
         series={livePerformanceSeries}
         empty="NO ALPACA HISTORY · CONNECT PAPER OR LIVE, THEN REFRESH"
         actions={<button type="button" className="text-button primary" disabled={refreshing || !transportConnected} onClick={() => void load(true)}>{refreshing ? 'REFRESHING…' : 'REFRESH M1'}</button>}
       />
+      <p className="quiet-note" role="note">Account return includes deposits, manual trades, and every Alpaca position. Open UNG P&amp;L is current and unrealized; telemetry does not attribute it to a specific order source.</p>
 
       <div className="data-grid">
         <StrategyReadout telemetry={telemetry} />
@@ -439,7 +449,7 @@ export function CommandView() {
         {positions.length ? (
           <div className="table-scroll positions-table">
             <table>
-              <thead><tr><th>SYMBOL</th><th>SIDE</th><th>QTY</th><th>MARK</th><th>MARKET VALUE</th><th>AVG ENTRY</th><th>UNREALIZED</th><th>RETURN</th></tr></thead>
+              <thead><tr><th>SYMBOL</th><th>SIDE</th><th>QTY</th><th>MARKET VALUE</th><th>OPEN P&amp;L</th><th>RETURN</th></tr></thead>
               <tbody>
                 {positions.map((position, index) => {
                   const unrealizedPnlUsd = finiteNumericValue(position?.unrealizedPnlUsd)
@@ -449,9 +459,7 @@ export function CommandView() {
                     <th scope="row">{textValue(position?.symbol, 'UNKNOWN')}</th>
                     <td>{textValue(position?.side, 'UNKNOWN').toUpperCase()}</td>
                     <td>{numberValue(position?.quantity, 4)}</td>
-                    <td>{currencyValue(position?.currentPriceUsd)}</td>
                     <td>{currencyValue(position?.marketValueUsd)}</td>
-                    <td>{currencyValue(position?.averageEntryPriceUsd)}</td>
                     <td className={unrealizedPnlUsd === null ? 'warning' : classForSigned(unrealizedPnlUsd)}>{currencyValue(unrealizedPnlUsd)}</td>
                     <td className={unrealizedPnlPct === null ? 'warning' : classForSigned(unrealizedPnlPct)}>{percentValue(unrealizedPnlPct)}</td>
                   </tr>
@@ -463,19 +471,24 @@ export function CommandView() {
         ) : <div className="inline-empty">NO OPEN POSITIONS</div>}
       </section>
 
-      <section className="data-section" aria-labelledby="orders-title">
-        <header className="section-header compact">
-          <h2 id="orders-title">Open orders</h2>
-        </header>
-        {openOrders.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>SUBMITTED</th><th>SYMBOL</th><th>SIDE</th><th>TYPE</th><th>QTY</th><th>FILLED</th><th>STATUS</th></tr></thead>
-              <tbody>{openOrders.map((order, index) => <tr key={`${textValue(order?.id, 'UNKNOWN')}-${index}`}><td>{order?.submittedAt ? timestampLabel(order.submittedAt) : '-'}</td><th scope="row">{textValue(order?.symbol, 'UNKNOWN')}</th><td>{textValue(order?.side, 'UNKNOWN').toUpperCase()}</td><td>{textValue(order?.type, 'UNKNOWN').toUpperCase()}</td><td>{numberValue(order?.quantity, 4)}</td><td>{numberValue(order?.filledQuantity, 4)}</td><td>{textValue(order?.status, 'UNKNOWN').toUpperCase()}</td></tr>)}</tbody>
-            </table>
-          </div>
-        ) : <div className="inline-empty">NO OPEN ORDERS</div>}
-      </section>
+      <AccountDetails telemetry={telemetry} />
+
+      <details className="disclosure-section" open={openOrders.length > 0}>
+        <summary>
+          <span>Open orders</span>
+          <small>{openOrders.length} OPEN</small>
+        </summary>
+        <div className="disclosure-body">
+          {openOrders.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>SUBMITTED</th><th>SYMBOL</th><th>SIDE</th><th>TYPE</th><th>QTY</th><th>FILLED</th><th>STATUS</th></tr></thead>
+                <tbody>{openOrders.map((order, index) => <tr key={`${textValue(order?.id, 'UNKNOWN')}-${index}`}><td>{order?.submittedAt ? timestampLabel(order.submittedAt) : '-'}</td><th scope="row">{textValue(order?.symbol, 'UNKNOWN')}</th><td>{textValue(order?.side, 'UNKNOWN').toUpperCase()}</td><td>{textValue(order?.type, 'UNKNOWN').toUpperCase()}</td><td>{numberValue(order?.quantity, 4)}</td><td>{numberValue(order?.filledQuantity, 4)}</td><td>{textValue(order?.status, 'UNKNOWN').toUpperCase()}</td></tr>)}</tbody>
+              </table>
+            </div>
+          ) : <div className="inline-empty">NO OPEN ORDERS</div>}
+        </div>
+      </details>
     </main>
   )
 }

@@ -1,0 +1,466 @@
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import Papa from 'papaparse'
+import {
+  enrichForecastRows,
+  inferAllYearTarget,
+  selectedContracts,
+} from './qore-live-all-year-inference.mjs'
+
+const SUMMER_FORECAST_CALENDARS = Object.freeze([
+  Object.freeze({
+    sourceId: 'gfs',
+    signalScores: 'research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
+    locationAnomalies: 'weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
+  }),
+  Object.freeze({
+    sourceId: 'gefs-mean',
+    signalScores: 'research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
+    locationAnomalies: 'weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
+  }),
+])
+
+export const LIVE_TARGET_PARITY_POLICY = Object.freeze({
+  schemaVersion: 3,
+  policyId: 'all-year-component-production-source-exact-target-replay-v3',
+  componentStrategyId: 'ngas-all-year-beta',
+  componentStrategyIds: Object.freeze(['ngas-summer-alpha', 'ngas-winter-alpha']),
+  comparisonFields: Object.freeze(['gasPosition', 'indexFraction', 'thesisKind']),
+  gasPositionTolerance: 0.001,
+  indexFractionTolerance: 0.001,
+  replayContract: Object.freeze({
+    targetDateField: 'entryTradeDate',
+    storage: 'versioned-EIA-lower48-weekly-with-reviewed-release-calendar',
+    summer: Object.freeze({
+      expectedTargets: 'versioned-ngas-summer-alpha-selected-trades',
+      forecastUniverse: 'dedicated-versioned-GFS-and-GEFS-mean-daily-lead-7-calendars-2021-05-01-through-2025-09-30',
+      forecastSeason: 'summer',
+      targetSeasonField: 'targetDate',
+      targetSeasonMonths: Object.freeze([5, 6, 7, 8, 9]),
+      marketDays: 'versioned-NG=F-adjusted-close',
+    }),
+    winter: Object.freeze({
+      expectedTargets: 'versioned-ngas-winter-alpha-selected-trades',
+      forecastUniverse: 'all-versioned-dataset-manifest-calendars-enriched-then-filtered-to-liveHeatingDemandSourceIds',
+      forecastSeason: 'winter',
+      marketDays: 'versioned-UNG-adjusted-close',
+      actualWeather: 'versioned-NASA-POWER-arctic-blast-daily',
+    }),
+  }),
+})
+
+function readJson(filePath, label) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  } catch (error) {
+    throw new Error(`Unable to read ${label}: ${error.message}`)
+  }
+}
+
+function readCsv(filePath, label) {
+  let parsed
+  try {
+    parsed = Papa.parse(fs.readFileSync(filePath, 'utf8'), {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim(),
+    })
+  } catch (error) {
+    throw new Error(`Unable to read ${label}: ${error.message}`)
+  }
+  if (parsed.errors.length) {
+    const first = parsed.errors[0]
+    throw new Error(`Unable to parse ${label}: ${first.message} at row ${first.row ?? 'unknown'}.`)
+  }
+  if (!parsed.data.length) throw new Error(`${label} is empty.`)
+  return parsed.data
+}
+
+function finiteNumber(value, label) {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+    throw new Error(`${label} must be a finite number.`)
+  }
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) throw new Error(`${label} must be a finite number.`)
+  return numeric
+}
+
+function round(value, digits = 6) {
+  const factor = 10 ** digits
+  return Math.round(value * factor) / factor
+}
+
+function versionedInputPaths(repoDir, manifest) {
+  const dataRoot = path.join(repoDir, 'data', 'qore')
+  const winterForecastCalendars = manifest.forecastCalendars.map((calendar) => ({
+    sourceId: String(calendar?.id ?? ''),
+    signalScores: path.join(dataRoot, String(calendar?.files?.signalScores ?? '')),
+    locationAnomalies: path.join(dataRoot, String(calendar?.files?.locationAnomalies ?? '')),
+  }))
+  const summerForecastCalendars = SUMMER_FORECAST_CALENDARS.map((calendar) => ({
+    sourceId: calendar.sourceId,
+    signalScores: path.join(dataRoot, calendar.signalScores),
+    locationAnomalies: path.join(dataRoot, calendar.locationAnomalies),
+  }))
+  return {
+    manifestPath: path.join(dataRoot, 'dataset-manifest.json'),
+    summerExpectedTargetsPath: path.join(
+      dataRoot,
+      'research',
+      'strategy-agent-runs',
+      'ngas-summer-alpha',
+      'selected-trades.csv',
+    ),
+    winterExpectedTargetsPath: path.join(
+      dataRoot,
+      'research',
+      'strategy-agent-runs',
+      'ngas-winter-alpha',
+      'selected-trades.csv',
+    ),
+    summerMarketPath: path.join(dataRoot, 'market', 'yahoo', 'NG-F-qore-market.csv'),
+    winterMarketPath: path.join(dataRoot, 'market', 'yahoo', 'UNG-qore-market.csv'),
+    storagePath: path.join(dataRoot, 'fundamentals', 'eia', 'working-gas-storage-lower48-weekly.csv'),
+    actualWeatherPath: path.join(
+      dataRoot,
+      'weather',
+      'events',
+      'arctic-blast-actual-daily-2021-01-01-2026-03-31.csv',
+    ),
+    summerForecastCalendars,
+    winterForecastCalendars,
+  }
+}
+
+export function versionedLiveTargetParityInputDigestSha256(repoDir = process.cwd()) {
+  const manifestPath = path.join(repoDir, 'data', 'qore', 'dataset-manifest.json')
+  const manifest = readJson(manifestPath, 'QORE dataset manifest')
+  if (!Array.isArray(manifest?.forecastCalendars) || !manifest.forecastCalendars.length) {
+    throw new Error('QORE dataset manifest does not contain forecast calendars.')
+  }
+  const paths = versionedInputPaths(repoDir, manifest)
+  const files = [
+    paths.manifestPath,
+    paths.summerExpectedTargetsPath,
+    paths.winterExpectedTargetsPath,
+    paths.summerMarketPath,
+    paths.winterMarketPath,
+    paths.storagePath,
+    paths.actualWeatherPath,
+    ...paths.summerForecastCalendars.flatMap((calendar) => [
+      calendar.signalScores,
+      calendar.locationAnomalies,
+    ]),
+    ...paths.winterForecastCalendars.flatMap((calendar) => [
+      calendar.signalScores,
+      calendar.locationAnomalies,
+    ]),
+  ]
+  const digest = crypto.createHash('sha256')
+  for (const filePath of files) {
+    digest.update(path.relative(repoDir, filePath))
+    digest.update('\0')
+    try {
+      digest.update(fs.readFileSync(filePath))
+    } catch (error) {
+      throw new Error(`Unable to hash live-target parity input ${path.relative(repoDir, filePath)}: ${error.message}`)
+    }
+    digest.update('\0')
+  }
+  return digest.digest('hex')
+}
+
+export function assessLiveTargetParity({
+  expectedRows,
+  forecastRows,
+  actualWeatherRows,
+  marketDays,
+  storageRows,
+  inferTarget = inferAllYearTarget,
+  policy = LIVE_TARGET_PARITY_POLICY,
+}) {
+  if (!Array.isArray(expectedRows) || !expectedRows.length) {
+    throw new Error('Live-target parity requires at least one expected component target row.')
+  }
+  const seenDates = new Set()
+  const comparisons = expectedRows.map((row) => {
+    const targetDate = String(row?.entryTradeDate ?? '')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+      throw new Error(`Live-target parity found an invalid entryTradeDate: ${targetDate || 'missing'}.`)
+    }
+    if (seenDates.has(targetDate)) {
+      throw new Error(`Live-target parity found duplicate expected target date ${targetDate}.`)
+    }
+    seenDates.add(targetDate)
+
+    const expectedGasPosition = finiteNumber(
+      row?.ungPosition,
+      `Live-target parity expected UNG position on ${targetDate}`,
+    )
+    const expectedIndexFraction = finiteNumber(
+      row?.indexFraction,
+      `Live-target parity expected index fraction on ${targetDate}`,
+    )
+    const expectedThesisKind = String(row?.thesisKind ?? '')
+    if (!expectedThesisKind) {
+      throw new Error(`Live-target parity expected thesisKind is missing on ${targetDate}.`)
+    }
+    const replay = inferTarget({
+      forecastRows,
+      actualWeatherRows,
+      marketDays,
+      storageRows,
+      targetDate,
+    })
+    const replayGasPosition = finiteNumber(
+      replay?.gasPosition,
+      `Live-target parity replay gas position on ${targetDate}`,
+    )
+    const replayIndexFraction = finiteNumber(
+      replay?.indexFraction,
+      `Live-target parity replay index fraction on ${targetDate}`,
+    )
+    const replayThesisKind = String(replay?.thesisKind ?? '')
+    if (!replayThesisKind) {
+      throw new Error(`Live-target parity replay thesisKind is missing on ${targetDate}.`)
+    }
+    const gasPositionDifference = round(replayGasPosition - expectedGasPosition)
+    const indexFractionDifference = round(replayIndexFraction - expectedIndexFraction)
+    const gasPositionMatches = Math.abs(gasPositionDifference) <= policy.gasPositionTolerance
+    const indexFractionMatches = Math.abs(indexFractionDifference) <= policy.indexFractionTolerance
+    const thesisKindMatches = replayThesisKind === expectedThesisKind
+    return {
+      targetDate,
+      expectedGasPosition,
+      replayGasPosition,
+      gasPositionDifference,
+      expectedIndexFraction,
+      replayIndexFraction,
+      indexFractionDifference,
+      expectedThesisKind,
+      replayThesisKind,
+      gasPositionMatches,
+      indexFractionMatches,
+      thesisKindMatches,
+      matches: gasPositionMatches && indexFractionMatches && thesisKindMatches,
+    }
+  })
+  const mismatches = comparisons.filter((row) => !row.matches)
+  return {
+    comparedRowCount: comparisons.length,
+    matchedRowCount: comparisons.length - mismatches.length,
+    mismatchCount: mismatches.length,
+    gasPositionMismatchCount: mismatches.filter((row) => !row.gasPositionMatches).length,
+    indexFractionMismatchCount: mismatches.filter((row) => !row.indexFractionMatches).length,
+    thesisKindMismatchCount: mismatches.filter((row) => !row.thesisKindMatches).length,
+    exactTargetParity: mismatches.length === 0,
+    comparisonDigestSha256: crypto
+      .createHash('sha256')
+      .update(JSON.stringify(comparisons))
+      .digest('hex'),
+    mismatches,
+  }
+}
+
+export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
+  const dataRoot = path.join(repoDir, 'data', 'qore')
+  const manifestPath = path.join(dataRoot, 'dataset-manifest.json')
+  const manifest = readJson(manifestPath, 'QORE dataset manifest')
+  if (!Array.isArray(manifest?.forecastCalendars) || !manifest.forecastCalendars.length) {
+    throw new Error('QORE dataset manifest does not contain forecast calendars.')
+  }
+  const calendarIds = manifest.forecastCalendars.map((calendar) => calendar?.id)
+  if (new Set(calendarIds).size !== calendarIds.length) {
+    throw new Error('QORE dataset manifest contains duplicate forecast calendar ids.')
+  }
+  const inputPaths = versionedInputPaths(repoDir, manifest)
+  const {
+    summerExpectedTargetsPath,
+    winterExpectedTargetsPath,
+    summerMarketPath,
+    winterMarketPath,
+    storagePath,
+    actualWeatherPath,
+  } = inputPaths
+  const inputDigestSha256 = versionedLiveTargetParityInputDigestSha256(repoDir)
+
+  const readForecastCalendars = (calendars, label) => {
+    const scoreRows = []
+    const locationRows = []
+    const inputFiles = []
+    for (const calendar of calendars) {
+      const sourceId = String(calendar?.sourceId ?? '')
+      if (!sourceId || !calendar?.signalScores || !calendar?.locationAnomalies) {
+        throw new Error(`${label} contains an incomplete forecast calendar entry.`)
+      }
+      for (const row of readCsv(calendar.signalScores, `${sourceId} ${label} forecast scores`)) {
+        scoreRows.push({ ...row, sourceId })
+      }
+      for (const row of readCsv(calendar.locationAnomalies, `${sourceId} ${label} forecast locations`)) {
+        locationRows.push({ ...row, sourceId })
+      }
+      inputFiles.push(calendar.signalScores, calendar.locationAnomalies)
+    }
+    return { scoreRows, locationRows, inputFiles }
+  }
+
+  const summerProductionForecastSourceIds = [...selectedContracts.summer.sourceIds]
+  const summerCalendarIds = inputPaths.summerForecastCalendars.map((calendar) => calendar.sourceId)
+  const missingSummerSources = summerProductionForecastSourceIds.filter(
+    (sourceId) => !summerCalendarIds.includes(sourceId),
+  )
+  const unexpectedSummerSources = summerCalendarIds.filter(
+    (sourceId) => !summerProductionForecastSourceIds.includes(sourceId),
+  )
+  if (missingSummerSources.length || unexpectedSummerSources.length) {
+    throw new Error(
+      `Dedicated Summer replay sources do not match the executable contract; missing=${missingSummerSources.join(',') || 'none'} unexpected=${unexpectedSummerSources.join(',') || 'none'}.`,
+    )
+  }
+  const summerInputs = readForecastCalendars(
+    inputPaths.summerForecastCalendars,
+    'dedicated Summer lead-7 calendar',
+  )
+  const summerSourceSet = new Set(summerProductionForecastSourceIds)
+  const summerForecastRows = enrichForecastRows(
+    summerInputs.scoreRows,
+    summerInputs.locationRows,
+    'summer',
+  ).filter((row) => summerSourceSet.has(row.sourceId))
+  if (!summerForecastRows.length) {
+    throw new Error('Versioned production-source Summer forecast replay is empty.')
+  }
+
+  const winterInputs = readForecastCalendars(
+    inputPaths.winterForecastCalendars,
+    'dataset-manifest Winter calendar',
+  )
+  const winterProductionForecastSourceIds = [
+    ...selectedContracts.winterFollow.liveHeatingDemandSourceIds,
+  ]
+  const missingWinterSources = winterProductionForecastSourceIds.filter(
+    (sourceId) => !calendarIds.includes(sourceId),
+  )
+  if (missingWinterSources.length) {
+    throw new Error(
+      `QORE dataset manifest is missing production Winter source(s): ${missingWinterSources.join(', ')}.`,
+    )
+  }
+  const winterSourceSet = new Set(winterProductionForecastSourceIds)
+  const winterForecastRows = enrichForecastRows(
+    winterInputs.scoreRows,
+    winterInputs.locationRows,
+    'winter',
+  ).filter((row) => winterSourceSet.has(row.sourceId))
+  if (!winterForecastRows.length) {
+    throw new Error('Versioned production-source Winter forecast replay is empty.')
+  }
+
+  const marketDays = (filePath, label) => readCsv(filePath, label)
+    .map((row) => ({ date: row.date, gasClose: Number(row.close) }))
+    .filter((row) => Number.isFinite(row.gasClose) && row.gasClose > 0)
+  const summerMarketDays = marketDays(summerMarketPath, 'NG=F Summer signal history')
+  const winterMarketDays = marketDays(winterMarketPath, 'UNG Winter market history')
+  const storageRows = readCsv(storagePath, 'EIA storage history')
+  const actualWeatherRows = readCsv(actualWeatherPath, 'Winter actual weather history')
+
+  const summerAssessment = assessLiveTargetParity({
+    expectedRows: readCsv(summerExpectedTargetsPath, 'Summer selected targets').filter((row) => {
+      const month = Number(String(row?.targetDate ?? '').slice(5, 7))
+      return LIVE_TARGET_PARITY_POLICY.replayContract.summer.targetSeasonMonths.includes(month)
+    }),
+    forecastRows: summerForecastRows,
+    actualWeatherRows: [],
+    marketDays: summerMarketDays,
+    storageRows,
+  })
+  const winterAssessment = assessLiveTargetParity({
+    expectedRows: readCsv(winterExpectedTargetsPath, 'Winter selected targets'),
+    forecastRows: winterForecastRows,
+    actualWeatherRows,
+    marketDays: winterMarketDays,
+    storageRows,
+  })
+
+  const components = {
+    summer: {
+      componentStrategyId: 'ngas-summer-alpha',
+      status: summerAssessment.exactTargetParity ? 'pass' : 'fail',
+      productionForecastSourceIds: summerProductionForecastSourceIds,
+      productionSignalSourceIds: [...selectedContracts.summer.sourceIds],
+      forecastRowCount: summerForecastRows.length,
+      inputFiles: {
+        expectedTargets: path.relative(repoDir, summerExpectedTargetsPath),
+        forecastCalendars: summerInputs.inputFiles.map((filePath) => path.relative(repoDir, filePath)),
+      },
+      ...summerAssessment,
+    },
+    winter: {
+      componentStrategyId: 'ngas-winter-alpha',
+      status: winterAssessment.exactTargetParity ? 'pass' : 'fail',
+      productionForecastSourceIds: winterProductionForecastSourceIds,
+      productionSignalSourceIds: [...selectedContracts.winterFollow.liveSourceIds],
+      forecastRowCount: winterForecastRows.length,
+      inputFiles: {
+        datasetManifest: path.relative(repoDir, manifestPath),
+        expectedTargets: path.relative(repoDir, winterExpectedTargetsPath),
+        actualWeather: path.relative(repoDir, actualWeatherPath),
+        forecastCalendars: winterInputs.inputFiles.map((filePath) => path.relative(repoDir, filePath)),
+      },
+      ...winterAssessment,
+    },
+  }
+  const mismatches = Object.values(components).flatMap((component) =>
+    component.mismatches.map((row) => ({
+      componentStrategyId: component.componentStrategyId,
+      ...row,
+    })))
+  const exactTargetParity = components.summer.exactTargetParity && components.winter.exactTargetParity
+  const comparisonDigestSha256 = crypto
+    .createHash('sha256')
+    .update(JSON.stringify({
+      summer: components.summer.comparisonDigestSha256,
+      winter: components.winter.comparisonDigestSha256,
+    }))
+    .digest('hex')
+
+  return {
+    ...LIVE_TARGET_PARITY_POLICY,
+    status: exactTargetParity ? 'pass' : 'fail',
+    productionForecastSourceIds: {
+      summer: components.summer.productionForecastSourceIds,
+      winter: components.winter.productionForecastSourceIds,
+    },
+    productionSignalSourceIds: {
+      summer: components.summer.productionSignalSourceIds,
+      winter: components.winter.productionSignalSourceIds,
+    },
+    forecastRowCount: components.summer.forecastRowCount + components.winter.forecastRowCount,
+    inputDigestSha256,
+    inputFiles: {
+      storage: path.relative(repoDir, storagePath),
+      summer: {
+        ...components.summer.inputFiles,
+        market: path.relative(repoDir, summerMarketPath),
+      },
+      winter: {
+        ...components.winter.inputFiles,
+        market: path.relative(repoDir, winterMarketPath),
+      },
+    },
+    comparedRowCount: components.summer.comparedRowCount + components.winter.comparedRowCount,
+    matchedRowCount: components.summer.matchedRowCount + components.winter.matchedRowCount,
+    mismatchCount: mismatches.length,
+    gasPositionMismatchCount:
+      components.summer.gasPositionMismatchCount + components.winter.gasPositionMismatchCount,
+    indexFractionMismatchCount:
+      components.summer.indexFractionMismatchCount + components.winter.indexFractionMismatchCount,
+    thesisKindMismatchCount:
+      components.summer.thesisKindMismatchCount + components.winter.thesisKindMismatchCount,
+    exactTargetParity,
+    comparisonDigestSha256,
+    mismatches,
+    components,
+  }
+}

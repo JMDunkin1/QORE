@@ -7,6 +7,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
 import { assertEiaStorageReleaseCalendarCoverage, eiaStorageReleaseAt } from './lib/eia-release-time.mjs'
+import { liveGasPositionContractBlocks } from './lib/qore-live-inference-provenance.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
 import { omitApiKeyFields, redactSecretText } from './lib/secret-redaction.mjs'
@@ -246,6 +247,8 @@ function validatedLiveTargetContract(target, inference) {
   const indexFraction = strictFiniteNumber(target?.indexFraction, 'target.indexFraction')
   const cashFraction = strictFiniteNumber(target?.cashFraction, 'target.cashFraction')
   const confidence = strictFiniteNumber(target?.confidence, 'target.confidence')
+  const signalDate = strictDate(target?.signalDate, 'target.signalDate')
+  const targetDate = strictDate(target?.targetDate, 'target.targetDate')
   if (gasPosition < -1 || gasPosition > 1) throw new Error('Validated live inference target.gasPosition must be between -1 and 1.')
   if (indexFraction < 0 || indexFraction > 1) throw new Error('Validated live inference target.indexFraction must be between 0 and 1.')
   if (cashFraction < 0 || cashFraction > 1) throw new Error('Validated live inference target.cashFraction must be between 0 and 1.')
@@ -260,14 +263,25 @@ function validatedLiveTargetContract(target, inference) {
   if (target?.direction !== direction) {
     throw new Error(`Validated live inference target.direction must be ${direction} when gasPosition is ${gasPosition}.`)
   }
+  const gasPositionBlocks = liveGasPositionContractBlocks({
+    season: inference?.season,
+    targetDate,
+    componentStrategyId: target?.componentStrategyId,
+    windowId: target?.windowId,
+    thesisKind: target?.thesisKind,
+    gasPosition,
+  })
+  if (gasPositionBlocks.length) {
+    throw new Error(`Validated live inference gas-position contract is invalid: ${gasPositionBlocks.join('; ')}.`)
+  }
   return {
     gasPosition,
     indexFraction,
     cashFraction,
     confidence,
     direction,
-    signalDate: strictDate(target?.signalDate, 'target.signalDate'),
-    targetDate: strictDate(target?.targetDate, 'target.targetDate'),
+    signalDate,
+    targetDate,
     validatedIssueDate: strictDate(inference?.forecastValidation?.latestCommonIssueDate, 'forecastValidation.latestCommonIssueDate'),
   }
 }
@@ -981,7 +995,7 @@ async function reconcileSignalIntent() {
       season: inference.season,
       targetDate: latest.targetDate,
       liveForecastAppliedToTarget: true,
-      validated: strategyArtifact.promotionEligible,
+      validated: strategyArtifact.paperEligible,
       strategyArtifact,
       forecastValidation: inference.forecastValidation,
       componentStrategyId: latest.componentStrategyId,

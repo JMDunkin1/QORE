@@ -21,6 +21,11 @@ import {
   eiaStorageReleaseAt,
   loadEiaStorageReleaseCalendar,
 } from './lib/eia-release-time.mjs'
+import { downsideDeviation } from './lib/qore-research-statistics.mjs'
+import {
+  COMPONENT_ARTIFACT_SCHEMA_VERSION,
+  buildComponentSelectedTradesBinding,
+} from './lib/qore-component-artifact.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -2224,7 +2229,6 @@ function metricsFromCurve(curve, tradeCount) {
   }
 
   const returns = curve.map((point) => point.dailyPnlPct / 100)
-  const negativeReturns = returns.filter((value) => value < 0)
   let rebasedEquity = 1
   let rebasedPeak = 1
   let maxDrawdown = 0
@@ -2237,7 +2241,7 @@ function metricsFromCurve(curve, tradeCount) {
   const years = Math.max(daysBetween(curve[0].date, curve.at(-1).date) / 365.25, 1 / 365.25)
   const annualReturn = (1 + totalReturn) ** (1 / years) - 1
   const annualVol = std(returns) * Math.sqrt(TRADING_DAYS)
-  const downsideVol = std(negativeReturns) * Math.sqrt(TRADING_DAYS)
+  const downsideVol = downsideDeviation(returns) * Math.sqrt(TRADING_DAYS)
   const gains = returns.filter((value) => value > 0).reduce((sum, value) => sum + value, 0)
   const losses = Math.abs(returns.filter((value) => value < 0).reduce((sum, value) => sum + value, 0))
   const var95 = percentile(returns, 0.05)
@@ -3064,7 +3068,7 @@ function main() {
   const realityCheck = blockBootstrapRealityCheck(selected.curve, candidates)
   const { headers, rows } = selectedTradeRows(selected.rows)
   const summary = {
-    artifactSchemaVersion: 2,
+    artifactSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     strategyId: STRATEGY_ID,
     data: {
@@ -3152,8 +3156,18 @@ function main() {
     },
   }
 
+  const selectedTradesText = rowsToCsv(rows, headers)
+  summary.data.selectedTradesArtifact = buildComponentSelectedTradesBinding({
+    repoRoot: REPO_ROOT,
+    file: summary.outputFiles.selectedTrades,
+    raw: selectedTradesText,
+    rows,
+    executionContract: EXECUTION_CONTRACT,
+    label: 'NGAS Winter Alpha',
+  })
+
   writeText(path.join(OUTPUT_DIR, 'candidate-summary.csv'), rowsToCsv(candidates.map(formatCandidateRow), Object.keys(formatCandidateRow(candidates[0]))))
-  writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), rowsToCsv(rows, headers))
+  writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), selectedTradesText)
   writeText(path.join(OUTPUT_DIR, 'run-summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
   writeText(path.join(OUTPUT_DIR, 'report.md'), buildReport(summary))
 

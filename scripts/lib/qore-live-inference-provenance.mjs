@@ -1,8 +1,11 @@
+import { executableLiveGasPositionCapForTarget, executableLiveComponentContract } from './qore-live-contract.mjs'
+
 const PRODUCTION_MODE = 'selected-contract-live-source-set-00z'
+export const LIVE_GAS_POSITION_CAP_TOLERANCE = 1e-6
 
 const CONTRACTS = {
   summer: {
-    componentStrategyId: 'ngas-summer-alpha',
+    componentStrategyId: executableLiveComponentContract.summer.strategyId,
     requiredSources: ['gfs', 'gefs-mean'],
     collectedSources: ['gfs', 'gefs-mean'],
     requiredLeads: [7],
@@ -12,7 +15,7 @@ const CONTRACTS = {
     },
   },
   winter: {
-    componentStrategyId: 'ngas-winter-alpha',
+    componentStrategyId: executableLiveComponentContract.winter.strategyId,
     requiredSources: ['gfs', 'gefs-mean', 'aigfs'],
     collectedSources: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
     requiredLeads: [1, 2, 3, 7, 8, 9, 10],
@@ -44,10 +47,75 @@ function addDays(dateText, count) {
   return new Date(Date.parse(`${dateText}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10)
 }
 
-function seasonForInferenceDate(dateText) {
+export function liveInferenceSeasonForDate(dateText) {
+  if (!validDate(dateText)) return null
   const month = Number(dateText.slice(5, 7))
   const leadMonth = Number(addDays(dateText, 7).slice(5, 7))
   return (month >= 5 && month <= 9) || (leadMonth >= 5 && leadMonth <= 9) ? 'summer' : 'winter'
+}
+
+export function liveGasPositionContractBlocks({
+  season,
+  targetDate,
+  componentStrategyId,
+  windowId,
+  thesisKind,
+  gasPosition,
+}) {
+  const blocks = []
+  const expectedSeason = liveInferenceSeasonForDate(targetDate)
+  if (!expectedSeason) blocks.push('targetDate must be valid before applying the reviewed gas-position limit')
+  if (!Object.hasOwn(CONTRACTS, season)) {
+    blocks.push('inference season must equal summer or winter before applying the reviewed gas-position limit')
+    return blocks
+  }
+  if (expectedSeason && season !== expectedSeason) {
+    blocks.push(`inference season must equal ${expectedSeason} for target date ${targetDate}`)
+  }
+
+  const numericGasPosition = gasPosition === null || gasPosition === undefined || gasPosition === ''
+    ? null
+    : Number(gasPosition)
+  if (!Number.isFinite(numericGasPosition)) {
+    blocks.push('intent gasPosition must be finite before applying the reviewed gas-position limit')
+    return blocks
+  }
+
+  const contract = CONTRACTS[season]
+  if (componentStrategyId === 'index-fallback') {
+    if (windowId !== 'index-fallback' || thesisKind !== 'index-fallback' || numericGasPosition !== 0) {
+      blocks.push('index-fallback provenance requires index-fallback window/thesis and zero gasPosition')
+    }
+  } else if (componentStrategyId !== contract.componentStrategyId) {
+    blocks.push(`componentStrategyId must equal ${contract.componentStrategyId} or index-fallback for ${season}`)
+  } else {
+    const allowedTheses = contract.thesesByWindow[windowId]
+    if (!allowedTheses?.has(thesisKind)) {
+      blocks.push(`${contract.componentStrategyId} windowId/thesisKind is not a reviewed ${season} target combination`)
+    }
+    if (numericGasPosition === 0) {
+      blocks.push(`${contract.componentStrategyId} provenance requires a nonzero intent gasPosition`)
+    } else if (LONG_THESES.has(thesisKind) && numericGasPosition <= 0) {
+      blocks.push(`${thesisKind} provenance requires intent gasPosition greater than zero`)
+    } else if (SHORT_THESES.has(thesisKind) && numericGasPosition >= 0) {
+      blocks.push(`${thesisKind} provenance requires intent gasPosition less than zero`)
+    }
+  }
+
+  const cap = executableLiveGasPositionCapForTarget({
+    season,
+    componentStrategyId,
+    windowId,
+    thesisKind,
+  })
+  if (cap === null) {
+    blocks.push(`reviewed executable gas-position cap is unavailable for ${season}/${windowId}/${thesisKind}`)
+  } else if (Math.abs(numericGasPosition) > cap + LIVE_GAS_POSITION_CAP_TOLERANCE) {
+    blocks.push(
+      `intent gasPosition ${numericGasPosition} exceeds the reviewed ${season} ${windowId}/${thesisKind} executable cap ${cap}`,
+    )
+  }
+  return blocks
 }
 
 export function liveInferenceProvenanceBlocks(signalHandoff, asOf = new Date()) {
@@ -64,7 +132,7 @@ export function liveInferenceProvenanceBlocks(signalHandoff, asOf = new Date()) 
     blocks.push('inference targetDate must be valid and exactly match intent targetDate')
   }
 
-  const season = seasonForInferenceDate(today)
+  const season = liveInferenceSeasonForDate(today)
   const contract = CONTRACTS[season]
   if (inference?.season !== season) blocks.push(`inference season must equal ${season} for target date ${today}`)
   if (inference?.mode !== PRODUCTION_MODE) {
@@ -90,26 +158,14 @@ export function liveInferenceProvenanceBlocks(signalHandoff, asOf = new Date()) 
   const componentStrategyId = inference?.componentStrategyId
   const windowId = inference?.windowId
   const thesisKind = inference?.thesisKind
-  const gasPosition = Number(intent?.gasPosition)
-  if (componentStrategyId === 'index-fallback') {
-    if (windowId !== 'index-fallback' || thesisKind !== 'index-fallback' || gasPosition !== 0) {
-      blocks.push('index-fallback provenance requires index-fallback window/thesis and zero gasPosition')
-    }
-  } else if (componentStrategyId !== contract.componentStrategyId) {
-    blocks.push(`componentStrategyId must equal ${contract.componentStrategyId} or index-fallback for ${season}`)
-  } else {
-    const allowedTheses = contract.thesesByWindow[windowId]
-    if (!allowedTheses?.has(thesisKind)) {
-      blocks.push(`${contract.componentStrategyId} windowId/thesisKind is not a reviewed ${season} target combination`)
-    }
-    if (!Number.isFinite(gasPosition) || gasPosition === 0) {
-      blocks.push(`${contract.componentStrategyId} provenance requires a nonzero intent gasPosition`)
-    } else if (LONG_THESES.has(thesisKind) && gasPosition <= 0) {
-      blocks.push(`${thesisKind} provenance requires intent gasPosition greater than zero`)
-    } else if (SHORT_THESES.has(thesisKind) && gasPosition >= 0) {
-      blocks.push(`${thesisKind} provenance requires intent gasPosition less than zero`)
-    }
-  }
+  blocks.push(...liveGasPositionContractBlocks({
+    season: inference?.season,
+    targetDate: intent?.targetDate,
+    componentStrategyId,
+    windowId,
+    thesisKind,
+    gasPosition: intent?.gasPosition,
+  }))
 
   const issueDate = validDate(validation?.latestCommonIssueDate)
   const issueAgeDays = Number(validation?.issueAgeDays)

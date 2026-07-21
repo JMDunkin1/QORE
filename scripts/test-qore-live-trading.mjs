@@ -9,10 +9,29 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { nominalEiaStorageReleaseAt } from './lib/eia-release-time.mjs'
+import { loadReviewedBrokerExecutionProfile } from './lib/qore-broker-execution-profile.mjs'
+import {
+  executableLiveGasPositionCapForTarget,
+  executableLiveGasPositionCaps,
+} from './lib/qore-live-contract.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
-import { loadAllYearStrategyArtifact } from './lib/qore-live-strategy-artifact.mjs'
+import {
+  ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION,
+  loadAllYearStrategyArtifact,
+  strategyArtifactBindingBlocks,
+} from './lib/qore-live-strategy-artifact.mjs'
+import { writeValidationEvidenceTestFixtures } from './lib/qore-validation-evidence-test-fixture.mjs'
+import {
+  ALL_YEAR_SELECTION_CONTRACT,
+  VALIDATION_INTEGRITY_MANIFEST_ID,
+  VALIDATION_INTEGRITY_SCHEMA_VERSION,
+  allYearStrategyContractDigestSha256,
+  loadValidationIntegrityManifest,
+} from './lib/qore-validation-integrity.mjs'
 
 process.env.NODE_ENV = 'test'
+process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES = '1'
+process.env.QORE_TEST_ALLOW_BROKER_PROFILE_DRIFT = '1'
 
 const repoDir = process.cwd()
 const scratch = await mkdtemp(path.join(tmpdir(), 'qore-live-test-'))
@@ -57,11 +76,97 @@ async function writeJson(filePath, value) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
+async function createPristineValidationIntegrityFixture() {
+  const filePath = path.join(scratch, 'pristine-validation-integrity.json')
+  const sourcePath = path.join(repoDir, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json')
+  const source = JSON.parse(await readFile(sourcePath, 'utf8'))
+  source.contract.allYearSelection = ALL_YEAR_SELECTION_CONTRACT
+  const sealedStrategyContractDigestSha256 = allYearStrategyContractDigestSha256(source)
+  const sealedStrategyArtifactDigestSha256 = crypto
+    .createHash('sha256')
+    .update(JSON.stringify(source))
+    .digest('hex')
+  const sealedBrokerExecutionProfileDigestSha256 = loadReviewedBrokerExecutionProfile(repoDir).profileDigestSha256
+  const paperAccountPseudonymSha256 = 'c'.repeat(64)
+  const evidenceFixtures = await writeValidationEvidenceTestFixtures({
+    repoDir,
+    manifestPath: filePath,
+    strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+    strategyArtifactDigestSha256: sealedStrategyArtifactDigestSha256,
+    brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
+    accountPseudonymSha256: paperAccountPseudonymSha256,
+  })
+  await writeJson(filePath, {
+    schemaVersion: VALIDATION_INTEGRITY_SCHEMA_VERSION,
+    manifestId: VALIDATION_INTEGRITY_MANIFEST_ID,
+    strategyId: 'ngas-all-year-beta',
+    reviewedAt: '2025-10-02T00:00:00.000Z',
+    sealedStrategyContractDigestSha256,
+    sealedStrategyArtifactDigestSha256,
+    sealedBrokerExecutionProfileDigestSha256,
+    historicalEvidence: {
+      status: 'development-contaminated',
+      evidenceStart: '2020-01-01',
+      developmentBegan: '2022-06-11',
+      observedThrough: '2022-12-15',
+      prospectiveStart: '2023-01-01',
+      pristineForwardEvidence: true,
+    },
+    minimumForwardEvidence: {
+      independentEpisodes: 60,
+      completeSummerSeasons: 2,
+      completeWinterSeasons: 2,
+    },
+    observedForwardEvidence: {
+      ...evidenceFixtures.forwardSummary,
+      evidenceArtifactDigestSha256: evidenceFixtures.forwardEvidenceArtifactDigestSha256,
+      reviewedAt: '2025-10-01T00:00:00.000Z',
+    },
+    minimumPaperExecutionEvidence: {
+      tradingSessions: 60,
+      filledOrders: 10,
+      ungFilledOrders: 4,
+      ungLongFilledOrders: 2,
+      ungShortFilledOrders: 2,
+      maximumMedianAbsoluteSlippageBps: 25,
+      maximumP95AbsoluteSlippageBps: 50,
+    },
+    paperExecutionEvidence: {
+      status: 'reviewed',
+      ...evidenceFixtures.paperSummary,
+      evidenceArtifactDigestSha256: evidenceFixtures.paperEvidenceArtifactDigestSha256,
+      reviewedAt: '2025-10-01T01:00:00.000Z',
+    },
+    approvals: {
+      paper: {
+        status: 'approved',
+        approvalId: 'test-paper-approval',
+        approvedAt: '2022-12-31T12:00:00.000Z',
+        strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+        brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
+      },
+      live: {
+        status: 'approved',
+        approvalId: 'test-live-approval',
+        approvedAt: '2025-10-02T00:00:00.000Z',
+        strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+        brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
+      },
+    },
+  })
+  process.env.QORE_VALIDATION_INTEGRITY_FILE = filePath
+  return loadValidationIntegrityManifest(repoDir)
+}
+
+const pristineValidationIntegrity = await createPristineValidationIntegrityFixture()
+
 async function createPromotionEligibleStrategyArtifactFixture() {
   const sourcePath = path.join(repoDir, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json')
   const source = JSON.parse(await readFile(sourcePath, 'utf8'))
   const fixture = {
     ...source,
+    artifactSchemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION,
+    contract: { ...source.contract, allYearSelection: ALL_YEAR_SELECTION_CONTRACT },
     status: 'research-baseline',
     search: {
       ...source.search,
@@ -71,7 +176,29 @@ async function createPromotionEligibleStrategyArtifactFixture() {
     },
     validation: {
       ...source.validation,
-      promotionGates: Object.fromEntries(Object.keys(source.validation.promotionGates).map((gate) => [gate, true])),
+      liveTargetParity: {
+        ...source.validation.liveTargetParity,
+        status: 'pass',
+        matchedRowCount: source.validation.liveTargetParity.comparedRowCount,
+        mismatchCount: 0,
+        gasPositionMismatchCount: 0,
+        thesisKindMismatchCount: 0,
+        exactTargetParity: true,
+        comparisonDigestSha256: 'd'.repeat(64),
+        mismatches: [],
+      },
+      integrity: {
+        ...pristineValidationIntegrity.binding,
+        strategyContractDigestSha256: pristineValidationIntegrity.binding.sealedStrategyContractDigestSha256,
+      },
+      promotionGates: {
+        ...Object.fromEntries(Object.keys(source.validation.promotionGates).map((gate) => [gate, true])),
+        pristineForwardEvidence: true,
+        strategyContractSeal: true,
+        paperApproval: true,
+        paperExecutionEvidence: true,
+        liveApproval: true,
+      },
     },
     candidates: source.candidates.map((candidate, index) => ({ ...candidate, eligible: index === 0 })),
   }
@@ -82,6 +209,57 @@ async function createPromotionEligibleStrategyArtifactFixture() {
 }
 
 const promotedStrategyArtifact = await createPromotionEligibleStrategyArtifactFixture()
+
+async function testPaperAndLiveEligibilityAreSeparate() {
+  const originalManifestPath = process.env.QORE_VALIDATION_INTEGRITY_FILE
+  const originalArtifactPath = process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE
+  const manifestPath = path.join(scratch, 'paper-only-validation-integrity.json')
+  const artifactPath = path.join(scratch, 'paper-only-all-year-run-summary.json')
+  const manifest = structuredClone(pristineValidationIntegrity.manifest)
+  manifest.reviewedAt = '2025-10-02T00:00:00.000Z'
+  manifest.historicalEvidence.pristineForwardEvidence = false
+  manifest.observedForwardEvidence = {
+    independentEpisodes: 0,
+    completeSummerSeasons: 0,
+    completeWinterSeasons: 0,
+    observedThrough: null,
+    strategyContractDigestSha256: null,
+    strategyArtifactDigestSha256: null,
+    evidenceArtifactDigestSha256: null,
+    reviewedAt: null,
+  }
+  manifest.approvals.live = {
+    status: 'absent',
+    approvalId: null,
+    approvedAt: null,
+    strategyContractDigestSha256: null,
+    brokerExecutionProfileDigestSha256: null,
+  }
+  await writeJson(manifestPath, manifest)
+  process.env.QORE_VALIDATION_INTEGRITY_FILE = manifestPath
+  const paperIntegrity = loadValidationIntegrityManifest(repoDir)
+  const fixture = structuredClone(promotedStrategyArtifact.summary)
+  fixture.validation.integrity = {
+    ...paperIntegrity.binding,
+    strategyContractDigestSha256: paperIntegrity.binding.sealedStrategyContractDigestSha256,
+  }
+  fixture.validation.promotionGates.pristineForwardEvidence = false
+  fixture.validation.promotionGates.liveApproval = false
+  await writeJson(artifactPath, fixture)
+  process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE = artifactPath
+  const artifact = loadAllYearStrategyArtifact(repoDir)
+  assert.equal(artifact.binding.paperEligible, true)
+  assert.equal(artifact.binding.liveEligible, false)
+  assert.equal(artifact.binding.promotionEligible, false)
+  assert.deepEqual(strategyArtifactBindingBlocks(artifact.binding, artifact, { mode: 'paper' }), [])
+  assert.match(
+    strategyArtifactBindingBlocks(artifact.binding, artifact, { mode: 'live' }).join('; '),
+    /pristineForwardEvidence.*liveApproval/,
+  )
+  process.env.QORE_VALIDATION_INTEGRITY_FILE = originalManifestPath
+  process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE = originalArtifactPath
+  console.log('ok - paper eligibility can precede the pristine-evidence and live-approval gates')
+}
 
 function today() {
   return new Date().toISOString().slice(0, 10)
@@ -108,6 +286,75 @@ function inferenceContract(season = inferenceSeason()) {
         scoreRowCount: 21,
       }
 }
+
+const reviewedGasPositionCapCases = [
+  {
+    id: 'summer-heat-follow',
+    season: 'summer',
+    targetDate: '2026-07-21',
+    handoffNow: '2026-07-21T15:00:00.000Z',
+    componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-follow',
+    thesisKind: 'summer-heat-long',
+    direction: 1,
+    cap: 0.4375,
+  },
+  {
+    id: 'summer-cold-follow',
+    season: 'summer',
+    targetDate: '2026-07-21',
+    handoffNow: '2026-07-21T15:00:00.000Z',
+    componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-follow',
+    thesisKind: 'summer-cold-short',
+    direction: -1,
+    cap: 0.35,
+  },
+  {
+    id: 'summer-cold-reversion',
+    season: 'summer',
+    targetDate: '2026-07-21',
+    handoffNow: '2026-07-21T15:00:00.000Z',
+    componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-reversion',
+    thesisKind: 'reversion-long',
+    direction: 1,
+    cap: 0.35,
+  },
+  {
+    id: 'summer-heat-reversion',
+    season: 'summer',
+    targetDate: '2026-07-21',
+    handoffNow: '2026-07-21T15:00:00.000Z',
+    componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-reversion',
+    thesisKind: 'reversion-short',
+    direction: -1,
+    cap: 0.5,
+  },
+  {
+    id: 'winter-follow',
+    season: 'winter',
+    targetDate: '2026-01-21',
+    handoffNow: '2026-01-21T15:00:00.000Z',
+    componentStrategyId: 'ngas-winter-alpha',
+    windowId: 'weather-follow',
+    thesisKind: 'cold-long',
+    direction: 1,
+    cap: 0.5625,
+  },
+  {
+    id: 'winter-reversion',
+    season: 'winter',
+    targetDate: '2026-01-21',
+    handoffNow: '2026-01-21T15:00:00.000Z',
+    componentStrategyId: 'ngas-winter-alpha',
+    windowId: 'weather-reversion',
+    thesisKind: 'reversion-short',
+    direction: -1,
+    cap: 0.5625,
+  },
+]
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -1290,6 +1537,52 @@ async function testMaliciousDataEndpointMakesZeroRequests() {
   console.log('ok - malicious Alpaca data endpoint is rejected before any credentialed request')
 }
 
+async function testArtifactOverridesCannotReachRealAlpacaEndpoints() {
+  const endpointDir = path.join(scratch, 'artifact-override-production-endpoint')
+  const result = await runNode([brokerScript, '--mode=paper', '--status', '--json'], {
+    APCA_API_KEY_ID: 'test-key',
+    APCA_API_SECRET_KEY: 'test-secret',
+    QORE_ALPACA_BASE_URL: 'https://paper-api.alpaca.markets',
+    QORE_ALPACA_DATA_BASE_URL: 'https://data.alpaca.markets',
+    QORE_ALPACA_TEST_ENDPOINT_CONFIRMED: '0',
+    QORE_BROKER_STATE_DIR: endpointDir,
+  })
+  assert.equal(result.code, 1)
+  assert.match(result.stdout, /Reviewed-artifact test overrides are restricted to explicitly confirmed loopback/)
+  console.log('ok - reviewed-artifact test overrides cannot reach real Alpaca endpoints')
+}
+
+async function testBrokerProfileDriftBlocksBeforeRealAlpacaRequest() {
+  let requestCount = 0
+  const server = createServer((_request, response) => {
+    requestCount += 1
+    jsonResponse(response, 500, { message: 'must never be reached' })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const baseUrl = `http://127.0.0.1:${server.address().port}`
+  const endpointDir = path.join(scratch, 'broker-profile-drift-production-endpoint')
+  try {
+    const result = await runNode([brokerScript, '--mode=paper', '--preflight-only', '--json'], {
+      APCA_API_KEY_ID: 'test-key',
+      APCA_API_SECRET_KEY: 'test-secret',
+      QORE_ALPACA_BASE_URL: baseUrl,
+      QORE_ALPACA_DATA_BASE_URL: baseUrl,
+      QORE_ALPACA_TEST_ENDPOINT_CONFIRMED: '1',
+      QORE_TEST_ALLOW_BROKER_PROFILE_DRIFT: '0',
+      QORE_ALPACA_ALLOW_SHORTS: '0',
+      QORE_VALIDATION_INTEGRITY_FILE: undefined,
+      QORE_LIVE_STRATEGY_ARTIFACT_FILE: undefined,
+      QORE_BROKER_STATE_DIR: endpointDir,
+    })
+    assert.equal(result.code, 1)
+    assert.match(result.stdout, /Resolved broker execution profile .* does not match the reviewed profile/)
+    assert.equal(requestCount, 0)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+  console.log('ok - broker execution-profile drift blocks before Alpaca access')
+}
+
 async function testStatusDoesNotSynthesizeOrRewriteInvalidRiskLedger() {
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
@@ -1798,7 +2091,10 @@ async function runGit(cwd, args) {
 async function prepareExecutionRepoFixture(root, { initializeGit }) {
   await mkdir(root, { recursive: true })
   await symlink(path.join(repoDir, 'scripts'), path.join(root, 'scripts'), 'dir')
-  await writeJson(path.join(root, 'config/qore-live-broker-settings.json'), {})
+  await writeJson(
+    path.join(root, 'config/qore-live-broker-settings.json'),
+    JSON.parse(await readFile(path.join(repoDir, 'config/qore-live-broker-settings.json'), 'utf8')),
+  )
   await writeJson(path.join(root, 'config/qore-live-weather-settings.json'), {})
   await writeJson(path.join(root, 'data/qore/market/index-basket-config.json'), validBasket)
   if (!initializeGit) return
@@ -1965,6 +2261,7 @@ async function testSignalFreshnessUsesValidatedInferenceIssue() {
   await writeJson(inferencePath, {
     generatedAt: new Date().toISOString(),
     strategyId: 'ngas-all-year-beta',
+    season: inferenceSeason(),
     validated: true,
     liveForecastAppliedToTarget: true,
     strategyArtifact: promotedStrategyArtifact.binding,
@@ -1972,6 +2269,7 @@ async function testSignalFreshnessUsesValidatedInferenceIssue() {
     forecastValidation: { latestCommonIssueDate: today(), issueAgeDays: 0 },
     target: {
       strategyId: 'ngas-all-year-beta',
+      componentStrategyId: 'index-fallback',
       signalDate: '2020-01-01',
       targetDate: today(),
       gasPosition: 0,
@@ -1979,7 +2277,8 @@ async function testSignalFreshnessUsesValidatedInferenceIssue() {
       cashFraction: 0,
       direction: 'flat',
       confidence: 0.8,
-      windowId: 'weather-reversion',
+      windowId: 'index-fallback',
+      thesisKind: 'index-fallback',
     },
   })
   const result = await runNode(['scripts/qore-live-weather-service.mjs', '--once', '--no-performance-test'], {
@@ -2000,12 +2299,93 @@ async function testSignalFreshnessUsesValidatedInferenceIssue() {
   console.log('ok - signal freshness follows the validated inference issue instead of target lifecycle age')
 }
 
+async function testLiveWeatherHandoffGasPositionCaps() {
+  for (const capCase of reviewedGasPositionCapCases) {
+    const {
+      id,
+      season,
+      targetDate,
+      componentStrategyId,
+      windowId,
+      thesisKind,
+      direction,
+      cap,
+    } = capCase
+    const targetDir = path.join(scratch, `signal-position-cap-${id}`)
+    const inferencePath = path.join(targetDir, 'all-year-target.json')
+    const signalPath = path.join(targetDir, 'signal-intent-reconcile.json')
+    const serviceEnv = {
+      QORE_LIVE_WEATHER_STATE_DIR: targetDir,
+      QORE_LIVE_INFERENCE_FILE: inferencePath,
+      QORE_LIVE_SIGNAL_INTENT_FILE: signalPath,
+      QORE_LIVE_WEATHER_CURRENT_FORECAST: '0',
+      QORE_LIVE_MARKET_REFERENCE_PRICES_ENABLED: '0',
+      QORE_LIVE_BROKER_ACCOUNT_AND_POSITIONS_ENABLED: '0',
+      QORE_LIVE_EIA_STORAGE_RELEASE_WINDOW_ENABLED: '0',
+      QORE_LIVE_STRATEGY_INFERENCE_ENABLED: '0',
+      QORE_LIVE_RISK_AND_KILL_SWITCH_STATE_ENABLED: '0',
+      QORE_LIVE_SIGNAL_INTENT_RECONCILE_ENABLED: '1',
+    }
+    const inference = (gasPosition) => ({
+      generatedAt: `${targetDate}T15:00:00.000Z`,
+      strategyId: 'ngas-all-year-beta',
+      season,
+      validated: true,
+      liveForecastAppliedToTarget: true,
+      strategyArtifact: promotedStrategyArtifact.binding,
+      inferenceMode: 'selected-contract-live-source-set-00z',
+      forecastValidation: { latestCommonIssueDate: targetDate, issueAgeDays: 0 },
+      target: {
+        strategyId: 'ngas-all-year-beta',
+        componentStrategyId,
+        signalDate: targetDate,
+        targetDate,
+        direction: gasPosition > 0 ? 'long' : 'short',
+        gasPosition,
+        indexFraction: 1 - Math.abs(gasPosition),
+        cashFraction: 0,
+        confidence: 0.8,
+        windowId,
+        thesisKind,
+      },
+    })
+
+    await writeJson(inferencePath, inference(direction * cap))
+    let result = await runNode(['scripts/qore-live-weather-service.mjs', '--once', '--no-performance-test'], serviceEnv)
+    assert.equal(result.code, 0, `${id} cap boundary must produce a signal handoff: ${result.stderr}`)
+    let signal = JSON.parse(await readFile(signalPath, 'utf8'))
+    assert.equal(signal.intent.gasPosition, direction * cap, `${id} cap boundary must be preserved in the handoff`)
+
+    await writeJson(inferencePath, inference(direction * (cap + 0.00001)))
+    await writeJson(signalPath, { sentinel: `${id}-last-known-good` })
+    result = await runNode(['scripts/qore-live-weather-service.mjs', '--once', '--no-performance-test'], serviceEnv)
+    assert.equal(result.code, 1, `${id} over-cap target must fail the signal handoff job`)
+    const status = JSON.parse(await readFile(path.join(targetDir, 'status.json'), 'utf8'))
+    assert.match(
+      status.liveJobs.signalIntentReconcile.error,
+      new RegExp(`exceeds the reviewed ${season} ${windowId}/${thesisKind} executable cap ${cap}`),
+    )
+    signal = JSON.parse(await readFile(signalPath, 'utf8'))
+    assert.equal(signal.sentinel, `${id}-last-known-good`, `${id} over-cap target must preserve the last handoff`)
+  }
+
+  const indexFallback = {
+    season: 'summer',
+    componentStrategyId: 'index-fallback',
+    windowId: 'index-fallback',
+    thesisKind: 'index-fallback',
+  }
+  assert.equal(executableLiveGasPositionCapForTarget(indexFallback), 0)
+  console.log('ok - live weather handoffs enforce thesis/window-specific gas-position caps')
+}
+
 async function testMalformedInferenceTargetCannotReplaceSignalIntent() {
   const targetDir = path.join(scratch, 'strict-signal-target')
   const inferencePath = path.join(targetDir, 'all-year-target.json')
   const signalPath = path.join(targetDir, 'signal-intent-reconcile.json')
   const validTarget = {
     strategyId: 'ngas-all-year-beta',
+    componentStrategyId: 'index-fallback',
     signalDate: today(),
     targetDate: today(),
     direction: 'flat',
@@ -2014,6 +2394,7 @@ async function testMalformedInferenceTargetCannotReplaceSignalIntent() {
     cashFraction: 0,
     confidence: 0.8,
     windowId: 'index-fallback',
+    thesisKind: 'index-fallback',
   }
   const variants = [
     {
@@ -2032,6 +2413,7 @@ async function testMalformedInferenceTargetCannotReplaceSignalIntent() {
     await writeJson(inferencePath, {
       generatedAt: new Date().toISOString(),
       strategyId: variant.inferenceStrategyId ?? 'ngas-all-year-beta',
+      season: inferenceSeason(),
       validated: true,
       liveForecastAppliedToTarget: true,
       inferenceMode: 'test-live-inference',
@@ -2062,14 +2444,84 @@ await prepareExecutionRepoFixture(executionRepo, { initializeGit: true })
 await prepareExecutionRepoFixture(nonGitExecutionRepo, { initializeGit: false })
 
 try {
+  await testPaperAndLiveEligibilityAreSeparate()
   const currentTestInferenceSeason = inferenceSeason()
   const oppositeTestInferenceSeason = currentTestInferenceSeason === 'summer' ? 'winter' : 'summer'
   const oppositeTestInferenceContract = inferenceContract(oppositeTestInferenceSeason)
+  const currentTestLongGasPositionCap = executableLiveGasPositionCapForTarget({
+    season: currentTestInferenceSeason,
+    componentStrategyId: `ngas-${currentTestInferenceSeason}-alpha`,
+    windowId: 'weather-follow',
+    thesisKind: currentTestInferenceSeason === 'summer' ? 'summer-heat-long' : 'cold-long',
+  })
+  const currentTestShortGasPositionCap = executableLiveGasPositionCapForTarget({
+    season: currentTestInferenceSeason,
+    componentStrategyId: `ngas-${currentTestInferenceSeason}-alpha`,
+    windowId: 'weather-follow',
+    thesisKind: currentTestInferenceSeason === 'summer' ? 'summer-cold-short' : 'warm-short',
+  })
   testEiaReleaseTimestamp()
+  assert.deepEqual(executableLiveGasPositionCaps, {
+    summer: {
+      'weather-follow': { 'summer-heat-long': 0.4375, 'summer-cold-short': 0.35 },
+      'weather-reversion': { 'reversion-long': 0.35, 'reversion-short': 0.5 },
+    },
+    winter: {
+      'weather-follow': { 'cold-long': 0.5625, 'warm-short': 0.5625 },
+      'weather-reversion': { 'reversion-long': 0.5625, 'reversion-short': 0.5625 },
+    },
+  })
+  console.log('ok - executable position caps preserve each reviewed thesis/window maximum')
   await scenario({ name: 'paper reconcile uses Alpaca bid/ask and submits ETF deltas' })
+  for (const capCase of reviewedGasPositionCapCases) {
+    const {
+      id,
+      season,
+      targetDate,
+      handoffNow,
+      componentStrategyId,
+      windowId,
+      thesisKind,
+      direction,
+      cap,
+    } = capCase
+    await scenario({
+      name: `paper preflight accepts the reviewed ${id} gas-position cap`,
+      targetDate,
+      handoffNow,
+      gasPosition: direction * cap,
+      indexFraction: 1 - cap,
+      allowShorts: direction < 0,
+      inferenceProvenanceOverrides: { componentStrategyId, windowId, thesisKind },
+      preflightOnly: true,
+    })
+    await scenario({
+      name: `paper reconcile rejects a target above the reviewed ${id} gas-position cap`,
+      targetDate,
+      handoffNow,
+      gasPosition: direction * (cap + 0.00001),
+      indexFraction: 1 - cap - 0.00001,
+      allowShorts: direction < 0,
+      inferenceProvenanceOverrides: { componentStrategyId, windowId, thesisKind },
+      expectedBlock: new RegExp(`exceeds the reviewed ${season} ${windowId}/${thesisKind} executable cap ${cap}`),
+    })
+  }
+  await scenario({
+    name: 'paper reconcile rejects nonzero gas exposure with index-fallback provenance',
+    targetDate: '2026-07-21',
+    handoffNow: '2026-07-21T15:00:00.000Z',
+    gasPosition: 0.00001,
+    indexFraction: 0.99999,
+    inferenceProvenanceOverrides: {
+      componentStrategyId: 'index-fallback',
+      windowId: 'index-fallback',
+      thesisKind: 'index-fallback',
+    },
+    expectedBlock: /exceeds the reviewed summer index-fallback\/index-fallback executable cap 0/,
+  })
   await scenario({
     name: 'capped paper reconcile advances through two consecutively filled tranches',
-    gasPosition: 1,
+    gasPosition: currentTestLongGasPositionCap,
     indexFraction: 0,
     maxOrderUsd: '100',
     reconcileCount: 2,
@@ -2086,7 +2538,7 @@ try {
   await scenario({
     name: 'paper reconcile can route the strategy short leg when Alpaca confirms borrowability',
     allowShorts: true,
-    gasPosition: -1,
+    gasPosition: -currentTestShortGasPositionCap,
     indexFraction: 0,
     expectedOrderCount: 1,
     expectedFirstSide: 'sell',
@@ -2095,7 +2547,7 @@ try {
   await scenario({
     name: 'paper reconcile blocks when UNG borrowability is revoked at the final submission boundary',
     allowShorts: true,
-    gasPosition: -1,
+    gasPosition: -currentTestShortGasPositionCap,
     indexFraction: 0,
     assetOverridesByRead: [{}, { shortable: false }],
     expectedAssetRequestCount: 2,
@@ -2107,33 +2559,33 @@ try {
   })
   await scenario({
     name: 'paper reconcile requires Alpaca shortable to be exactly true',
-    allowShorts: true, gasPosition: -1, indexFraction: 0,
+    allowShorts: true, gasPosition: -currentTestShortGasPositionCap, indexFraction: 0,
     assetOverrides: { shortable: false },
     expectedBlock: /shortable=true/,
   })
   await scenario({
     name: 'paper reconcile blocks unknown UNG borrow availability even with the HTB override',
-    allowShorts: true, gasPosition: -1, indexFraction: 0,
+    allowShorts: true, gasPosition: -currentTestShortGasPositionCap, indexFraction: 0,
     assetOverrides: { easy_to_borrow: null, borrow_status: null },
     commandEnvOverrides: { QORE_ALPACA_ALLOW_HARD_TO_BORROW: '1' },
     expectedBlock: /easy_to_borrow must be explicitly boolean/,
   })
   await scenario({
     name: 'paper reconcile rejects status-only HTB when easy_to_borrow is missing',
-    allowShorts: true, gasPosition: -1, indexFraction: 0,
+    allowShorts: true, gasPosition: -currentTestShortGasPositionCap, indexFraction: 0,
     assetOverrides: { easy_to_borrow: null, borrow_status: 'hard_to_borrow' },
     commandEnvOverrides: { QORE_ALPACA_ALLOW_HARD_TO_BORROW: '1' },
     expectedBlock: /easy_to_borrow must be explicitly boolean/,
   })
   await scenario({
     name: 'paper reconcile blocks recognized hard-to-borrow UNG without explicit permission',
-    allowShorts: true, gasPosition: -1, indexFraction: 0,
+    allowShorts: true, gasPosition: -currentTestShortGasPositionCap, indexFraction: 0,
     assetOverrides: { easy_to_borrow: false, borrow_status: null },
     expectedBlock: /hard-to-borrow/,
   })
   await scenario({
     name: 'paper reconcile permits positively recognized HTB only with explicit permission',
-    allowShorts: true, gasPosition: -1, indexFraction: 0,
+    allowShorts: true, gasPosition: -currentTestShortGasPositionCap, indexFraction: 0,
     assetOverrides: { easy_to_borrow: false, borrow_status: null },
     commandEnvOverrides: { QORE_ALPACA_ALLOW_HARD_TO_BORROW: '1' },
     expectedOrderCount: 1,
@@ -2324,12 +2776,15 @@ try {
     expectedRequestCount: 0,
   })
   await testMaliciousDataEndpointMakesZeroRequests()
+  await testArtifactOverridesCannotReachRealAlpacaEndpoints()
+  await testBrokerProfileDriftBlocksBeforeRealAlpacaRequest()
   await testMissingInferenceFailsClosed()
   await testMissingKillSwitchStatusIsUnknown()
   await testCanonicalOperatorStatePath()
   await testStaleTargetFailsDirectReadiness()
   await testSupervisorPrestartDefersRefreshableState()
   await testSignalFreshnessUsesValidatedInferenceIssue()
+  await testLiveWeatherHandoffGasPositionCaps()
   await testMalformedInferenceTargetCannotReplaceSignalIntent()
   await testGitGeneratedArtifactAllowlist()
   await scenario({

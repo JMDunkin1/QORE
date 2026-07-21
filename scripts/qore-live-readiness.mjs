@@ -184,6 +184,7 @@ try {
   strategyArtifactBlocks = strategyArtifactBindingBlocks(
     signalHandoff?.inference?.strategyArtifact,
     loadAllYearStrategyArtifact(repoDir),
+    { mode },
   )
 } catch (error) {
   strategyArtifactBlocks = [`current reviewed strategy artifact is unavailable: ${error.message}`]

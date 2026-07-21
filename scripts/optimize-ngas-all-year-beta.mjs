@@ -12,13 +12,31 @@ import {
   loadResearchExecutionContract,
   targetWeightsForAllocation,
 } from './lib/qore-research-execution.mjs'
-import { validateComponentArtifact } from './lib/qore-component-artifact.mjs'
+import {
+  COMPONENT_ARTIFACT_SCHEMA_VERSION,
+  validateComponentArtifact,
+} from './lib/qore-component-artifact.mjs'
 import {
   LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
   canonicalComponentLiveContractFromSummaries,
   executableLiveComponentContractDigestSha256,
   liveComponentContractDigestSha256,
 } from './lib/qore-live-contract.mjs'
+import {
+  LIVE_TARGET_PARITY_POLICY,
+  evaluateVersionedLiveTargetParity,
+} from './lib/qore-live-target-parity.mjs'
+import { ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION } from './lib/qore-live-strategy-artifact.mjs'
+import { downsideDeviation } from './lib/qore-research-statistics.mjs'
+import {
+  brokerExecutionProfileTieOutFailures,
+  loadReviewedBrokerExecutionProfile,
+} from './lib/qore-broker-execution-profile.mjs'
+import {
+  ALL_YEAR_SELECTION_CONTRACT,
+  allYearStrategyContractDigestSha256,
+  loadValidationIntegrityManifest,
+} from './lib/qore-validation-integrity.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -38,8 +56,9 @@ const TRADING_DAYS = 252
 const BOOTSTRAP_ITERATIONS = 20000
 const BLOCK_LENGTH = 10
 const MAX_DRAWDOWN_PROMOTION_FLOOR_PCT = -20
-const COMPONENT_ARTIFACT_SCHEMA_VERSION = 2
 const EXECUTION_CONTRACT = loadResearchExecutionContract(REPO_ROOT)
+const BROKER_EXECUTION = loadReviewedBrokerExecutionProfile(REPO_ROOT)
+const VALIDATION_INTEGRITY = loadValidationIntegrityManifest(REPO_ROOT)
 const OVERNIGHT_POLICY_CONTRACT = JSON.parse(fs.readFileSync(OVERNIGHT_POLICY_FILE, 'utf8'))
 if (
   OVERNIGHT_POLICY_CONTRACT?.schemaVersion !== 1 ||
@@ -68,12 +87,14 @@ function writeText(filePath, text) {
 }
 
 function parseCsvWithHeaders(filePath) {
-  const parsed = Papa.parse(readText(filePath), {
+  const raw = fs.readFileSync(filePath)
+  const parsed = Papa.parse(raw.toString('utf8'), {
     header: true,
     skipEmptyLines: true,
     transformHeader: (header) => header.trim(),
   })
   return {
+    raw,
     rows: parsed.data,
     headers: parsed.meta.fields ?? [],
   }
@@ -321,7 +342,6 @@ function profitFactor(returns) {
 function metricsFromReturns(rows, returnKey = 'netReturnPct') {
   const orderedRows = [...rows].sort((a, b) => a.entryTradeDate.localeCompare(b.entryTradeDate) || a.targetTradeDate.localeCompare(b.targetTradeDate))
   const returns = orderedRows.map((row) => numberFrom(row[returnKey]) / 100)
-  const negativeReturns = returns.filter((value) => value < 0)
   const firstEntry = orderedRows[0]?.entryTradeDate ?? ''
   const lastExit = orderedRows.at(-1)?.targetTradeDate ?? orderedRows.at(-1)?.exitTradeDate ?? orderedRows.at(-1)?.entryTradeDate ?? firstEntry
   const years = firstEntry && lastExit ? daysBetween(firstEntry, lastExit) / 365.25 : 1
@@ -338,7 +358,7 @@ function metricsFromReturns(rows, returnKey = 'netReturnPct') {
   const totalReturnPct = round((equity - 1) * 100, 2)
   const cagrPct = round((equity ** (1 / Math.max(years, 1 / 365.25)) - 1) * 100, 2)
   const annualVol = std(returns) * Math.sqrt(TRADING_DAYS)
-  const downsideVol = std(negativeReturns) * Math.sqrt(TRADING_DAYS)
+  const downsideVol = downsideDeviation(returns) * Math.sqrt(TRADING_DAYS)
   const averageDailyReturn = mean(returns)
   const var95 = percentile(returns, 0.05)
   const cvarSlice = returns.filter((value) => value <= var95)
@@ -629,7 +649,8 @@ ${STRATEGY_NAME} is the checked-in all-year artifact for the existing NGAS Summe
 
 - Candidate count: ${summary.search.candidateCount}.
 - Eligible candidates: ${summary.search.eligibleCandidateCount}.
-- Return-based promotion gates use only rows through ${summary.contract.selectionEnd}: positive train edge ${summary.validation.promotionGates.positiveTrainEdge ? 'pass' : 'fail'}; positive validation edge ${summary.validation.promotionGates.positiveValidationEdge ? 'pass' : 'fail'}; component-safe bootstrap p-value below 0.05 ${summary.validation.promotionGates.preHoldoutBootstrapSignificance ? 'pass' : 'fail'}; train and validation max drawdowns above ${summary.contract.maxDrawdownPromotionFloorPct}% ${summary.validation.promotionGates.trainMaxDrawdown && summary.validation.promotionGates.validationMaxDrawdown ? 'pass' : 'fail'}. Component gates use each component's own sealed pre-holdout result: Summer ${summary.validation.promotionGates.summerComponent ? 'pass' : 'fail'}; Winter ${summary.validation.promotionGates.winterComponent ? 'pass' : 'fail'}; canonical live contract ${summary.validation.promotionGates.liveContract ? 'pass' : 'fail'}.
+- Return-based promotion gates use only rows through ${summary.contract.selectionEnd}: positive train edge ${summary.validation.promotionGates.positiveTrainEdge ? 'pass' : 'fail'}; positive validation edge ${summary.validation.promotionGates.positiveValidationEdge ? 'pass' : 'fail'}; component-safe bootstrap p-value below 0.05 ${summary.validation.promotionGates.preHoldoutBootstrapSignificance ? 'pass' : 'fail'}; train and validation max drawdowns above ${summary.contract.maxDrawdownPromotionFloorPct}% ${summary.validation.promotionGates.trainMaxDrawdown && summary.validation.promotionGates.validationMaxDrawdown ? 'pass' : 'fail'}. Component gates use declared historical splits only as diagnostics: Summer statistical and forecast-coverage promotion ${summary.validation.promotionGates.summerComponent ? 'pass' : 'fail'}; Winter statistical promotion ${summary.validation.promotionGates.winterComponent ? 'pass' : 'fail'}; canonical live signal contract ${summary.validation.promotionGates.liveContract ? 'pass' : 'fail'}; production-source exact-target parity ${summary.validation.promotionGates.liveTargetParity ? 'pass' : `fail (Summer ${summary.validation.liveTargetParity.components.summer.mismatchCount}/${summary.validation.liveTargetParity.components.summer.comparedRowCount}; Winter ${summary.validation.liveTargetParity.components.winter.mismatchCount}/${summary.validation.liveTargetParity.components.winter.comparedRowCount} mismatches)`}; research-tied broker execution profile ${summary.validation.promotionGates.brokerExecution ? 'pass' : 'fail'}; exact strategy-contract seal ${summary.validation.promotionGates.strategyContractSeal ? 'pass' : 'fail'}; paper approval ${summary.validation.promotionGates.paperApproval ? 'pass' : 'fail'}; pristine prospective evidence ${summary.validation.promotionGates.pristineForwardEvidence ? 'pass' : 'fail'}; reviewed paper fills/slippage evidence ${summary.validation.promotionGates.paperExecutionEvidence ? 'pass' : 'fail'}; live approval ${summary.validation.promotionGates.liveApproval ? 'pass' : 'fail'}.
+- Validation integrity: evidence from ${summary.validation.integrity.historicalEvidenceStart} through ${summary.validation.integrity.observedThrough} is ${summary.validation.integrity.historicalEvidenceStatus}; development began ${summary.validation.integrity.developmentBegan}, and the sealed prospective period starts ${summary.validation.integrity.prospectiveStart}. Forward evidence is observed through ${summary.validation.integrity.forwardObservedThrough ?? 'not yet recorded'}; reviewed paper execution evidence is ${summary.validation.integrity.paperExecutionEvidenceStatus}. Paper approval is ${summary.validation.integrity.paperApprovalStatus}; live approval is ${summary.validation.integrity.liveApprovalStatus}. Paper eligibility ${summary.validation.eligibility.paperEligible ? 'passes' : 'fails'}; live eligibility ${summary.validation.eligibility.liveEligible ? 'passes' : 'fails'}.
 - Public holdout starts ${summary.contract.holdoutStart}, when both components are in holdout. Composite returns after the selection boundary are report-only at the all-year layer: ${summary.search.selectionUsedHoldout ? 'no' : 'yes'}.
 - Component-safe selection p-value: ${summary.validation.selectionRealityCheck.pValue} (${summary.validation.selectionRealityCheck.method}).
 - Full-calendar diagnostic p-value: ${summary.validation.realityCheck.pValue} (${summary.validation.realityCheck.method}).
@@ -643,8 +664,8 @@ ${STRATEGY_NAME} is the checked-in all-year artifact for the existing NGAS Summe
 ## Verdict
 
 ${summary.status === 'research-baseline'
-  ? 'Load this as an active research-baseline artifact, not broker-ready. It uses a single executable ETF return contract and still requires non-overlapping paper evidence.'
-  : 'Keep this in needs-validation status. The causal ETF ledger is reproducible, but one or more promotion gates fail after the accounting repair.'}
+  ? `This artifact is eligible for approved paper routing. Live routing remains ${summary.validation.eligibility.liveEligible ? 'eligible under the reviewed prospective-evidence and approval gates' : 'disabled pending pristine prospective evidence and explicit live approval'}.`
+  : 'Keep this in needs-validation status. The causal ETF ledger is reproducible, but one or more paper-eligibility gates fail.'}
 `
 }
 
@@ -654,6 +675,7 @@ function main() {
   const summer = parseCsvWithHeaders(SUMMER_TRADES_FILE)
   const winter = parseCsvWithHeaders(WINTER_TRADES_FILE)
   validateComponentArtifact({
+    repoRoot: REPO_ROOT,
     label: 'NGAS Summer Alpha',
     expectedStrategyId: 'ngas-summer-alpha',
     requiredSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
@@ -662,6 +684,7 @@ function main() {
     executionContract: EXECUTION_CONTRACT,
   })
   validateComponentArtifact({
+    repoRoot: REPO_ROOT,
     label: 'NGAS Winter Alpha',
     expectedStrategyId: 'ngas-winter-alpha',
     requiredSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
@@ -679,6 +702,49 @@ function main() {
   const liveComponentContractDigest = liveComponentContractDigestSha256(liveComponentContract)
   const liveComponentContractMatchesExecutable =
     liveComponentContractDigest === executableLiveComponentContractDigestSha256
+  const liveTargetParity = evaluateVersionedLiveTargetParity(REPO_ROOT)
+  const artifactExecutionContract = {
+    contractId: EXECUTION_CONTRACT.contractId,
+    contractDigest: EXECUTION_CONTRACT.digest,
+    scenarioId: EXECUTION_CONTRACT.selectionScenarioId,
+    priceConvention: EXECUTION_CONTRACT.priceConvention,
+    initialState: EXECUTION_CONTRACT.initialState,
+    deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
+    rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
+    indexWeights: EXECUTION_CONTRACT.indexWeights,
+    turnoverConvention: EXECUTION_CONTRACT.turnoverConvention,
+    benchmarkConvention: EXECUTION_CONTRACT.benchmarkConvention,
+    selectionRule: EXECUTION_CONTRACT.selectionRule,
+    costCalibration: EXECUTION_CONTRACT.costCalibration,
+    scenarios: EXECUTION_CONTRACT.scenarios,
+  }
+  const brokerExecutionTieOutFailures = brokerExecutionProfileTieOutFailures(
+    BROKER_EXECUTION.profile,
+    artifactExecutionContract,
+  )
+  const artifactBrokerExecutionContract = {
+    schemaVersion: BROKER_EXECUTION.profile.schemaVersion,
+    profileId: BROKER_EXECUTION.profile.profileId,
+    profileDigestSha256: BROKER_EXECUTION.profileDigestSha256,
+    profile: BROKER_EXECUTION.profile,
+  }
+  const artifactOvernightRiskContract = {
+    contractId: OVERNIGHT_POLICY_CONTRACT.contractId,
+    contractDigest: OVERNIGHT_POLICY_DIGEST,
+    deployedPolicyId: OVERNIGHT_POLICY_CONTRACT.deployedPolicyId,
+    behavior: 'Retain the complete prior-close UNG position overnight; execute the next causal target at the adjusted session open.',
+    candidatePoliciesResearchOnly: true,
+    selectionUsedHoldout: false,
+    holdoutUse: 'The 2025+ retrospective period is descriptive only and cannot change a policy recommendation or all-year eligibility.',
+    evaluationSummary: 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-summary.json',
+    candidateSummary: 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-candidate-summary.csv',
+  }
+  const artifactLiveInferenceContract = {
+    componentContractSchemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+    componentContract: liveComponentContract,
+    componentContractDigestSha256: liveComponentContractDigest,
+    executableContractDigestSha256: executableLiveComponentContractDigestSha256,
+  }
   const rows = createCompositeRows(summer.rows, winter.rows, contractsByStrategyId, splitContract, executionByDate)
   const splits = splitRows(rows)
   const edges = splitEdges(splits)
@@ -749,24 +815,65 @@ function main() {
     materialRows: summaryMetrics.materialRows,
     sourceUniverse: sourceUniverseFor(rows),
   }
+  const strategyContractDigestSha256 = allYearStrategyContractDigestSha256({
+    strategyId: STRATEGY_ID,
+    contract: {
+      allYearSelection: ALL_YEAR_SELECTION_CONTRACT,
+      execution: artifactExecutionContract,
+      brokerExecution: artifactBrokerExecutionContract,
+      overnightRisk: artifactOvernightRiskContract,
+      liveInference: artifactLiveInferenceContract,
+      liveTargetParity: LIVE_TARGET_PARITY_POLICY,
+    },
+  })
+  const validationIntegrity = {
+    ...VALIDATION_INTEGRITY.binding,
+    strategyContractDigestSha256,
+  }
   const promotionGates = {
     positiveTrainEdge: selectionEdges.train > 0,
     positiveValidationEdge: selectionEdges.validation > 0,
     preHoldoutBootstrapSignificance: selectionRealityCheck.pValue < 0.05,
     trainMaxDrawdown: selectionMetricsBySplit.train.maxDrawdownPct > MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
     validationMaxDrawdown: selectionMetricsBySplit.validation.maxDrawdownPct > MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
-    summerComponent: summerSummary.search.eligibleCandidateCount > 0,
+    summerComponent: summerSummary.promotion?.eligible === true,
     winterComponent: winterSummary.search.eligibleCandidateCount > 0,
     liveContract: liveComponentContractMatchesExecutable,
+    liveTargetParity: liveTargetParity.exactTargetParity,
+    brokerExecution: brokerExecutionTieOutFailures.length === 0,
+    pristineForwardEvidence: VALIDATION_INTEGRITY.binding.pristineForwardEvidence,
+    strategyContractSeal:
+      VALIDATION_INTEGRITY.binding.sealedStrategyContractDigestSha256 === strategyContractDigestSha256,
+    paperApproval: VALIDATION_INTEGRITY.binding.paperApprovalStatus === 'approved',
+    paperExecutionEvidence: VALIDATION_INTEGRITY.binding.paperExecutionEvidenceSatisfied,
+    liveApproval: VALIDATION_INTEGRITY.binding.liveApprovalStatus === 'approved',
   }
-  const eligible = Object.values(promotionGates).every(Boolean)
+  const paperEligible = [
+    'positiveTrainEdge',
+    'positiveValidationEdge',
+    'preHoldoutBootstrapSignificance',
+    'trainMaxDrawdown',
+    'validationMaxDrawdown',
+    'summerComponent',
+    'winterComponent',
+    'liveContract',
+    'liveTargetParity',
+    'brokerExecution',
+    'strategyContractSeal',
+    'paperApproval',
+  ].every((gate) => promotionGates[gate])
+  const liveEligible = paperEligible
+    && promotionGates.pristineForwardEvidence
+    && promotionGates.paperExecutionEvidence
+    && promotionGates.liveApproval
+  const eligible = paperEligible
   const candidateRow = formatCandidateRow(selected, summaryMetrics, eligible, {
     metrics: selectionMetricsBySplit,
     indexMetrics: selectionIndexMetricsBySplit,
     edges: selectionEdges,
   })
   const summary = {
-    artifactSchemaVersion: 3,
+    artifactSchemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION,
     generatedAt,
     strategyId: STRATEGY_ID,
     displayName: STRATEGY_NAME,
@@ -776,11 +883,15 @@ function main() {
       summerSelectedTrades: path.relative(REPO_ROOT, SUMMER_TRADES_FILE),
       winterSummaryFile: path.relative(REPO_ROOT, WINTER_SUMMARY_FILE),
       winterSelectedTrades: path.relative(REPO_ROOT, WINTER_TRADES_FILE),
+      validationIntegrityManifest: path.relative(REPO_ROOT, VALIDATION_INTEGRITY.filePath),
+      brokerSettings: path.relative(REPO_ROOT, BROKER_EXECUTION.settingsPath),
+      indexBasket: path.relative(REPO_ROOT, BROKER_EXECUTION.basketPath),
       marketStartDate: selected.allMetrics.firstEntry,
       marketEndDate: selected.allMetrics.lastExit,
       marketDays: rows.length,
     },
     contract: {
+      allYearSelection: ALL_YEAR_SELECTION_CONTRACT,
       trainEnd: splitContract.trainEnd,
       selectionEnd: splitContract.selectionEnd,
       validationEnd: splitContract.validationEnd,
@@ -795,7 +906,7 @@ function main() {
       selectionPolicy: 'No independent all-year optimization. The artifact freezes the exact Summer/Winter material-row selector into its own ledger.',
       signalTiming:
         'Component source rows keep their source-lane signal timing. Prior holdings earn close-to-open returns; selected current targets earn adjusted-open-to-close returns.',
-      overfitControl: "All-year return-based eligibility uses one chronological calendar-wide train/validation prefix ending before the earliest component holdout. Public holdout reporting begins only at the latest component holdout, so every public holdout row is holdout for its source component. Later composite returns and the full-calendar bootstrap are reporting-only at the all-year layer; component eligibility remains determined by each component's own pre-holdout contract.",
+      overfitControl: "All-year return-based eligibility mechanically excludes component holdout rows by using one chronological calendar-wide train/validation prefix ending before the earliest component holdout. Those historical splits are development-contaminated rather than pristine. Public holdout reporting begins only at the latest component holdout and is reporting-only; only evidence collected under the prospective validation-integrity seal can satisfy the live evidence gate.",
       researchInstruments: {
         summer: {
           componentStrategyId: summerSummary.strategyId,
@@ -818,38 +929,11 @@ function main() {
         gasSymbol: 'UNG',
         contract: 'Alpaca equity/ETF execution',
       },
-      execution: {
-        contractId: EXECUTION_CONTRACT.contractId,
-        contractDigest: EXECUTION_CONTRACT.digest,
-        scenarioId: EXECUTION_CONTRACT.selectionScenarioId,
-        priceConvention: EXECUTION_CONTRACT.priceConvention,
-        initialState: EXECUTION_CONTRACT.initialState,
-        deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
-        rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
-        indexWeights: EXECUTION_CONTRACT.indexWeights,
-        turnoverConvention: EXECUTION_CONTRACT.turnoverConvention,
-        benchmarkConvention: EXECUTION_CONTRACT.benchmarkConvention,
-        selectionRule: EXECUTION_CONTRACT.selectionRule,
-        costCalibration: EXECUTION_CONTRACT.costCalibration,
-        scenarios: EXECUTION_CONTRACT.scenarios,
-      },
-      overnightRisk: {
-        contractId: OVERNIGHT_POLICY_CONTRACT.contractId,
-        contractDigest: OVERNIGHT_POLICY_DIGEST,
-        deployedPolicyId: OVERNIGHT_POLICY_CONTRACT.deployedPolicyId,
-        behavior: 'Retain the complete prior-close UNG position overnight; execute the next causal target at the adjusted session open.',
-        candidatePoliciesResearchOnly: true,
-        selectionUsedHoldout: false,
-        holdoutUse: 'The sealed 2025+ holdout is descriptive only and cannot change a policy recommendation or all-year eligibility.',
-        evaluationSummary: 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-summary.json',
-        candidateSummary: 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-candidate-summary.csv',
-      },
-      liveInference: {
-        componentContractSchemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
-        componentContract: liveComponentContract,
-        componentContractDigestSha256: liveComponentContractDigest,
-        executableContractDigestSha256: executableLiveComponentContractDigestSha256,
-      },
+      execution: artifactExecutionContract,
+      brokerExecution: artifactBrokerExecutionContract,
+      overnightRisk: artifactOvernightRiskContract,
+      liveInference: artifactLiveInferenceContract,
+      liveTargetParity: LIVE_TARGET_PARITY_POLICY,
       maxDrawdownPromotionFloorPct: MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
     },
     selected,
@@ -858,8 +942,16 @@ function main() {
       eligibleCandidateCount: eligible ? 1 : 0,
       selectionStatus: eligible ? 'fixed-composite-passes-promotion-gates' : 'fixed-composite-retained-needs-validation',
       selectionUsedHoldout: false,
+      paperEligible,
+      liveEligible,
     },
     validation: {
+      integrity: validationIntegrity,
+      eligibility: {
+        paperEligible,
+        liveEligible,
+        promotionEligible: liveEligible,
+      },
       selectionRealityCheck,
       selectionMetrics: {
         throughDate: splitContract.selectionEnd,
@@ -868,6 +960,7 @@ function main() {
         splitEdges: selectionEdges,
       },
       realityCheck,
+      liveTargetParity,
       promotionGates,
       frictionScenarios,
       componentRealityChecks: {

@@ -1,6 +1,7 @@
 import Papa from 'papaparse'
 import allYearSummaryJson from '../../data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json?raw'
 import allYearDisplayCurveCsv from '../../data/qore/research/strategy-agent-runs/ngas-all-year-beta/display-curve.csv?raw'
+import overnightRiskCandidatesCsv from '../../data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-candidate-summary.csv?raw'
 import weatherQualityJson from '../../data/qore/research/ngas-weather-quality-summary.json?raw'
 
 export type BacktestMetrics = {
@@ -72,16 +73,26 @@ type RealityCheck = {
   blockLength: number
 }
 
-type PromotionGates = {
-  positiveTrainEdge: boolean
-  positiveValidationEdge: boolean
-  preHoldoutBootstrapSignificance: boolean
-  trainMaxDrawdown: boolean
-  validationMaxDrawdown: boolean
-  summerComponent: boolean
-  winterComponent: boolean
-  liveContract: boolean
-}
+export const promotionGateKeys = [
+  'positiveTrainEdge',
+  'positiveValidationEdge',
+  'preHoldoutBootstrapSignificance',
+  'trainMaxDrawdown',
+  'validationMaxDrawdown',
+  'summerComponent',
+  'winterComponent',
+  'liveContract',
+  'liveTargetParity',
+  'brokerExecution',
+  'pristineForwardEvidence',
+  'strategyContractSeal',
+  'paperApproval',
+  'paperExecutionEvidence',
+  'liveApproval',
+] as const
+
+type PromotionGateKey = (typeof promotionGateKeys)[number]
+type PromotionGates = Record<PromotionGateKey, boolean>
 
 type AllYearSummary = {
   generatedAt: string
@@ -157,7 +168,38 @@ type WeatherQuality = {
 
 type RawDisplayRow = Record<string, string>
 
-const summary = JSON.parse(allYearSummaryJson) as AllYearSummary
+type OvernightRiskHeatmapCell = {
+  eligible: boolean
+  lookbackSessions: number
+  policyId: string
+  researchLeader: boolean
+  thresholdPct: number
+  validationReturnPct: number
+  validationSharpe: number
+}
+
+function parseAllYearSummary(raw: string): AllYearSummary {
+  const parsed = JSON.parse(raw) as { validation?: { promotionGates?: unknown } }
+  const gates = parsed?.validation?.promotionGates
+  if (!gates || typeof gates !== 'object' || Array.isArray(gates)) {
+    throw new Error('All-year research artifact promotionGates must be an object.')
+  }
+  const expectedKeys = [...promotionGateKeys].sort()
+  const actualKeys = Object.keys(gates).sort()
+  if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+    throw new Error(
+      `All-year research artifact promotionGates must exactly match the browser contract: expected ${expectedKeys.join(', ')}; received ${actualKeys.join(', ')}.`,
+    )
+  }
+  for (const key of promotionGateKeys) {
+    if ((gates as Record<string, unknown>)[key] !== true && (gates as Record<string, unknown>)[key] !== false) {
+      throw new Error(`All-year research artifact promotionGates.${key} must be boolean.`)
+    }
+  }
+  return parsed as AllYearSummary
+}
+
+const summary = parseAllYearSummary(allYearSummaryJson)
 
 export const weatherQuality = JSON.parse(weatherQualityJson) as WeatherQuality
 
@@ -178,6 +220,9 @@ const parsedTrades = Papa.parse<RawDisplayRow>(allYearDisplayCurveCsv, {
 }).data
 
 export const allYearTrades: StrategyTrade[] = parsedTrades.map((row, rowIndex) => {
+  const thesisKind = row.thesisKind || 'index-fallback'
+  const priorCloseThesisKind = row.priorCloseThesisKind || 'index-fallback'
+
   return {
     chartIndex: numberFrom(row.chartIndex, rowIndex),
     date: row.date,
@@ -190,7 +235,7 @@ export const allYearTrades: StrategyTrade[] = parsedTrades.map((row, rowIndex) =
     netReturnPct: numberFrom(row.netReturnPct),
     indexReturnPct: numberFrom(row.indexReturnPct),
     split: (row.split || 'train') as BacktestPoint['split'],
-    thesisKind: row.thesisKind || 'index-fallback',
+    thesisKind,
     equityUsd: numberFrom(row.equityUsd, 100_000),
     component: (row.component || 'summer-alpha') as StrategyTrade['component'],
     researchInstrument: row.researchInstrument || 'unknown',
@@ -198,7 +243,7 @@ export const allYearTrades: StrategyTrade[] = parsedTrades.map((row, rowIndex) =
     direction: row.direction || 'flat',
     sourceId: row.sourceId || 'unknown',
     confidence: numberFrom(row.confidence),
-    priorCloseThesisKind: row.priorCloseThesisKind || 'index-fallback',
+    priorCloseThesisKind,
     priorCloseReturnContributionPct: numberFrom(row.priorCloseReturnContributionPct),
     currentSessionReturnContributionPct: numberFrom(row.currentSessionReturnContributionPct, numberFrom(row.netReturnPct)),
   }
@@ -207,6 +252,30 @@ export const allYearTrades: StrategyTrade[] = parsedTrades.map((row, rowIndex) =
 export const backtestPoints: BacktestPoint[] = allYearTrades
 
 export const allYearBacktest = summary
+
+const parsedOvernightRiskCandidates = Papa.parse<RawDisplayRow>(overnightRiskCandidatesCsv, {
+  header: true,
+  skipEmptyLines: true,
+  transformHeader: (header) => header.trim(),
+}).data
+
+const overnightRiskCells: OvernightRiskHeatmapCell[] = parsedOvernightRiskCandidates
+  .filter((row) => row.policyType === 'lagged-mean-absolute-gap' && row.scenarioId === 'baseline')
+  .map((row) => ({
+    eligible: row.selectionEligible === 'true',
+    lookbackSessions: numberFrom(row.lookbackSessions),
+    policyId: row.policyId,
+    researchLeader: row.selectionRank === '1',
+    thresholdPct: numberFrom(row.thresholdPct),
+    validationReturnPct: numberFrom(row.validationTotalReturnPct),
+    validationSharpe: numberFrom(row.validationSharpe),
+  }))
+
+export const overnightRiskHeatmap = {
+  cells: overnightRiskCells,
+  lookbacks: [...new Set(overnightRiskCells.map((cell) => cell.lookbackSessions))].sort((first, second) => second - first),
+  thresholds: [...new Set(overnightRiskCells.map((cell) => cell.thresholdPct))].sort((first, second) => first - second),
+}
 
 const sleeveLabels: Record<string, string> = {
   'cold-long': 'Winter cold / long gas',
@@ -265,5 +334,3 @@ export const sleeveStats = [...causalSleeves.entries()]
     }
   })
   .sort((first, second) => second.rowCount - first.rowCount)
-
-export const recentBacktestRows = allYearTrades.slice(-12).reverse()

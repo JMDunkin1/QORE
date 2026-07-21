@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { allYearBacktest, allYearTrades } from '../data/allYearBacktest'
+import { allYearBacktest, allYearTrades, overnightRiskHeatmap } from '../data/allYearBacktest'
 import { formatCurrency, formatNumber } from '../utils/format'
 
 type SimulatedPath = {
@@ -19,7 +19,14 @@ const promotionGateLabels = {
   validationMaxDrawdown: 'VALIDATION MAX DRAWDOWN',
   summerComponent: 'SUMMER COMPONENT',
   winterComponent: 'WINTER COMPONENT',
-  liveContract: 'LIVE CONTRACT',
+  liveContract: 'LIVE CONTRACT DIGEST',
+  liveTargetParity: 'LIVE TARGET PARITY',
+  brokerExecution: 'BROKER EXECUTION PROFILE',
+  pristineForwardEvidence: 'PRISTINE FORWARD EVIDENCE',
+  strategyContractSeal: 'STRATEGY CONTRACT SEAL',
+  paperApproval: 'PAPER APPROVAL',
+  paperExecutionEvidence: 'PAPER EXECUTION EVIDENCE',
+  liveApproval: 'LIVE APPROVAL',
 } as const satisfies Record<PromotionGateKey, string>
 
 const promotionGateEntries = Object.entries(promotionGateLabels) as Array<[PromotionGateKey, string]>
@@ -84,7 +91,7 @@ function signedPercent(value: number, digits = 3) {
   return `${value > 0 ? '+' : ''}${formatNumber(value, digits)}%`
 }
 
-function RealityCheckPanel() {
+export function RealityCheckPanel() {
   const check = allYearBacktest.validation.selectionRealityCheck
   const gates = allYearBacktest.validation.promotionGates
   const passedGateCount = promotionGateEntries.filter(([key]) => gates[key]).length
@@ -115,7 +122,7 @@ function RealityCheckPanel() {
         {check.method}. Only rows from {check.sampleStartDate} through {check.sampleEndDate} enter the all-year return gates.
       </p>
       <header className="validation-heading">
-        <h3>Selection-safe promotion gates</h3>
+        <h3>Paper/live eligibility gates</h3>
         <dl>
           <div>
             <dt>PASSED</dt>
@@ -125,7 +132,7 @@ function RealityCheckPanel() {
           </div>
         </dl>
       </header>
-      <dl className="gate-list" aria-label="All-year promotion gates">
+      <dl className="gate-list" aria-label="All-year paper and live eligibility gates">
         {promotionGateEntries.map(([key, label]) => (
           <div key={key}>
             <dt>{label}</dt>
@@ -134,13 +141,13 @@ function RealityCheckPanel() {
         ))}
       </dl>
       <p className="section-note">
-        Return gates use the selection prefix only. Component gates retain each component&apos;s separately sealed pre-holdout result.
+        Return gates use the selection prefix only. Component gates retain each component&apos;s declared pre-holdout result; execution, evidence, and approval gates fail closed independently.
       </p>
     </section>
   )
 }
 
-function MonteCarloChart() {
+export function MonteCarloChart() {
   const plot = useMemo(() => buildMonteCarlo(allYearTrades.map((trade) => trade.netReturnPct)), [])
   const reportOnlyCheck = allYearBacktest.validation.realityCheck
   const allValues = plot.paths.flatMap((path) => path.values)
@@ -192,13 +199,89 @@ function MonteCarloChart() {
   )
 }
 
+function heatmapBackground(value: number, minimum: number, maximum: number) {
+  const ratio = (value - minimum) / Math.max(maximum - minimum, 0.0001)
+  const alpha = 0.08 + Math.max(0, Math.min(1, ratio)) * 0.4
+  return `rgba(69, 255, 120, ${alpha.toFixed(3)})`
+}
+
+export function OvernightRiskHeatmap() {
+  const values = overnightRiskHeatmap.cells.map((cell) => cell.validationSharpe)
+  const minimum = Math.min(...values)
+  const maximum = Math.max(...values)
+  const leader = overnightRiskHeatmap.cells.find((cell) => cell.researchLeader)
+
+  return (
+    <section className="validation-panel heatmap-panel" aria-labelledby="overnight-risk-heatmap-title">
+      <header className="validation-heading">
+        <div>
+          <span className="section-eyebrow">PARAMETER STABILITY</span>
+          <h3 id="overnight-risk-heatmap-title">Overnight guard sensitivity · research-only</h3>
+        </div>
+        <dl>
+          <div>
+            <dt>METRIC</dt>
+            <dd>VALIDATION SHARPE</dd>
+          </div>
+          <div>
+            <dt>LEADER</dt>
+            <dd>{leader ? `${leader.lookbackSessions}D / ${formatNumber(leader.thresholdPct, 2)}%` : '—'}</dd>
+          </div>
+        </dl>
+      </header>
+      <div className="risk-heatmap-scroll" tabIndex={0} aria-label="Overnight risk parameter heat map">
+        <table className="risk-heatmap">
+          <thead>
+            <tr>
+              <th scope="col">LOOKBACK ↓ / GAP →</th>
+              {overnightRiskHeatmap.thresholds.map((threshold) => (
+                <th scope="col" key={threshold}>{formatNumber(threshold, 2)}%</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {overnightRiskHeatmap.lookbacks.map((lookback) => (
+              <tr key={lookback}>
+                <th scope="row">{lookback}D</th>
+                {overnightRiskHeatmap.thresholds.map((threshold) => {
+                  const cell = overnightRiskHeatmap.cells.find(
+                    (candidate) => candidate.lookbackSessions === lookback && candidate.thresholdPct === threshold,
+                  )
+                  return (
+                    <td
+                      key={threshold}
+                      className={cell?.researchLeader ? 'heatmap-cell research-leader' : 'heatmap-cell'}
+                      style={cell ? { backgroundColor: heatmapBackground(cell.validationSharpe, minimum, maximum) } : undefined}
+                      title={cell
+                        ? `${cell.policyId}: validation Sharpe ${formatNumber(cell.validationSharpe, 2)}, return ${signedPercent(cell.validationReturnPct, 2)}${cell.eligible ? ', selection-eligible' : ''}`
+                        : 'No candidate'}
+                    >
+                      {cell ? formatNumber(cell.validationSharpe, 2) : '—'}
+                      {cell?.researchLeader && <span className="heatmap-leader-mark" aria-label="Research-only leader">◆</span>}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="heatmap-legend" aria-hidden="true">
+        <span>LOWER</span>
+        <i />
+        <span>HIGHER</span>
+      </div>
+      <p className="section-note">
+        Baseline-cost validation Sharpe across the versioned all-year overnight-gap policy grid. The diamond marks the train/validation research leader; deployment remains carry-through and the holdout is excluded from selection.
+      </p>
+    </section>
+  )
+}
+
 export function BacktestValidation() {
   return (
-    <section className="validation-band" aria-label="Selection-safe validation and report-only diagnostics">
-      <div className="validation-grid">
-        <RealityCheckPanel />
-        <MonteCarloChart />
-      </div>
+    <section className="validation-band" aria-label="Selection-safe validation">
+      <RealityCheckPanel />
     </section>
   )
 }

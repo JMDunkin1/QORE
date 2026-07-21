@@ -7,14 +7,107 @@ import { createServer } from 'node:http'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { loadReviewedBrokerExecutionProfile } from './lib/qore-broker-execution-profile.mjs'
 import { createSignal, enrichForecastRows, inferAllYearTarget, selectedContracts } from './lib/qore-live-all-year-inference.mjs'
 import { liveComponentContractDigestSha256 } from './lib/qore-live-contract.mjs'
+import { ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION } from './lib/qore-live-strategy-artifact.mjs'
+import { writeValidationEvidenceTestFixtures } from './lib/qore-validation-evidence-test-fixture.mjs'
+import {
+  ALL_YEAR_SELECTION_CONTRACT,
+  VALIDATION_INTEGRITY_MANIFEST_ID,
+  VALIDATION_INTEGRITY_SCHEMA_VERSION,
+  allYearStrategyContractDigestSha256,
+  loadValidationIntegrityManifest,
+} from './lib/qore-validation-integrity.mjs'
 
 process.env.NODE_ENV = 'test'
+process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES = '1'
 
 const root = process.cwd()
 const dataRoot = path.join(root, 'data', 'qore')
 const require = createRequire(import.meta.url)
+const validationFixtureDir = await mkdtemp(path.join(tmpdir(), 'qore-validation-integrity-'))
+const validationFixturePath = path.join(validationFixtureDir, 'pristine-validation-integrity.json')
+const validationStrategySource = JSON.parse(await readFile(
+  path.join(dataRoot, 'research', 'strategy-agent-runs', 'ngas-all-year-beta', 'run-summary.json'),
+  'utf8',
+))
+validationStrategySource.contract.allYearSelection = ALL_YEAR_SELECTION_CONTRACT
+const sealedStrategyContractDigestSha256 = allYearStrategyContractDigestSha256(validationStrategySource)
+const sealedStrategyArtifactDigestSha256 = crypto
+  .createHash('sha256')
+  .update(JSON.stringify(validationStrategySource))
+  .digest('hex')
+const sealedBrokerExecutionProfileDigestSha256 = loadReviewedBrokerExecutionProfile(root).profileDigestSha256
+const paperAccountPseudonymSha256 = 'b'.repeat(64)
+const validationEvidenceFixtures = await writeValidationEvidenceTestFixtures({
+  repoDir: root,
+  manifestPath: validationFixturePath,
+  strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+  strategyArtifactDigestSha256: sealedStrategyArtifactDigestSha256,
+  brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
+  accountPseudonymSha256: paperAccountPseudonymSha256,
+})
+await writeFile(validationFixturePath, `${JSON.stringify({
+  schemaVersion: VALIDATION_INTEGRITY_SCHEMA_VERSION,
+  manifestId: VALIDATION_INTEGRITY_MANIFEST_ID,
+  strategyId: 'ngas-all-year-beta',
+  reviewedAt: '2025-10-02T00:00:00.000Z',
+  sealedStrategyContractDigestSha256,
+  sealedStrategyArtifactDigestSha256,
+  sealedBrokerExecutionProfileDigestSha256,
+  historicalEvidence: {
+    status: 'development-contaminated',
+    evidenceStart: '2020-01-01',
+    developmentBegan: '2022-06-11',
+    observedThrough: '2022-12-15',
+    prospectiveStart: '2023-01-01',
+    pristineForwardEvidence: true,
+  },
+  minimumForwardEvidence: {
+    independentEpisodes: 60,
+    completeSummerSeasons: 2,
+    completeWinterSeasons: 2,
+  },
+  observedForwardEvidence: {
+    ...validationEvidenceFixtures.forwardSummary,
+    evidenceArtifactDigestSha256: validationEvidenceFixtures.forwardEvidenceArtifactDigestSha256,
+    reviewedAt: '2025-10-01T00:00:00.000Z',
+  },
+  minimumPaperExecutionEvidence: {
+    tradingSessions: 60,
+    filledOrders: 10,
+    ungFilledOrders: 4,
+    ungLongFilledOrders: 2,
+    ungShortFilledOrders: 2,
+    maximumMedianAbsoluteSlippageBps: 25,
+    maximumP95AbsoluteSlippageBps: 50,
+  },
+  paperExecutionEvidence: {
+    status: 'reviewed',
+    ...validationEvidenceFixtures.paperSummary,
+    evidenceArtifactDigestSha256: validationEvidenceFixtures.paperEvidenceArtifactDigestSha256,
+    reviewedAt: '2025-10-01T01:00:00.000Z',
+  },
+  approvals: {
+    paper: {
+      status: 'approved',
+      approvalId: 'test-paper-approval',
+      approvedAt: '2022-12-31T12:00:00.000Z',
+      strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+      brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
+    },
+    live: {
+      status: 'approved',
+      approvalId: 'test-live-approval',
+      approvedAt: '2025-10-02T00:00:00.000Z',
+      strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+      brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
+    },
+  },
+}, null, 2)}\n`)
+process.env.QORE_VALIDATION_INTEGRITY_FILE = validationFixturePath
+const pristineValidationIntegrity = loadValidationIntegrityManifest(root)
 
 function parseLine(line) {
   const values = []; let value = ''; let quoted = false
@@ -50,6 +143,8 @@ async function writeStrategyArtifactFixture(filePath, { eligible }) {
   )
   const fixture = {
     ...source,
+    artifactSchemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION,
+    contract: { ...source.contract, allYearSelection: ALL_YEAR_SELECTION_CONTRACT },
     status: eligible ? 'research-baseline' : 'needs-validation',
     search: {
       ...source.search,
@@ -57,7 +152,34 @@ async function writeStrategyArtifactFixture(filePath, { eligible }) {
       selectionStatus: eligible ? 'fixed-composite-passes-promotion-gates' : 'fixed-composite-retained-needs-validation',
       selectionUsedHoldout: false,
     },
-    validation: { ...source.validation, promotionGates },
+    validation: {
+      ...source.validation,
+      liveTargetParity: eligible
+        ? {
+            ...source.validation.liveTargetParity,
+            status: 'pass',
+            matchedRowCount: source.validation.liveTargetParity.comparedRowCount,
+            mismatchCount: 0,
+            gasPositionMismatchCount: 0,
+            thesisKindMismatchCount: 0,
+            exactTargetParity: true,
+            comparisonDigestSha256: 'd'.repeat(64),
+            mismatches: [],
+          }
+        : source.validation.liveTargetParity,
+      integrity: {
+        ...pristineValidationIntegrity.binding,
+        strategyContractDigestSha256: pristineValidationIntegrity.binding.sealedStrategyContractDigestSha256,
+      },
+      promotionGates: {
+        ...promotionGates,
+        pristineForwardEvidence: eligible,
+        strategyContractSeal: eligible,
+        paperApproval: eligible,
+        paperExecutionEvidence: eligible,
+        liveApproval: eligible,
+      },
+    },
     candidates: source.candidates.map((candidate, index) => ({ ...candidate, eligible: eligible && index === 0 })),
   }
   const raw = `${JSON.stringify(fixture, null, 2)}\n`
@@ -164,6 +286,40 @@ async function dropLocation(filePath, locationId) {
   const locationIndex = parseLine(header).indexOf('locationId')
   const kept = lines.filter((line) => parseLine(line)[locationIndex] !== locationId)
   await writeFile(filePath, `${header}\n${kept.join('\n')}${kept.length ? '\n' : ''}`)
+}
+
+function serializeCsvValue(value) {
+  const text = String(value ?? '')
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
+}
+
+async function rewriteCsvRows(filePath, transform) {
+  const [header, ...lines] = (await readFile(filePath, 'utf8')).trim().split(/\r?\n/)
+  const headers = parseLine(header)
+  const rewritten = lines.map((line) => transform(parseLine(line), headers).map(serializeCsvValue).join(','))
+  await writeFile(filePath, `${header}\n${rewritten.join('\n')}${rewritten.length ? '\n' : ''}`)
+}
+
+async function replaceLocationId(filePath, fromLocationId, toLocationId) {
+  await rewriteCsvRows(filePath, (values, headers) => {
+    const locationIndex = headers.indexOf('locationId')
+    if (values[locationIndex] === fromLocationId) values[locationIndex] = toLocationId
+    return values
+  })
+}
+
+async function reweightLocationAndScore(locationPath, scorePath, locationId, weightDelta) {
+  await rewriteCsvRows(locationPath, (values, headers) => {
+    const locationIndex = headers.indexOf('locationId')
+    const weightIndex = headers.indexOf('weight')
+    if (values[locationIndex] === locationId) values[weightIndex] = String(Number(values[weightIndex]) + weightDelta)
+    return values
+  })
+  await rewriteCsvRows(scorePath, (values, headers) => {
+    const sampledWeightIndex = headers.indexOf('sampledWeight')
+    values[sampledWeightIndex] = String(Number(values[sampledWeightIndex]) + weightDelta)
+    return values
+  })
 }
 
 async function summerParity() {
@@ -328,10 +484,17 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
       assert.ok(fixtureCalendar, `Missing fixture calendar ${fixtureSourceId}`)
       const base = `qore-live-${calendar.id}-00z`
       const issueEndDate = options.issueEndDates?.[calendar.id] ?? date
-      await writeCsvWindow(path.join(dataRoot, fixtureCalendar.files.signalScores), path.join(forecastRoot, 'research', `${base}-signal-scores.csv`), addDays(date, -16), issueEndDate)
+      const scorePath = path.join(forecastRoot, 'research', `${base}-signal-scores.csv`)
+      await writeCsvWindow(path.join(dataRoot, fixtureCalendar.files.signalScores), scorePath, addDays(date, -16), issueEndDate)
       const locationPath = path.join(forecastRoot, 'weather', weatherDirs[calendar.id], `${base}-location-anomalies.csv`)
       await writeCsvWindow(path.join(dataRoot, fixtureCalendar.files.locationAnomalies), locationPath, addDays(date, -16), issueEndDate)
       if (options.partialLocationSources?.includes(calendar.id)) await dropLocation(locationPath, 'minneapolis')
+      if (options.replacedLocationSources?.includes(calendar.id)) {
+        await replaceLocationId(locationPath, 'minneapolis', 'chicago')
+      }
+      if (options.reweightedLocationSources?.includes(calendar.id)) {
+        await reweightLocationAndScore(locationPath, scorePath, 'minneapolis', 0.01)
+      }
       await writeFile(path.join(forecastRoot, 'weather', weatherDirs[calendar.id], `${base}-manifest.json`), `${JSON.stringify({ forecastSource: calendar.id, generatedAt: `${date}T12:00:00.000Z`, failures: [] })}\n`)
     }
     const outputPath = path.join(scratch, 'target.json')
@@ -391,6 +554,8 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
     assert.equal(run.code, 0, run.stderr)
     const snapshot = JSON.parse(await readFile(outputPath, 'utf8'))
     assert.equal(snapshot.strategyArtifact.status, 'research-baseline')
+    assert.equal(snapshot.strategyArtifact.paperEligible, true)
+    assert.equal(snapshot.strategyArtifact.liveEligible, true)
     assert.equal(snapshot.strategyArtifact.promotionEligible, true)
     assert.equal(snapshot.strategyArtifact.digestSha256, strategyArtifact.digestSha256)
     assert.equal(snapshot.marketValidation.targetDate, date)
@@ -446,7 +611,7 @@ async function nonPromotedStrategyArtifactFailsClosed() {
       QORE_LIVE_STRATEGY_ARTIFACT_FILE: strategyArtifactPath,
     })
     assert.equal(run.code, 1)
-    assert.match(run.stderr, /artifact is not promotion-eligible:.*status must equal research-baseline/)
+    assert.match(run.stderr, /artifact is not paper-eligible:.*status must equal research-baseline/)
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }
@@ -470,6 +635,46 @@ async function mismatchedLiveComponentContractFailsClosed() {
     })
     assert.equal(run.code, 1)
     assert.match(run.stderr, /reviewed component contract digest does not match the executable live contract/)
+  } finally {
+    await rm(scratch, { recursive: true, force: true })
+  }
+}
+
+async function mismatchedValidationIntegrityFailsClosed() {
+  const scratch = await mkdtemp(path.join(tmpdir(), 'qore-validation-integrity-gate-'))
+  try {
+    const strategyArtifactPath = path.join(scratch, 'mismatched-validation-integrity-run-summary.json')
+    const { fixture } = await writeStrategyArtifactFixture(strategyArtifactPath, { eligible: true })
+    fixture.validation.integrity.manifestDigestSha256 = '0'.repeat(64)
+    await writeFile(strategyArtifactPath, `${JSON.stringify(fixture, null, 2)}\n`)
+    const run = await runNode(['scripts/qore-live-strategy-inference.mjs'], {
+      QORE_LIVE_INFERENCE_STATE_DIR: scratch,
+      QORE_LIVE_INFERENCE_FILE: path.join(scratch, 'target.json'),
+      QORE_LIVE_INFERENCE_SKIP_FETCH: '1',
+      QORE_LIVE_STRATEGY_ARTIFACT_FILE: strategyArtifactPath,
+    })
+    assert.equal(run.code, 1)
+    assert.match(run.stderr, /validation integrity manifestDigestSha256 does not match the reviewed manifest/)
+  } finally {
+    await rm(scratch, { recursive: true, force: true })
+  }
+}
+
+async function mismatchedBrokerExecutionProfileFailsClosed() {
+  const scratch = await mkdtemp(path.join(tmpdir(), 'qore-broker-profile-gate-'))
+  try {
+    const strategyArtifactPath = path.join(scratch, 'mismatched-broker-profile-run-summary.json')
+    const { fixture } = await writeStrategyArtifactFixture(strategyArtifactPath, { eligible: true })
+    fixture.contract.brokerExecution.profile.sizing.minOrderUsd += 1
+    await writeFile(strategyArtifactPath, `${JSON.stringify(fixture, null, 2)}\n`)
+    const run = await runNode(['scripts/qore-live-strategy-inference.mjs'], {
+      QORE_LIVE_INFERENCE_STATE_DIR: scratch,
+      QORE_LIVE_INFERENCE_FILE: path.join(scratch, 'target.json'),
+      QORE_LIVE_INFERENCE_SKIP_FETCH: '1',
+      QORE_LIVE_STRATEGY_ARTIFACT_FILE: strategyArtifactPath,
+    })
+    assert.equal(run.code, 1)
+    assert.match(run.stderr, /broker execution profile digest does not match the canonical profile stored in the artifact/)
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }
@@ -578,6 +783,8 @@ async function allYearInstrumentContract() {
 await portableGribPlatformBranch()
 await nonPromotedStrategyArtifactFailsClosed()
 await mismatchedLiveComponentContractFailsClosed()
+await mismatchedValidationIntegrityFailsClosed()
+await mismatchedBrokerExecutionProfileFailsClosed()
 await allYearInstrumentContract()
 const summer = await summerParity()
 const winter = await winterParity()
@@ -591,6 +798,14 @@ await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds,
     gasSymbol: 'NG=F', latestGasDate: '2024-04-24', latestIndexDate: '2024-04-24',
     latestCommonDate: '2024-04-24', marketAgeDays: 1, maxMarketAgeDays: 4, provisionalTargetDate: '2024-04-25',
   },
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  replacedLocationSources: ['gfs'],
+  expectedError: /stale or incomplete/,
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  reweightedLocationSources: ['gfs'],
+  expectedError: /stale or incomplete/,
 })
 await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
   marketFixture: { gasEndDate: '2024-04-19', indexEndDate: '2024-04-19' },
@@ -680,3 +895,4 @@ await liveLoaderParity(winter, '2026-03-10', selectedContracts.winterFollow.live
 })
 const liveFetchSources = await liveFetchCoverage()
 console.log(`live-inference parity passed summerSignals=${summer.count} winterSignals=${winter.count} summerPositions=${summerPositions} winterPositions=${winterPositions} liveFetchSources=${liveFetchSources}`)
+await rm(validationFixtureDir, { recursive: true, force: true })

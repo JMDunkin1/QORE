@@ -1,4 +1,93 @@
+import crypto from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
+import { loadExecutionCalendar } from './qore-research-execution.mjs'
+
+export const COMPONENT_ARTIFACT_SCHEMA_VERSION = 3
+export const COMPONENT_SELECTED_TRADES_BINDING_SCHEMA_VERSION = 1
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex')
+}
+
+function selectedTradeDates(rows, label) {
+  const dates = rows.map((row) => String(row?.entryTradeDate ?? ''))
+  for (const [index, date] of dates.entries()) {
+    const parsed = Date.parse(`${date}T00:00:00Z`)
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || !Number.isFinite(parsed)
+      || new Date(parsed).toISOString().slice(0, 10) !== date
+    ) {
+      throw new Error(`${label} selected-trades row ${index + 1} has an invalid entryTradeDate.`)
+    }
+    if (index > 0 && dates[index - 1] >= date) {
+      throw new Error(`${label} selected-trades entryTradeDate values must be unique and strictly chronological.`)
+    }
+  }
+  return dates
+}
+
+function exactDateMismatch(left, right) {
+  const length = Math.max(left.length, right.length)
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) {
+      return { index, selectedTradeDate: left[index] ?? null, authoritativeSessionDate: right[index] ?? null }
+    }
+  }
+  return null
+}
+
+export function buildComponentSelectedTradesBinding({
+  repoRoot,
+  file,
+  raw,
+  rows,
+  executionContract,
+  label = 'Component artifact',
+}) {
+  if (typeof repoRoot !== 'string' || !repoRoot) throw new Error(`${label} repoRoot is required.`)
+  if (typeof file !== 'string' || !file) throw new Error(`${label} selected-trades file path is required.`)
+  if (!(typeof raw === 'string' || Buffer.isBuffer(raw))) {
+    throw new Error(`${label} selected-trades raw bytes are required.`)
+  }
+  if (!Array.isArray(rows) || !rows.length) throw new Error(`${label} selected-trades artifact is empty.`)
+
+  const dates = selectedTradeDates(rows, label)
+  const authoritativeDates = loadExecutionCalendar(repoRoot, {
+    startDate: dates[0],
+    endDate: dates.at(-1),
+    contract: executionContract,
+  }).map((day) => day.date)
+  const mismatch = exactDateMismatch(dates, authoritativeDates)
+  if (mismatch) {
+    throw new Error(
+      `${label} selected-trades dates do not exactly match the authoritative UNG/VOO/QQQM execution calendar at row ${mismatch.index + 1}: selected=${mismatch.selectedTradeDate ?? 'missing'} authoritative=${mismatch.authoritativeSessionDate ?? 'missing'}.`,
+    )
+  }
+
+  const dateDigestSha256 = sha256(dates.join('\n'))
+  return {
+    schemaVersion: COMPONENT_SELECTED_TRADES_BINDING_SCHEMA_VERSION,
+    artifactKind: 'component-selected-trades',
+    file,
+    contentDigestSha256: sha256(raw),
+    byteLength: Buffer.byteLength(raw),
+    rowCount: rows.length,
+    dateField: 'entryTradeDate',
+    firstEntryTradeDate: dates[0],
+    lastEntryTradeDate: dates.at(-1),
+    entryTradeDateDigestSha256: dateDigestSha256,
+    authoritativeCalendar: {
+      calendarId: 'common-adjusted-ung-voo-qqqm-execution-sessions',
+      executionContractId: executionContract.contractId,
+      executionContractDigest: executionContract.digest,
+      sessionCount: authoritativeDates.length,
+      firstSessionDate: authoritativeDates[0],
+      lastSessionDate: authoritativeDates.at(-1),
+      sessionDateDigestSha256: sha256(authoritativeDates.join('\n')),
+    },
+  }
+}
 
 function priorCalendarDate(isoDate) {
   const timestamp = Date.parse(`${isoDate}T00:00:00Z`)
@@ -6,6 +95,7 @@ function priorCalendarDate(isoDate) {
 }
 
 export function validateComponentArtifact({
+  repoRoot,
   label,
   expectedStrategyId,
   requiredSchemaVersion,
@@ -71,5 +161,27 @@ export function validateComponentArtifact({
   )
   if (invalidRow) {
     throw new Error(`${label} selected-trades row ${invalidRow.entryTradeDate || 'unknown'} is stale or malformed.`)
+  }
+
+  const expectedBinding = buildComponentSelectedTradesBinding({
+    repoRoot,
+    file: summary?.outputFiles?.selectedTrades,
+    raw: trades.raw,
+    rows: trades.rows,
+    executionContract,
+    label,
+  })
+  const binding = summary?.data?.selectedTradesArtifact
+  if (!isDeepStrictEqual(binding, expectedBinding)) {
+    throw new Error(`${label} selected-trades artifact binding does not match its reviewed summary.`)
+  }
+  if (
+    summary?.data?.marketDays !== expectedBinding.rowCount
+    || summary?.data?.marketStartDate !== expectedBinding.firstEntryTradeDate
+    || summary?.data?.marketEndDate !== expectedBinding.lastEntryTradeDate
+    || summary?.selected?.allMetrics?.firstEntry !== expectedBinding.firstEntryTradeDate
+    || summary?.selected?.allMetrics?.lastExit !== expectedBinding.lastEntryTradeDate
+  ) {
+    throw new Error(`${label} selected-trades row/date metadata does not match its reviewed summary.`)
   }
 }

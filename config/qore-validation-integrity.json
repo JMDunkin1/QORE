@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 3,
+  "manifestId": "ngas-all-year-beta-prospective-validation-v2",
+  "strategyId": "ngas-all-year-beta",
+  "reviewedAt": "2026-07-21T19:27:54.000Z",
+  "sealedStrategyContractDigestSha256": "a09b0b755ebe148d235b7e842e0cd966f083efc3514279d429ba921903306b98",
+  "sealedStrategyArtifactDigestSha256": null,
+  "sealedBrokerExecutionProfileDigestSha256": "16c7ed41299c5cf521921e3c36c059592a4d1272f1d8e0e5e00500ee798d8690",
+  "historicalEvidence": {
+    "status": "development-contaminated",
+    "evidenceStart": "2021-01-01",
+    "developmentBegan": "2026-06-11",
+    "observedThrough": "2026-07-14",
+    "prospectiveStart": "2026-07-22",
+    "pristineForwardEvidence": false
+  },
+  "minimumForwardEvidence": {
+    "independentEpisodes": 60,
+    "completeSummerSeasons": 2,
+    "completeWinterSeasons": 2
+  },
+  "observedForwardEvidence": {
+    "independentEpisodes": 0,
+    "completeSummerSeasons": 0,
+    "completeWinterSeasons": 0,
+    "observedThrough": null,
+    "strategyContractDigestSha256": null,
+    "strategyArtifactDigestSha256": null,
+    "evidenceArtifactDigestSha256": null,
+    "reviewedAt": null
+  },
+  "minimumPaperExecutionEvidence": {
+    "tradingSessions": 60,
+    "filledOrders": 10,
+    "ungFilledOrders": 4,
+    "ungLongFilledOrders": 2,
+    "ungShortFilledOrders": 2,
+    "maximumMedianAbsoluteSlippageBps": 25,
+    "maximumP95AbsoluteSlippageBps": 50
+  },
+  "paperExecutionEvidence": {
+    "status": "absent",
+    "strategyContractDigestSha256": null,
+    "brokerExecutionProfileDigestSha256": null,
+    "accountPseudonymSha256": null,
+    "periodStart": null,
+    "periodEnd": null,
+    "tradingSessions": 0,
+    "submittedOrders": 0,
+    "filledOrders": 0,
+    "ungFilledOrders": 0,
+    "ungLongFilledOrders": 0,
+    "ungShortFilledOrders": 0,
+    "medianAbsoluteSlippageBps": null,
+    "p95AbsoluteSlippageBps": null,
+    "evidenceArtifactDigestSha256": null,
+    "reviewedAt": null
+  },
+  "approvals": {
+    "paper": {
+      "status": "absent",
+      "approvalId": null,
+      "approvedAt": null,
+      "strategyContractDigestSha256": null,
+      "brokerExecutionProfileDigestSha256": null
+    },
+    "live": {
+      "status": "absent",
+      "approvalId": null,
+      "approvedAt": null,
+      "strategyContractDigestSha256": null,
+      "brokerExecutionProfileDigestSha256": null
+    }
+  }
+}

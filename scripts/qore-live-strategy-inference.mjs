@@ -5,15 +5,38 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { loadLocalEnv } from './local-env.mjs'
 import { assertEiaStorageReleaseCalendarCoverage } from './lib/eia-release-time.mjs'
-import { enrichForecastRows, inferAllYearTarget, numberFrom, round, selectedContracts } from './lib/qore-live-all-year-inference.mjs'
-import { assertPromotionEligibleStrategyArtifact } from './lib/qore-live-strategy-artifact.mjs'
+import {
+  enrichForecastRows,
+  inferAllYearTarget,
+  inferSummerShadowTarget,
+  numberFrom,
+  round,
+  selectedContracts,
+} from './lib/qore-live-all-year-inference.mjs'
+import {
+  SUMMER_SHADOW_CHALLENGER,
+  appendSummerShadowTargetRecord,
+  createSummerShadowTargetRecord,
+  summerShadowCompatibilityFailures,
+  summerShadowValueDigestSha256,
+} from './lib/qore-summer-shadow-challenger.mjs'
+import { summarizeSummerForecastLocationBreadth } from './lib/qore-summer-forecast-coverage.mjs'
+import {
+  assertPaperEligibleStrategyArtifact,
+  assertStrategyArtifactContractIntegrity,
+} from './lib/qore-live-strategy-artifact.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
+const shadowOnly = process.argv.includes('--summer-shadow')
 const dataRoot = path.join(repoDir, 'data', 'qore')
 const stateDir = path.resolve(process.env.QORE_LIVE_INFERENCE_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-inference'))
 const forecastRoot = path.join(stateDir, 'noaa-calendar')
 const outputPath = path.resolve(process.env.QORE_LIVE_INFERENCE_FILE ?? path.join(stateDir, 'all-year-target.json'))
+const summerShadowStateDir = path.resolve(
+  process.env.QORE_SUMMER_SHADOW_STATE_DIR
+    ?? path.join(repoDir, '.local', 'qore', 'shadow-validation', SUMMER_SHADOW_CHALLENGER.contractId, 'targets'),
+)
 const marketHistoryStateDir = path.resolve(
   process.env.QORE_LIVE_MARKET_HISTORY_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-market-history'),
 )
@@ -42,6 +65,26 @@ const requiredLeads = summer ? [7] : [1, 2, 3, 7, 8, 9, 10]
 
 function addDays(date, count) { return new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10) }
 function truthy(value) { return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').toLowerCase()) }
+function targetProjection(target) {
+  return {
+    strategyId: target.strategyId,
+    componentStrategyId: target.componentStrategyId,
+    candidateId: target.candidateId ?? null,
+    executionEligible: target.executionEligible ?? true,
+    targetDate: target.targetDate,
+    direction: target.direction,
+    gasPosition: target.gasPosition,
+    indexFraction: target.indexFraction,
+    cashFraction: target.cashFraction,
+    signalDate: target.signalDate,
+    confidence: target.confidence,
+    windowId: target.windowId,
+    thesisKind: target.thesisKind,
+    sourceIds: target.sourceIds,
+    weightedAnomalyF: target.weightedAnomalyF,
+    realizedMovePct: target.realizedMovePct ?? null,
+  }
+}
 function interveningWeekdays(startDate, endDate) {
   const dates = []
   for (let date = addDays(startDate, 1); date < endDate; date = addDays(date, 1)) {
@@ -135,15 +178,16 @@ async function loadForecastRows() {
   const locationCoverage = new Map()
   for (const row of locations) {
     const key = forecastRowKey(row)
-    const coverage = locationCoverage.get(key) ?? { count: 0, sampledWeight: 0 }
-    coverage.count += 1
-    coverage.sampledWeight += numberFrom(row.weight)
-    locationCoverage.set(key, coverage)
+    locationCoverage.set(key, [...(locationCoverage.get(key) ?? []), row])
   }
   const rows = enrichForecastRows(scores, locations, summer ? 'summer' : 'winter').map((row) => {
-    const coverage = locationCoverage.get(forecastRowKey(row))
-    const demandInputsComplete = coverage?.count === numberFrom(row.locationCount)
-      && Math.abs(coverage.sampledWeight - numberFrom(row.sampledWeight)) < 1e-6
+    const coverageRows = locationCoverage.get(forecastRowKey(row)) ?? []
+    const sampledWeight = coverageRows.reduce((sum, location) => sum + numberFrom(location.weight), 0)
+    const exactSummerLocationUniverse = !summer
+      || summarizeSummerForecastLocationBreadth(coverageRows).complete
+    const demandInputsComplete = coverageRows.length === numberFrom(row.locationCount)
+      && Math.abs(sampledWeight - numberFrom(row.sampledWeight)) < 1e-6
+      && exactSummerLocationUniverse
     return { ...row, demandInputsComplete }
   })
   return { rows, manifests }
@@ -299,7 +343,35 @@ async function loadStorageRows() {
 }
 
 async function main() {
-  const strategyArtifact = assertPromotionEligibleStrategyArtifact(repoDir)
+  if (shadowOnly && !summer) {
+    throw new Error('Summer shadow collection is limited to the active Summer comparator schedule, including its April/May boundary.')
+  }
+  const strategyArtifact = shadowOnly
+    ? assertStrategyArtifactContractIntegrity(repoDir)
+    : assertPaperEligibleStrategyArtifact(repoDir)
+  if (shadowOnly) {
+    if (strategyArtifact.currentParity?.components?.summer?.exactTargetParity !== true) {
+      throw new Error('Summer shadow collection requires exact current production-source parity for the active Summer comparator.')
+    }
+    const summerSummaryPath = path.join(
+      repoDir,
+      'data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json',
+    )
+    let summerSummary
+    try {
+      summerSummary = JSON.parse(await readFile(summerSummaryPath, 'utf8'))
+    } catch (error) {
+      throw new Error(`Summer shadow collection could not read the versioned Summer summary: ${error.message}`)
+    }
+    const shadowFailures = summerShadowCompatibilityFailures({
+      activeComponentContract:
+        strategyArtifact.summary?.contract?.liveInference?.componentContract?.summer,
+      embeddedShadow: summerSummary?.researchOnly?.prospectiveShadowChallenger,
+    })
+    if (shadowFailures.length) {
+      throw new Error(`Summer shadow collection requires the current frozen comparator contract: ${shadowFailures.join('; ')}`)
+    }
+  }
   assertEiaStorageReleaseCalendarCoverage(today)
   if (Boolean(configuredGasMarketPath) !== Boolean(configuredIndexMarketPath)) {
     throw new Error('QORE_LIVE_INFERENCE_GAS_MARKET_FILE and QORE_LIVE_INFERENCE_INDEX_MARKET_FILE must be configured together.')
@@ -327,9 +399,45 @@ async function main() {
   const { rows: storageRows, validation: storageValidation } = await loadStorageRows()
   const actualWeatherRows = await loadActualWeatherRows()
   const target = inferAllYearTarget({ forecastRows: inferenceRows, actualWeatherRows, marketDays: days, storageRows, targetDate: today })
+  if (shadowOnly) {
+    const shadowTarget = inferSummerShadowTarget({
+      forecastRows: inferenceRows,
+      marketDays: days,
+      storageRows,
+      targetDate: today,
+    })
+    const generatedAt = new Date().toISOString()
+    const record = createSummerShadowTargetRecord({
+      generatedAt,
+      targetDate: today,
+      activeStrategyContractDigestSha256: strategyArtifact.binding.strategyContractDigestSha256,
+      activeStrategyArtifactDigestSha256: strategyArtifact.binding.digestSha256,
+      activeTarget: targetProjection(target),
+      shadowTarget: targetProjection(shadowTarget),
+      inputProvenance: {
+        forecastRowsDigestSha256: summerShadowValueDigestSha256(inferenceRows),
+        marketDaysDigestSha256: summerShadowValueDigestSha256(days),
+        storageRowsDigestSha256: summerShadowValueDigestSha256(storageRows),
+        forecastValidation: {
+          latestCommonIssueDate: latestIssueDate,
+          issueAgeDays: round(issueAgeDays, 2),
+          requiredSources,
+          collectedSources,
+          requiredLeads,
+        },
+        marketValidation,
+        storageValidation,
+      },
+    })
+    const appended = await appendSummerShadowTargetRecord({ stateDir: summerShadowStateDir, record })
+    console.log(
+      `summer-shadow written=${appended.written} reason=${appended.reason ?? 'none'} target=${today} file=${appended.filePath ? path.relative(repoDir, appended.filePath) : 'none'}`,
+    )
+    return
+  }
   const snapshot = {
     generatedAt: new Date().toISOString(), serviceId: 'qore-live-all-year-inference',
-    validated: strategyArtifact.binding.promotionEligible,
+    validated: strategyArtifact.binding.paperEligible,
     inferenceMode: 'selected-contract-live-source-set-00z', liveForecastAppliedToTarget: true,
     strategyId: 'ngas-all-year-beta', season: summer ? 'summer' : 'winter', target,
     strategyArtifact: strategyArtifact.binding,

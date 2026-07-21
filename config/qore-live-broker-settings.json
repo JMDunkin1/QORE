@@ -19,11 +19,39 @@
       "fractionalShortSales": false,
       "replaceOpenOrders": false,
       "minOrderUsd": 10
+    },
+    "reviewedExecutionProfile": {
+      "schemaVersion": 1,
+      "profileId": "alpaca-etf-target-weight-route-v1",
+      "implementationPolicyId": "alpaca-live-etf-reconciler-v1",
+      "futuresRouting": "blocked",
+      "sizing": {
+        "accountAllocationPct": 100,
+        "minCashBufferPct": 2,
+        "rebalanceDeadbandPct": 0.25,
+        "minOrderUsd": 10,
+        "maxOrderUsd": null
+      },
+      "orders": {
+        "type": "market",
+        "timeInForce": "day",
+        "fractionalNonShortOrders": true,
+        "fractionalShortSales": false,
+        "replaceOpenOrders": false,
+        "shortExposureEnabled": true,
+        "hardToBorrowAllowed": false
+      }
     }
   },
   "gates": {
     "riskDefaults": {
       "maxGrossExposurePct": 100,
+      "minConfidence": 0,
+      "maxConfidence": 1,
+      "maxSignalAgeDays": 1,
+      "maxWeatherIssueAgeHours": 36,
+      "maxMarketDataAgeMinutes": 1440,
+      "maxStorageDataAgeDays": 10,
       "maxDailyLossPct": 12,
       "maxTrailingDrawdownPct": 25,
       "maxAllowedSpreadBps": 75,
@@ -33,7 +61,16 @@
       "maxClockFutureSkewSeconds": 5,
       "alpacaRequestTimeoutMs": 15000,
       "maxRiskSnapshotAgeSeconds": 900,
-      "maxRiskSnapshotFutureSkewSeconds": 30
+      "maxRiskSnapshotFutureSkewSeconds": 30,
+      "minReferencePriceUsd": 1,
+      "minWeatherSourceCount": 2,
+      "minWeatherCoveragePct": 70,
+      "minWeatherDirectionalAccuracyPct": 52,
+      "requireFreshWeatherContext": true,
+      "requireStorageContext": true,
+      "requireMarketContext": true,
+      "requireAccountContext": true,
+      "requireOperatorContext": true
     },
     "liveRequiredEnv": {
       "QORE_BROKER_MODE": "live",

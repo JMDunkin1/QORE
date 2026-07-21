@@ -22,11 +22,16 @@ import {
   assertEiaStorageReleaseCalendarCoverage,
   eiaStorageReleaseAt,
 } from './lib/eia-release-time.mjs'
-import { validateComponentArtifact } from './lib/qore-component-artifact.mjs'
+import {
+  COMPONENT_ARTIFACT_SCHEMA_VERSION,
+  COMPONENT_SELECTED_TRADES_BINDING_SCHEMA_VERSION,
+  validateComponentArtifact,
+} from './lib/qore-component-artifact.mjs'
 import {
   executableLiveComponentContractDigestSha256,
   liveComponentContractDigestSha256,
 } from './lib/qore-live-contract.mjs'
+import { ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION } from './lib/qore-live-strategy-artifact.mjs'
 
 const repoRoot = process.cwd()
 
@@ -270,23 +275,45 @@ const displayCurvePath = path.join(repoRoot, 'data/qore/research/strategy-agent-
 const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
 const rows = Papa.parse(fs.readFileSync(tradesPath, 'utf8'), { header: true, skipEmptyLines: true }).data
 const displayRows = Papa.parse(fs.readFileSync(displayCurvePath, 'utf8'), { header: true, skipEmptyLines: true }).data
+const summerTradesPath = path.join(
+  repoRoot,
+  'data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv',
+)
+const summerTradesRaw = fs.readFileSync(summerTradesPath)
 const summerTrades = Papa.parse(
-  fs.readFileSync(
-    path.join(repoRoot, 'data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv'),
-    'utf8',
-  ),
+  summerTradesRaw.toString('utf8'),
   { header: true, skipEmptyLines: true },
 )
 const summerRows = summerTrades.data
-const winterRows = Papa.parse(
-  fs.readFileSync(
-    path.join(repoRoot, 'data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv'),
-    'utf8',
-  ),
+const winterTradesPath = path.join(
+  repoRoot,
+  'data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv',
+)
+const winterTradesRaw = fs.readFileSync(winterTradesPath)
+const winterTrades = Papa.parse(
+  winterTradesRaw.toString('utf8'),
   { header: true, skipEmptyLines: true },
-).data
+)
+const winterRows = winterTrades.data
+const componentTradeArtifacts = new Map([
+  ['ngas-summer-alpha', {
+    raw: summerTradesRaw,
+    headers: summerTrades.meta.fields ?? [],
+    rows: summerRows,
+  }],
+  ['ngas-winter-alpha', {
+    raw: winterTradesRaw,
+    headers: winterTrades.meta.fields ?? [],
+    rows: winterRows,
+  }],
+])
 const executionContract = loadResearchExecutionContract(repoRoot)
-assert.equal(summary.artifactSchemaVersion, 3)
+assert.equal(summary.artifactSchemaVersion, ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION)
+assert.equal(
+  Object.hasOwn(summary.validation.integrity, 'paperExecutionAccountPseudonymSha256'),
+  false,
+  'browser-imported research artifacts must not expose a stable paper account pseudonym',
+)
 assert.equal(summary.contract.execution.contractDigest, executionContract.digest)
 assert.equal(
   summary.contract.liveInference.componentContractDigestSha256,
@@ -310,15 +337,30 @@ assert.equal(
   'candidate validation edge must exclude later reporting-only composite returns',
 )
 assert.deepEqual(Object.keys(summary.validation.promotionGates).sort(), [
+  'brokerExecution',
+  'liveApproval',
   'liveContract',
+  'liveTargetParity',
+  'paperApproval',
+  'paperExecutionEvidence',
   'positiveTrainEdge',
   'positiveValidationEdge',
   'preHoldoutBootstrapSignificance',
+  'pristineForwardEvidence',
+  'strategyContractSeal',
   'summerComponent',
   'trainMaxDrawdown',
   'validationMaxDrawdown',
   'winterComponent',
 ])
+assert.equal(summary.validation.liveTargetParity.exactTargetParity, false)
+assert.equal(summary.validation.liveTargetParity.comparedRowCount, 1947)
+assert.equal(summary.validation.liveTargetParity.mismatchCount, 15)
+assert.equal(summary.validation.liveTargetParity.components.summer.comparedRowCount, 585)
+assert.equal(summary.validation.liveTargetParity.components.summer.mismatchCount, 0)
+assert.equal(summary.validation.liveTargetParity.components.winter.comparedRowCount, 1362)
+assert.equal(summary.validation.liveTargetParity.components.winter.mismatchCount, 15)
+assert.equal(summary.validation.promotionGates.liveTargetParity, false)
 assert.equal(
   summary.validation.selectionRealityCheck.sampleCount,
   rows.filter((row) => row.entryTradeDate <= summary.contract.selectionEnd).length,
@@ -341,11 +383,24 @@ for (const componentId of ['ngas-summer-alpha', 'ngas-winter-alpha']) {
     ),
   )
   componentSummaries.set(componentId, componentSummary)
-  assert.equal(componentSummary.artifactSchemaVersion, 2)
+  assert.equal(componentSummary.artifactSchemaVersion, COMPONENT_ARTIFACT_SCHEMA_VERSION)
   assert.equal(componentSummary.contract.execution.contractId, executionContract.contractId)
   assert.equal(componentSummary.contract.execution.contractDigest, executionContract.digest)
   assert.equal(componentSummary.contract.execution.scenarioId, executionContract.selectionScenarioId)
   assert.deepEqual(componentSummary.contract.execution.scenarios, executionContract.scenarios)
+  assert.doesNotThrow(() => validateComponentArtifact({
+    repoRoot,
+    label: `${componentId} checked-in artifact`,
+    expectedStrategyId: componentId,
+    requiredSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
+    summary: componentSummary,
+    trades: componentTradeArtifacts.get(componentId),
+    executionContract,
+  }))
+  assert.equal(
+    componentSummary.data.selectedTradesArtifact.contentDigestSha256,
+    crypto.createHash('sha256').update(componentTradeArtifacts.get(componentId).raw).digest('hex'),
+  )
 }
 const componentContracts = [...componentSummaries.values()].map((componentSummary) => componentSummary.contract)
 const expectedAllYearTrainEnd = componentContracts.map((contract) => contract.trainEnd).sort()[0]
@@ -393,23 +448,39 @@ assert.ok(
   'all-year rows must carry pipe-delimited component thesis attribution into the following prior-close row',
 )
 const summerSummary = componentSummaries.get('ngas-summer-alpha')
+assert.equal(
+  summary.validation.promotionGates.summerComponent,
+  summerSummary.promotion?.eligible === true,
+  'all-year Summer promotion must include the component forecast-coverage gate',
+)
 const summerArtifact = {
+  raw: summerTradesRaw,
   headers: summerTrades.meta.fields ?? [],
-  rows: [summerRows[0]],
+  rows: summerRows,
 }
 const validateSummerArtifact = (summaryFixture = summerSummary, tradesFixture = summerArtifact) =>
   validateComponentArtifact({
+    repoRoot,
     label: 'NGAS Summer Alpha fixture',
     expectedStrategyId: 'ngas-summer-alpha',
-    requiredSchemaVersion: 2,
+    requiredSchemaVersion: COMPONENT_ARTIFACT_SCHEMA_VERSION,
     summary: summaryFixture,
     trades: tradesFixture,
     executionContract,
   })
 assert.doesNotThrow(() => validateSummerArtifact())
+assert.equal(
+  summerSummary.data.selectedTradesArtifact.schemaVersion,
+  COMPONENT_SELECTED_TRADES_BINDING_SCHEMA_VERSION,
+)
+assert.equal(summerSummary.data.selectedTradesArtifact.rowCount, summerRows.length)
+assert.equal(
+  summerSummary.data.selectedTradesArtifact.contentDigestSha256,
+  crypto.createHash('sha256').update(summerTradesRaw).digest('hex'),
+)
 assert.throws(
   () => validateSummerArtifact({ ...summerSummary, artifactSchemaVersion: 1 }),
-  /artifact schema 1 does not match required schema 2/,
+  /artifact schema 1 does not match required schema 3/,
 )
 assert.throws(
   () => validateSummerArtifact({
@@ -434,6 +505,30 @@ assert.throws(
     rows: [{ ...summerArtifact.rows[0], strategyId: 'ngas-winter-alpha' }],
   }),
   /selected-trades row .* is stale or malformed/,
+)
+const summerLinesWithInteriorDeletion = summerTradesRaw.toString('utf8').trimEnd().split('\n')
+summerLinesWithInteriorDeletion.splice(101, 1)
+const summerRawWithInteriorDeletion = `${summerLinesWithInteriorDeletion.join('\n')}\n`
+const summerTradesWithInteriorDeletion = Papa.parse(summerRawWithInteriorDeletion, {
+  header: true,
+  skipEmptyLines: true,
+})
+assert.throws(
+  () => validateSummerArtifact(summerSummary, {
+    raw: Buffer.from(summerRawWithInteriorDeletion),
+    headers: summerTradesWithInteriorDeletion.meta.fields ?? [],
+    rows: summerTradesWithInteriorDeletion.data,
+  }),
+  /dates do not exactly match the authoritative .* execution calendar/,
+  'removing one component target row must fail before live-target parity can use the ledger',
+)
+assert.throws(
+  () => validateSummerArtifact(summerSummary, {
+    ...summerArtifact,
+    raw: Buffer.concat([summerTradesRaw, Buffer.from('\n')]),
+  }),
+  /selected-trades artifact binding does not match its reviewed summary/,
+  'changing the selected-trades bytes must invalidate the reviewed digest',
 )
 for (const row of summerRows) {
   if (!row.storageDate) continue

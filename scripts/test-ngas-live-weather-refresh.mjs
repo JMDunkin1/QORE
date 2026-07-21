@@ -11,6 +11,7 @@ import {
   loadResearchExecutionContract,
   targetWeightsForAllocation,
 } from './lib/qore-research-execution.mjs'
+import { downsideDeviation } from './lib/qore-research-statistics.mjs'
 
 const REPO_ROOT = process.cwd()
 const INPUT_FILE = path.resolve(
@@ -194,7 +195,6 @@ function checkedInRows(rows) {
 
 function metrics(series) {
   const returns = series.map((row) => row.returnPct / 100)
-  const negativeReturns = returns.filter((value) => value < 0)
   const firstEntry = series[0]?.date ?? ''
   const lastExit = series.at(-1)?.date ?? firstEntry
   const years = firstEntry && lastExit ? daysBetween(firstEntry, lastExit) / 365.25 : 1
@@ -209,7 +209,7 @@ function metrics(series) {
   }
 
   const annualVol = std(returns) * Math.sqrt(TRADING_DAYS)
-  const downsideVol = std(negativeReturns) * Math.sqrt(TRADING_DAYS)
+  const downsideVol = downsideDeviation(returns) * Math.sqrt(TRADING_DAYS)
   const averageDailyReturn = mean(returns)
   const var95 = percentile(returns, 0.05)
   const cvarSlice = returns.filter((value) => value <= var95)
