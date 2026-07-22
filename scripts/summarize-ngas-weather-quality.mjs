@@ -2,6 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import Papa from 'papaparse'
+import { validateForecastCalendarTemperatures } from './lib/qore-weather-data-quality.mjs'
 
 const repoDir = process.cwd()
 const dataRoot = path.resolve(process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore'))
@@ -45,10 +46,19 @@ const actualByDate = new Map(
 )
 
 const points = []
+const temperatureQuality = []
 for (const calendar of manifest.forecastCalendars ?? []) {
   const scorePath = path.join(dataRoot, calendar.files.signalScores)
-  const rows = parseCsv(await readFile(scorePath, 'utf8'))
-  for (const row of rows) {
+  const locationsPath = path.join(dataRoot, calendar.files.locationAnomalies)
+  const validated = validateForecastCalendarTemperatures({
+    scoreRows: parseCsv(await readFile(scorePath, 'utf8')),
+    locationRows: parseCsv(await readFile(locationsPath, 'utf8')),
+    mode: 'quarantine',
+    label: `${calendar.id} weather-quality calendar`,
+    sourceId: calendar.id,
+  })
+  temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
+  for (const row of validated.scoreRows) {
     if (row.issueDate < calendar.issueDateRange.start || row.issueDate > calendar.issueDateRange.end) continue
     const actualAnomalyF = actualByDate.get(row.targetDate)
     const forecastAnomalyF = finiteNumber(row.weightedAnomalyF)
@@ -67,7 +77,7 @@ const residualVariance = actual.reduce((sum, value, index) => sum + (value - for
 const coldEvents = points.filter((point) => point.actualAnomalyF <= COLD_EVENT_THRESHOLD_F)
 const summary = {
   generatedAt: new Date().toISOString(),
-  method: 'Forecast anomaly rows joined to eastern-CONUS NASA POWER actual anomalies by target date',
+  method: 'Physically plausible forecast anomaly groups joined to eastern-CONUS NASA POWER actual anomalies by target date; an invalid location quarantines its full source/issue/target/lead group',
   sourceCount: new Set(points.map((point) => point.sourceId)).size,
   rowCount: points.length,
   maeF: round(mean(points.map((point) => Math.abs(point.actualAnomalyF - point.forecastAnomalyF)))),
@@ -86,6 +96,22 @@ const summary = {
     1,
   ),
   coldEventThresholdF: COLD_EVENT_THRESHOLD_F,
+  weatherTemperatureQuality: {
+    policy: temperatureQuality[0]?.policy ?? null,
+    quarantinedGroupCount: temperatureQuality.reduce(
+      (sum, quality) => sum + quality.quarantinedGroupCount,
+      0,
+    ),
+    quarantinedLocationRowCount: temperatureQuality.reduce(
+      (sum, quality) => sum + quality.quarantinedLocationRowCount,
+      0,
+    ),
+    quarantinedScoreRowCount: temperatureQuality.reduce(
+      (sum, quality) => sum + quality.quarantinedScoreRowCount,
+      0,
+    ),
+    calendars: temperatureQuality,
+  },
 }
 
 await writeFile(outputPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8')

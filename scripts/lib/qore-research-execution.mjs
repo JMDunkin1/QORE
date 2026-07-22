@@ -2,6 +2,10 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Papa from 'papaparse'
+import {
+  REBALANCE_DEADBAND_POLICY_ID,
+  rebalanceDecisionsForAllocation,
+} from './qore-rebalance-deadband.mjs'
 
 export const EXECUTION_SYMBOLS = ['UNG', 'VOO', 'QQQM']
 
@@ -105,6 +109,9 @@ export function validateResearchExecutionContract(contract) {
   }
   if (!(contract.rebalanceDeadbandPct >= 0 && contract.rebalanceDeadbandPct <= 100)) {
     throw new Error('Research execution rebalanceDeadbandPct must be between 0 and 100.')
+  }
+  if (contract.rebalanceDeadbandPolicyId !== REBALANCE_DEADBAND_POLICY_ID) {
+    throw new Error(`Research execution rebalanceDeadbandPolicyId must equal ${REBALANCE_DEADBAND_POLICY_ID}.`)
   }
   const indexWeightTotal = numberFrom(contract.indexWeights?.VOO) + numberFrom(contract.indexWeights?.QQQM)
   if (
@@ -238,9 +245,27 @@ export function applyExecutionStep({ state, day, targetWeights, contract, scenar
   for (const symbol of EXECUTION_SYMBOLS) {
     const previousCloseWeight = state.closeWeights[symbol] ?? 0
     openWeights[symbol] = previousCloseWeight * (1 + day.symbols[symbol].overnightReturnPct / 100) / equityOpenFactor
+  }
+  const startsOverDeploymentEnvelope = EXECUTION_SYMBOLS.reduce(
+    (sum, symbol) => sum + Math.abs(openWeights[symbol] ?? 0),
+    0,
+  ) > contract.deploymentFraction + 1e-12
+  const deadbandDecisions = rebalanceDecisionsForAllocation({
+    legs: EXECUTION_SYMBOLS.map((symbol) => ({
+      symbol,
+      current: openWeights[symbol],
+      target: targetWeights[symbol] ?? 0,
+    })),
+    deadband: deadbandFraction,
+    forceRiskReduction: startsOverDeploymentEnvelope,
+  })
+
+  for (const symbol of EXECUTION_SYMBOLS) {
+    const previousCloseWeight = state.closeWeights[symbol] ?? 0
     const requestedDelta = (targetWeights[symbol] ?? 0) - openWeights[symbol]
     const targetDelta = (targetWeights[symbol] ?? 0) - previousCloseWeight
-    const executes = Math.abs(requestedDelta) >= deadbandFraction
+    const decision = deadbandDecisions[symbol]
+    const executes = decision.executes
     executedWeights[symbol] = executes ? targetWeights[symbol] ?? 0 : openWeights[symbol]
     turnoverBySymbol[symbol] = executes ? Math.abs(requestedDelta) : 0
     targetTurnoverBySymbol[symbol] = Math.abs(targetDelta)

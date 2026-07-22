@@ -71,7 +71,7 @@ export async function writeValidationEvidenceTestFixtures({
   repoDir,
   manifestPath,
   strategyContractDigestSha256,
-  strategyArtifactDigestSha256,
+  strategyArtifactCoreDigestSha256,
   brokerExecutionProfileDigestSha256,
   accountPseudonymSha256,
   prospectiveStart = '2023-01-01',
@@ -108,7 +108,7 @@ export async function writeValidationEvidenceTestFixtures({
       sessionDate,
       recordedAt: `${sessionDate}T12:00:00.000Z`,
       strategyContractDigestSha256,
-      strategyArtifactDigestSha256,
+      strategyArtifactDigestSha256: strategyArtifactCoreDigestSha256,
       inference,
       inferenceDigestSha256: forwardInferenceDigestSha256(inference),
       independentEpisode: episodeDateSet.has(sessionDate)
@@ -188,7 +188,7 @@ export async function writeValidationEvidenceTestFixtures({
       completeWinterSeasons: 2,
       observedThrough,
       strategyContractDigestSha256,
-      strategyArtifactDigestSha256,
+      strategyArtifactDigestSha256: strategyArtifactCoreDigestSha256,
     },
     paperSummary: {
       strategyContractDigestSha256,

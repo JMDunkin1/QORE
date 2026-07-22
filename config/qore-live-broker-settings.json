@@ -23,12 +23,13 @@
     "reviewedExecutionProfile": {
       "schemaVersion": 1,
       "profileId": "alpaca-etf-target-weight-route-v1",
-      "implementationPolicyId": "alpaca-live-etf-reconciler-v1",
+      "implementationPolicyId": "alpaca-live-etf-reconciler-v2",
       "futuresRouting": "blocked",
       "sizing": {
         "accountAllocationPct": 100,
         "minCashBufferPct": 2,
         "rebalanceDeadbandPct": 0.25,
+        "rebalanceDeadbandPolicyId": "risk-reductions-and-ung-transitions-bypass-v1",
         "minOrderUsd": 10,
         "maxOrderUsd": null
       },

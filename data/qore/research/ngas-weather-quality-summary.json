@@ -1,13 +1,189 @@
 {
-  "generatedAt": "2026-07-21T20:16:28.818Z",
-  "method": "Forecast anomaly rows joined to eastern-CONUS NASA POWER actual anomalies by target date",
+  "generatedAt": "2026-07-22T04:29:11.067Z",
+  "method": "Physically plausible forecast anomaly groups joined to eastern-CONUS NASA POWER actual anomalies by target date; an invalid location quarantines its full source/issue/target/lead group",
   "sourceCount": 7,
-  "rowCount": 18368,
-  "maeF": 4.47,
-  "rmseF": 7.67,
-  "biasF": 2.79,
-  "r2": -0.161,
+  "rowCount": 18366,
+  "maeF": 4.42,
+  "rmseF": 5.63,
+  "biasF": 2.84,
+  "r2": 0.374,
   "directionalAccuracyPct": 81.6,
   "coldRecallPct": 49.4,
-  "coldEventThresholdF": -8
+  "coldEventThresholdF": -8,
+  "weatherTemperatureQuality": {
+    "policy": "source-issue-target-lead-atomic",
+    "quarantinedGroupCount": 2,
+    "quarantinedLocationRowCount": 36,
+    "quarantinedScoreRowCount": 2,
+    "calendars": [
+      {
+        "sourceId": "gfs",
+        "policy": "source-issue-target-lead-atomic",
+        "mode": "quarantine",
+        "boundsF": {
+          "minimum": -150,
+          "maximum": 160
+        },
+        "anomalyToleranceF": 0.01,
+        "inputLocationRowCount": 105732,
+        "acceptedLocationRowCount": 105714,
+        "quarantinedLocationRowCount": 18,
+        "inputScoreRowCount": 5874,
+        "acceptedScoreRowCount": 5873,
+        "quarantinedScoreRowCount": 1,
+        "quarantinedGroupCount": 1,
+        "quarantinedGroups": [
+          {
+            "key": "gfs|2022-11-30|2022-12-10|10",
+            "sourceId": "gfs",
+            "issueDate": "2022-11-30",
+            "targetDate": "2022-12-10",
+            "leadDays": "10",
+            "modelIds": [
+              "ncep-gfs-global-00z-noaa-aws"
+            ],
+            "rowCount": 18,
+            "invalidRowCount": 18,
+            "reasons": [
+              "forecastMeanF-outside-physical-range"
+            ],
+            "sampleLocationIds": [
+              "minneapolis",
+              "chicago",
+              "detroit"
+            ]
+          }
+        ]
+      },
+      {
+        "sourceId": "gefs-mean",
+        "policy": "source-issue-target-lead-atomic",
+        "mode": "quarantine",
+        "boundsF": {
+          "minimum": -150,
+          "maximum": 160
+        },
+        "anomalyToleranceF": 0.01,
+        "inputLocationRowCount": 105876,
+        "acceptedLocationRowCount": 105858,
+        "quarantinedLocationRowCount": 18,
+        "inputScoreRowCount": 5882,
+        "acceptedScoreRowCount": 5881,
+        "quarantinedScoreRowCount": 1,
+        "quarantinedGroupCount": 1,
+        "quarantinedGroups": [
+          {
+            "key": "gefs-mean|2026-02-12|2026-02-13|1",
+            "sourceId": "gefs-mean",
+            "issueDate": "2026-02-12",
+            "targetDate": "2026-02-13",
+            "leadDays": "1",
+            "modelIds": [
+              "ncep-gefs-mean-00z-noaa-aws"
+            ],
+            "rowCount": 18,
+            "invalidRowCount": 18,
+            "reasons": [
+              "forecastMeanF-outside-physical-range"
+            ],
+            "sampleLocationIds": [
+              "atlanta",
+              "boston",
+              "charlotte"
+            ]
+          }
+        ]
+      },
+      {
+        "sourceId": "graphcastgfs",
+        "policy": "source-issue-target-lead-atomic",
+        "mode": "quarantine",
+        "boundsF": {
+          "minimum": -150,
+          "maximum": 160
+        },
+        "anomalyToleranceF": 0.01,
+        "inputLocationRowCount": 38052,
+        "acceptedLocationRowCount": 38052,
+        "quarantinedLocationRowCount": 0,
+        "inputScoreRowCount": 2114,
+        "acceptedScoreRowCount": 2114,
+        "quarantinedScoreRowCount": 0,
+        "quarantinedGroupCount": 0,
+        "quarantinedGroups": []
+      },
+      {
+        "sourceId": "ecmwf-ifs",
+        "policy": "source-issue-target-lead-atomic",
+        "mode": "quarantine",
+        "boundsF": {
+          "minimum": -150,
+          "maximum": 160
+        },
+        "anomalyToleranceF": 0.01,
+        "inputLocationRowCount": 41238,
+        "acceptedLocationRowCount": 41238,
+        "quarantinedLocationRowCount": 0,
+        "inputScoreRowCount": 2291,
+        "acceptedScoreRowCount": 2291,
+        "quarantinedScoreRowCount": 0,
+        "quarantinedGroupCount": 0,
+        "quarantinedGroups": []
+      },
+      {
+        "sourceId": "ecmwf-aifs",
+        "policy": "source-issue-target-lead-atomic",
+        "mode": "quarantine",
+        "boundsF": {
+          "minimum": -150,
+          "maximum": 160
+        },
+        "anomalyToleranceF": 0.01,
+        "inputLocationRowCount": 3528,
+        "acceptedLocationRowCount": 3528,
+        "quarantinedLocationRowCount": 0,
+        "inputScoreRowCount": 196,
+        "acceptedScoreRowCount": 196,
+        "quarantinedScoreRowCount": 0,
+        "quarantinedGroupCount": 0,
+        "quarantinedGroups": []
+      },
+      {
+        "sourceId": "aigfs",
+        "policy": "source-issue-target-lead-atomic",
+        "mode": "quarantine",
+        "boundsF": {
+          "minimum": -150,
+          "maximum": 160
+        },
+        "anomalyToleranceF": 0.01,
+        "inputLocationRowCount": 9810,
+        "acceptedLocationRowCount": 9810,
+        "quarantinedLocationRowCount": 0,
+        "inputScoreRowCount": 545,
+        "acceptedScoreRowCount": 545,
+        "quarantinedScoreRowCount": 0,
+        "quarantinedGroupCount": 0,
+        "quarantinedGroups": []
+      },
+      {
+        "sourceId": "gem-global",
+        "policy": "source-issue-target-lead-atomic",
+        "mode": "quarantine",
+        "boundsF": {
+          "minimum": -150,
+          "maximum": 160
+        },
+        "anomalyToleranceF": 0.01,
+        "inputLocationRowCount": 26766,
+        "acceptedLocationRowCount": 26766,
+        "quarantinedLocationRowCount": 0,
+        "inputScoreRowCount": 1487,
+        "acceptedScoreRowCount": 1487,
+        "quarantinedScoreRowCount": 0,
+        "quarantinedGroupCount": 0,
+        "quarantinedGroups": []
+      }
+    ]
+  }
 }

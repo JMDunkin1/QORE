@@ -44,7 +44,7 @@ function benchmarkRow(symbol, values) {
 }
 
 function dailyFixture(overrides = {}) {
-  const generatedAt = new Date().toISOString()
+  const generatedAt = '2026-07-21T21:55:00.000Z'
   return {
     generatedAt,
     sourceGeneratedAt: generatedAt,
@@ -193,9 +193,9 @@ function testWeeklyDailyTargetWeightCompounding() {
   }))
   const accountStatus = dailyFixture({
     account: { equityUsd: 105_000, cashUsd: 10_000, dayPnlPct: null },
-    portfolioHistory: { generatedAt: new Date().toISOString(), timeframe: '1D', points: history },
+    portfolioHistory: { generatedAt: '2026-07-21T21:55:00.000Z', timeframe: '1D', points: history },
     benchmarkHistory: {
-      generatedAt: new Date().toISOString(),
+      generatedAt: '2026-07-21T21:55:00.000Z',
       source: 'Alpaca historical stock bars',
       feed: 'iex',
       adjustment: 'all',
@@ -203,7 +203,7 @@ function testWeeklyDailyTargetWeightCompounding() {
       rows: [benchmarkRow('VOO', voo), benchmarkRow('QQQM', qqqm)],
     },
     marketCalendar: {
-      generatedAt: new Date().toISOString(),
+      generatedAt: '2026-07-21T21:55:00.000Z',
       source: 'Alpaca US market calendar',
       rows: dates.map((date) => ({ date, open: '09:30', close: '16:00' })),
     },
@@ -254,7 +254,7 @@ function testExactSessionAlignmentAndWeeklyCoverage() {
     account: { equityUsd: 106_000, cashUsd: 10_000 },
     positions: [],
     portfolioHistory: {
-      generatedAt: new Date().toISOString(),
+      generatedAt: '2026-07-21T21:55:00.000Z',
       timeframe: '1D',
       points: dates.filter((date) => date !== '2026-07-15').map((date, index) => ({
         timestamp: `${date}T20:00:00.000Z`,
@@ -264,7 +264,7 @@ function testExactSessionAlignmentAndWeeklyCoverage() {
       })),
     },
     benchmarkHistory: {
-      generatedAt: new Date().toISOString(),
+      generatedAt: '2026-07-21T21:55:00.000Z',
       source: 'Alpaca historical stock bars',
       feed: 'iex',
       adjustment: 'all',
@@ -275,7 +275,7 @@ function testExactSessionAlignmentAndWeeklyCoverage() {
       ],
     },
     marketCalendar: {
-      generatedAt: new Date().toISOString(),
+      generatedAt: '2026-07-21T21:55:00.000Z',
       source: 'Alpaca US market calendar',
       rows: dates.map((date) => ({ date, open: '09:30', close: '16:00' })),
     },
@@ -402,7 +402,7 @@ function testDynamicPerformanceScale() {
     account: { equityUsd: 112_000, cashUsd: 20_000 },
     positions: [],
     portfolioHistory: {
-      generatedAt: new Date().toISOString(),
+      generatedAt: '2026-07-21T21:55:00.000Z',
       timeframe: '1D',
       points: [
         { timestamp: '2026-07-17T20:00:00.000Z', equityUsd: 100_000, profitLossUsd: 0, profitLossPct: 0 },

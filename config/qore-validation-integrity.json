@@ -2,16 +2,16 @@
   "schemaVersion": 3,
   "manifestId": "ngas-all-year-beta-prospective-validation-v2",
   "strategyId": "ngas-all-year-beta",
-  "reviewedAt": "2026-07-21T19:27:54.000Z",
-  "sealedStrategyContractDigestSha256": "a09b0b755ebe148d235b7e842e0cd966f083efc3514279d429ba921903306b98",
-  "sealedStrategyArtifactDigestSha256": null,
-  "sealedBrokerExecutionProfileDigestSha256": "16c7ed41299c5cf521921e3c36c059592a4d1272f1d8e0e5e00500ee798d8690",
+  "reviewedAt": "2026-07-22T04:30:43.000Z",
+  "sealedStrategyContractDigestSha256": "1bc910fe30f7f0e3f161f017fe0d7a05f2aad8e0b0a9fa1193db58dfd297d3ec",
+  "sealedStrategyArtifactDigestSha256": "413f2854fdf1274caf015c919b91e5bdecb0c862b8f8885415c5487bc85593cb",
+  "sealedBrokerExecutionProfileDigestSha256": "b41943fa21851d359a3d177420d86015444a30dfe3af1f08c660761af473e75c",
   "historicalEvidence": {
     "status": "development-contaminated",
     "evidenceStart": "2021-01-01",
     "developmentBegan": "2026-06-11",
     "observedThrough": "2026-07-14",
-    "prospectiveStart": "2026-07-22",
+    "prospectiveStart": "2026-07-23",
     "pristineForwardEvidence": false
   },
   "minimumForwardEvidence": {

@@ -1,4 +1,8 @@
-import { executableLiveGasPositionCapForTarget, executableLiveComponentContract } from './qore-live-contract.mjs'
+import {
+  executableLiveGasPositionCapForTarget,
+  executableLiveComponentContract,
+  selectedContracts,
+} from './qore-live-contract.mjs'
 
 const PRODUCTION_MODE = 'selected-contract-live-source-set-00z'
 export const LIVE_GAS_POSITION_CAP_TOLERANCE = 1e-6
@@ -6,8 +10,8 @@ export const LIVE_GAS_POSITION_CAP_TOLERANCE = 1e-6
 const CONTRACTS = {
   summer: {
     componentStrategyId: executableLiveComponentContract.summer.strategyId,
-    requiredSources: ['gfs', 'gefs-mean'],
-    collectedSources: ['gfs', 'gefs-mean'],
+    requiredSources: [...selectedContracts.summer.sourceIds],
+    collectedSources: [...selectedContracts.summer.sourceIds],
     requiredLeads: [7],
     thesesByWindow: {
       'weather-follow': new Set(['summer-heat-long', 'summer-cold-short']),
@@ -16,8 +20,8 @@ const CONTRACTS = {
   },
   winter: {
     componentStrategyId: executableLiveComponentContract.winter.strategyId,
-    requiredSources: ['gfs', 'gefs-mean', 'aigfs'],
-    collectedSources: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
+    requiredSources: [...selectedContracts.winterFollow.liveSourceIds],
+    collectedSources: [...selectedContracts.winterFollow.liveHeatingDemandSourceIds],
     requiredLeads: [1, 2, 3, 7, 8, 9, 10],
     thesesByWindow: {
       'weather-follow': new Set(['cold-long', 'warm-short']),

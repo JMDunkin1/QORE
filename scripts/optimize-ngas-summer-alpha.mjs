@@ -38,6 +38,7 @@ import {
   COMPONENT_ARTIFACT_SCHEMA_VERSION,
   buildComponentSelectedTradesBinding,
 } from './lib/qore-component-artifact.mjs'
+import { validateForecastCalendarTemperatures } from './lib/qore-weather-data-quality.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -295,10 +296,10 @@ function coolingDemandAnomalyF(row) {
   return Math.max(0, forecastMeanF - COOLING_DEMAND_BASE_F) - Math.max(0, normalMeanF - COOLING_DEMAND_BASE_F)
 }
 
-function locationBreadthByScore(filePath) {
+function locationBreadthByScore(locationRows) {
   const grouped = new Map()
 
-  for (const row of parseCsv(filePath)) {
+  for (const row of locationRows) {
     const key = scoreKey(row)
     const current =
       grouped.get(key) ?? {
@@ -353,6 +354,7 @@ function loadForecastScores() {
   const manifest = JSON.parse(readText(MANIFEST_PATH))
   const scores = []
   const inputFiles = [path.relative(REPO_ROOT, MANIFEST_PATH)]
+  const temperatureQuality = []
   const calendars = [...manifest.forecastCalendars, ...SUMMER_FORECAST_CALENDARS]
 
   for (const calendar of calendars) {
@@ -360,9 +362,17 @@ function loadForecastScores() {
     const locationsPath = path.join(DATA_ROOT, calendar.files.locationAnomalies)
     if (!fs.existsSync(scoresPath) || !fs.existsSync(locationsPath)) continue
     inputFiles.push(path.relative(REPO_ROOT, scoresPath), path.relative(REPO_ROOT, locationsPath))
-    const breadth = locationBreadthByScore(locationsPath)
+    const validated = validateForecastCalendarTemperatures({
+      scoreRows: parseCsv(scoresPath),
+      locationRows: parseCsv(locationsPath),
+      mode: 'quarantine',
+      label: `${calendar.id} Summer research calendar`,
+      sourceId: calendar.id,
+    })
+    temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
+    const breadth = locationBreadthByScore(validated.locationRows)
 
-    for (const row of parseCsv(scoresPath)) {
+    for (const row of validated.scoreRows) {
       const leadDays = numberFrom(row.leadDays)
       if (row.windowId !== 'rumor' || leadDays !== 7 || !isCoolingSeason(row.targetDate)) continue
       const warm = breadth.get(scoreKey(row))
@@ -402,7 +412,7 @@ function loadForecastScores() {
     }
   }
 
-  return { manifest, scores, inputFiles }
+  return { manifest, scores, inputFiles, temperatureQuality }
 }
 
 function loadActualWeightedAnomaly() {
@@ -456,14 +466,24 @@ function loadWeatherResolutionData() {
   const manifest = JSON.parse(readText(MANIFEST_PATH))
   const forecastByIssueTarget = new Map()
   const inputFiles = []
+  const temperatureQuality = []
 
   for (const calendar of manifest.forecastCalendars) {
     if (!WEATHER_RESOLUTION_SOURCE_IDS.has(calendar.id)) continue
     const scoresPath = path.join(DATA_ROOT, calendar.files.signalScores)
-    if (!fs.existsSync(scoresPath)) continue
-    inputFiles.push(path.relative(REPO_ROOT, scoresPath))
+    const locationsPath = path.join(DATA_ROOT, calendar.files.locationAnomalies)
+    if (!fs.existsSync(scoresPath) || !fs.existsSync(locationsPath)) continue
+    inputFiles.push(path.relative(REPO_ROOT, scoresPath), path.relative(REPO_ROOT, locationsPath))
+    const validated = validateForecastCalendarTemperatures({
+      scoreRows: parseCsv(scoresPath),
+      locationRows: parseCsv(locationsPath),
+      mode: 'quarantine',
+      label: `${calendar.id} Summer weather-resolution calendar`,
+      sourceId: calendar.id,
+    })
+    temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
 
-    for (const row of parseCsv(scoresPath)) {
+    for (const row of validated.scoreRows) {
       const leadDays = numberFrom(row.leadDays, Number.NaN)
       if (!Number.isFinite(leadDays) || leadDays < 1 || leadDays > 3) continue
       const key = `${row.issueDate}|${row.targetDate}`
@@ -501,6 +521,7 @@ function loadWeatherResolutionData() {
   return {
     forecastsByTargetDate,
     inputFiles,
+    temperatureQuality,
   }
 }
 
@@ -1870,7 +1891,7 @@ function main() {
     validation: metricsFromCurve(curveForSplit(indexCurve, 'validation'), 0),
     holdout: metricsFromCurve(curveForSplit(indexCurve, 'holdout'), 0),
   }
-  const { scores, inputFiles } = loadForecastScores()
+  const { scores, inputFiles, temperatureQuality } = loadForecastScores()
   const weatherResolutionData = loadWeatherResolutionData()
   const actualByDate = loadActualWeightedAnomaly()
   const reliability = computeSourceReliability(scores, actualByDate)
@@ -1990,6 +2011,10 @@ function main() {
       eiaStorageFile: path.relative(REPO_ROOT, EIA_STORAGE_FILE),
       eiaStorageReleaseCalendarFile: path.relative(REPO_ROOT, EIA_STORAGE_RELEASE_CALENDAR_FILE),
       weatherResolutionInputs: weatherResolutionData.inputFiles,
+      weatherTemperatureQuality: {
+        signalCalendars: temperatureQuality,
+        weatherResolutionCalendars: weatherResolutionData.temperatureQuality,
+      },
       firstSignalDate: FIRST_SIGNAL_DATE,
       marketStartDate: days[0]?.date,
       marketEndDate: days.at(-1)?.date,
@@ -2040,6 +2065,7 @@ function main() {
         priceConvention: EXECUTION_CONTRACT.priceConvention,
         deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
         rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
+        rebalanceDeadbandPolicyId: EXECUTION_CONTRACT.rebalanceDeadbandPolicyId,
         indexWeights: EXECUTION_CONTRACT.indexWeights,
         selectionRule: EXECUTION_CONTRACT.selectionRule,
         costCalibration: EXECUTION_CONTRACT.costCalibration,

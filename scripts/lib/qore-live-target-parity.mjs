@@ -7,6 +7,8 @@ import {
   inferAllYearTarget,
   selectedContracts,
 } from './qore-live-all-year-inference.mjs'
+import { loadEiaStorageReleaseCalendar } from './eia-release-time.mjs'
+import { validateForecastCalendarTemperatures } from './qore-weather-data-quality.mjs'
 
 const SUMMER_FORECAST_CALENDARS = Object.freeze([
   Object.freeze({
@@ -122,6 +124,12 @@ function versionedInputPaths(repoDir, manifest) {
     summerMarketPath: path.join(dataRoot, 'market', 'yahoo', 'NG-F-qore-market.csv'),
     winterMarketPath: path.join(dataRoot, 'market', 'yahoo', 'UNG-qore-market.csv'),
     storagePath: path.join(dataRoot, 'fundamentals', 'eia', 'working-gas-storage-lower48-weekly.csv'),
+    storageReleaseCalendarPath: path.join(
+      dataRoot,
+      'fundamentals',
+      'eia',
+      'working-gas-storage-release-calendar.json',
+    ),
     actualWeatherPath: path.join(
       dataRoot,
       'weather',
@@ -147,6 +155,7 @@ export function versionedLiveTargetParityInputDigestSha256(repoDir = process.cwd
     paths.summerMarketPath,
     paths.winterMarketPath,
     paths.storagePath,
+    paths.storageReleaseCalendarPath,
     paths.actualWeatherPath,
     ...paths.summerForecastCalendars.flatMap((calendar) => [
       calendar.signalScores,
@@ -177,8 +186,10 @@ export function assessLiveTargetParity({
   actualWeatherRows,
   marketDays,
   storageRows,
+  storageReleaseCalendar = null,
   inferTarget = inferAllYearTarget,
   policy = LIVE_TARGET_PARITY_POLICY,
+  captureTargetDates = [],
 }) {
   if (!Array.isArray(expectedRows) || !expectedRows.length) {
     throw new Error('Live-target parity requires at least one expected component target row.')
@@ -211,6 +222,7 @@ export function assessLiveTargetParity({
       actualWeatherRows,
       marketDays,
       storageRows,
+      storageReleaseCalendar,
       targetDate,
     })
     const replayGasPosition = finiteNumber(
@@ -247,6 +259,7 @@ export function assessLiveTargetParity({
     }
   })
   const mismatches = comparisons.filter((row) => !row.matches)
+  const capturedDateSet = new Set(captureTargetDates)
   return {
     comparedRowCount: comparisons.length,
     matchedRowCount: comparisons.length - mismatches.length,
@@ -260,10 +273,13 @@ export function assessLiveTargetParity({
       .update(JSON.stringify(comparisons))
       .digest('hex'),
     mismatches,
+    ...(capturedDateSet.size
+      ? { capturedComparisons: comparisons.filter((row) => capturedDateSet.has(row.targetDate)) }
+      : {}),
   }
 }
 
-export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
+export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { captureWinterTargetDates = [] } = {}) {
   const dataRoot = path.join(repoDir, 'data', 'qore')
   const manifestPath = path.join(dataRoot, 'dataset-manifest.json')
   const manifest = readJson(manifestPath, 'QORE dataset manifest')
@@ -281,6 +297,7 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
     summerMarketPath,
     winterMarketPath,
     storagePath,
+    storageReleaseCalendarPath,
     actualWeatherPath,
   } = inputPaths
   const inputDigestSha256 = versionedLiveTargetParityInputDigestSha256(repoDir)
@@ -322,10 +339,16 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
     inputPaths.summerForecastCalendars,
     'dedicated Summer lead-7 calendar',
   )
+  const summerTemperatureQuality = validateForecastCalendarTemperatures({
+    scoreRows: summerInputs.scoreRows,
+    locationRows: summerInputs.locationRows,
+    mode: 'quarantine',
+    label: 'Versioned Summer live-target replay inputs',
+  })
   const summerSourceSet = new Set(summerProductionForecastSourceIds)
   const summerForecastRows = enrichForecastRows(
-    summerInputs.scoreRows,
-    summerInputs.locationRows,
+    summerTemperatureQuality.scoreRows,
+    summerTemperatureQuality.locationRows,
     'summer',
   ).filter((row) => summerSourceSet.has(row.sourceId))
   if (!summerForecastRows.length) {
@@ -336,6 +359,12 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
     inputPaths.winterForecastCalendars,
     'dataset-manifest Winter calendar',
   )
+  const winterTemperatureQuality = validateForecastCalendarTemperatures({
+    scoreRows: winterInputs.scoreRows,
+    locationRows: winterInputs.locationRows,
+    mode: 'quarantine',
+    label: 'Versioned Winter live-target replay inputs',
+  })
   const winterProductionForecastSourceIds = [
     ...selectedContracts.winterFollow.liveHeatingDemandSourceIds,
   ]
@@ -349,8 +378,8 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
   }
   const winterSourceSet = new Set(winterProductionForecastSourceIds)
   const winterForecastRows = enrichForecastRows(
-    winterInputs.scoreRows,
-    winterInputs.locationRows,
+    winterTemperatureQuality.scoreRows,
+    winterTemperatureQuality.locationRows,
     'winter',
   ).filter((row) => winterSourceSet.has(row.sourceId))
   if (!winterForecastRows.length) {
@@ -363,6 +392,7 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
   const summerMarketDays = marketDays(summerMarketPath, 'NG=F Summer signal history')
   const winterMarketDays = marketDays(winterMarketPath, 'UNG Winter market history')
   const storageRows = readCsv(storagePath, 'EIA storage history')
+  const storageReleaseCalendar = loadEiaStorageReleaseCalendar(storageReleaseCalendarPath)
   const actualWeatherRows = readCsv(actualWeatherPath, 'Winter actual weather history')
 
   const summerAssessment = assessLiveTargetParity({
@@ -374,6 +404,7 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
     actualWeatherRows: [],
     marketDays: summerMarketDays,
     storageRows,
+    storageReleaseCalendar,
   })
   const winterAssessment = assessLiveTargetParity({
     expectedRows: readCsv(winterExpectedTargetsPath, 'Winter selected targets'),
@@ -381,6 +412,8 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
     actualWeatherRows,
     marketDays: winterMarketDays,
     storageRows,
+    storageReleaseCalendar,
+    captureTargetDates: captureWinterTargetDates,
   })
 
   const components = {
@@ -390,6 +423,7 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
       productionForecastSourceIds: summerProductionForecastSourceIds,
       productionSignalSourceIds: [...selectedContracts.summer.sourceIds],
       forecastRowCount: summerForecastRows.length,
+      weatherTemperatureQuality: summerTemperatureQuality.diagnostics,
       inputFiles: {
         expectedTargets: path.relative(repoDir, summerExpectedTargetsPath),
         forecastCalendars: summerInputs.inputFiles.map((filePath) => path.relative(repoDir, filePath)),
@@ -402,6 +436,7 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
       productionForecastSourceIds: winterProductionForecastSourceIds,
       productionSignalSourceIds: [...selectedContracts.winterFollow.liveSourceIds],
       forecastRowCount: winterForecastRows.length,
+      weatherTemperatureQuality: winterTemperatureQuality.diagnostics,
       inputFiles: {
         datasetManifest: path.relative(repoDir, manifestPath),
         expectedTargets: path.relative(repoDir, winterExpectedTargetsPath),
@@ -440,6 +475,7 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd()) {
     inputDigestSha256,
     inputFiles: {
       storage: path.relative(repoDir, storagePath),
+      storageReleaseCalendar: path.relative(repoDir, storageReleaseCalendarPath),
       summer: {
         ...components.summer.inputFiles,
         market: path.relative(repoDir, summerMarketPath),

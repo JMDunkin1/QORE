@@ -13,6 +13,7 @@ import { loadReviewedBrokerExecutionProfile } from './lib/qore-broker-execution-
 import {
   executableLiveGasPositionCapForTarget,
   executableLiveGasPositionCaps,
+  selectedContracts,
 } from './lib/qore-live-contract.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 import {
@@ -25,6 +26,7 @@ import {
   ALL_YEAR_SELECTION_CONTRACT,
   VALIDATION_INTEGRITY_MANIFEST_ID,
   VALIDATION_INTEGRITY_SCHEMA_VERSION,
+  allYearStrategyArtifactCoreDigestSha256,
   allYearStrategyContractDigestSha256,
   loadValidationIntegrityManifest,
 } from './lib/qore-validation-integrity.mjs'
@@ -76,23 +78,42 @@ async function writeJson(filePath, value) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
+function promotionEligibleLiveTargetParity(parity) {
+  return {
+    ...parity,
+    status: 'pass',
+    matchedRowCount: parity.comparedRowCount,
+    mismatchCount: 0,
+    gasPositionMismatchCount: 0,
+    thesisKindMismatchCount: 0,
+    exactTargetParity: true,
+    comparisonDigestSha256: 'd'.repeat(64),
+    mismatches: [],
+  }
+}
+
+function promotionEligibleGates(gates) {
+  return Object.fromEntries(Object.keys(gates).map((gate) => [gate, true]))
+}
+
 async function createPristineValidationIntegrityFixture() {
   const filePath = path.join(scratch, 'pristine-validation-integrity.json')
   const sourcePath = path.join(repoDir, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json')
   const source = JSON.parse(await readFile(sourcePath, 'utf8'))
   source.contract.allYearSelection = ALL_YEAR_SELECTION_CONTRACT
+  source.validation.liveTargetParity = promotionEligibleLiveTargetParity(
+    source.validation.liveTargetParity,
+  )
+  source.validation.promotionGates = promotionEligibleGates(source.validation.promotionGates)
   const sealedStrategyContractDigestSha256 = allYearStrategyContractDigestSha256(source)
-  const sealedStrategyArtifactDigestSha256 = crypto
-    .createHash('sha256')
-    .update(JSON.stringify(source))
-    .digest('hex')
+  const sealedStrategyArtifactDigestSha256 = allYearStrategyArtifactCoreDigestSha256(source)
   const sealedBrokerExecutionProfileDigestSha256 = loadReviewedBrokerExecutionProfile(repoDir).profileDigestSha256
   const paperAccountPseudonymSha256 = 'c'.repeat(64)
   const evidenceFixtures = await writeValidationEvidenceTestFixtures({
     repoDir,
     manifestPath: filePath,
     strategyContractDigestSha256: sealedStrategyContractDigestSha256,
-    strategyArtifactDigestSha256: sealedStrategyArtifactDigestSha256,
+    strategyArtifactCoreDigestSha256: sealedStrategyArtifactDigestSha256,
     brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
     accountPseudonymSha256: paperAccountPseudonymSha256,
   })
@@ -176,23 +197,13 @@ async function createPromotionEligibleStrategyArtifactFixture() {
     },
     validation: {
       ...source.validation,
-      liveTargetParity: {
-        ...source.validation.liveTargetParity,
-        status: 'pass',
-        matchedRowCount: source.validation.liveTargetParity.comparedRowCount,
-        mismatchCount: 0,
-        gasPositionMismatchCount: 0,
-        thesisKindMismatchCount: 0,
-        exactTargetParity: true,
-        comparisonDigestSha256: 'd'.repeat(64),
-        mismatches: [],
-      },
+      liveTargetParity: promotionEligibleLiveTargetParity(source.validation.liveTargetParity),
       integrity: {
         ...pristineValidationIntegrity.binding,
         strategyContractDigestSha256: pristineValidationIntegrity.binding.sealedStrategyContractDigestSha256,
       },
       promotionGates: {
-        ...Object.fromEntries(Object.keys(source.validation.promotionGates).map((gate) => [gate, true])),
+        ...promotionEligibleGates(source.validation.promotionGates),
         pristineForwardEvidence: true,
         strategyContractSeal: true,
         paperApproval: true,
@@ -209,6 +220,32 @@ async function createPromotionEligibleStrategyArtifactFixture() {
 }
 
 const promotedStrategyArtifact = await createPromotionEligibleStrategyArtifactFixture()
+assert.equal(
+  promotedStrategyArtifact.binding.strategyArtifactCoreDigestSha256,
+  pristineValidationIntegrity.binding.sealedStrategyArtifactDigestSha256,
+)
+
+async function testStrategyArtifactCoreSealFailsClosed() {
+  const originalArtifactPath = process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE
+  const artifactPath = path.join(scratch, 'mutated-core-all-year-run-summary.json')
+  const fixture = structuredClone(promotedStrategyArtifact.summary)
+  fixture.selected.validationMetrics.totalReturnPct += 0.01
+  await writeJson(artifactPath, fixture)
+  process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE = artifactPath
+  try {
+    const artifact = loadAllYearStrategyArtifact(repoDir)
+    assert.equal(artifact.binding.paperEligible, false)
+    assert.match(
+      artifact.contractIntegrityFailures.join('; '),
+      /strategy-artifact core seal does not match the artifact/,
+    )
+  } finally {
+    process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE = originalArtifactPath
+  }
+  console.log('ok - strategy artifact core mutations fail closed against the prospective seal')
+}
+
+await testStrategyArtifactCoreSealFailsClosed()
 
 async function testPaperAndLiveEligibilityAreSeparate() {
   const originalManifestPath = process.env.QORE_VALIDATION_INTEGRITY_FILE
@@ -248,7 +285,7 @@ async function testPaperAndLiveEligibilityAreSeparate() {
   await writeJson(artifactPath, fixture)
   process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE = artifactPath
   const artifact = loadAllYearStrategyArtifact(repoDir)
-  assert.equal(artifact.binding.paperEligible, true)
+  assert.equal(artifact.binding.paperEligible, true, artifact.paperEligibilityFailures.join('; '))
   assert.equal(artifact.binding.liveEligible, false)
   assert.equal(artifact.binding.promotionEligible, false)
   assert.deepEqual(strategyArtifactBindingBlocks(artifact.binding, artifact, { mode: 'paper' }), [])
@@ -256,9 +293,25 @@ async function testPaperAndLiveEligibilityAreSeparate() {
     strategyArtifactBindingBlocks(artifact.binding, artifact, { mode: 'live' }).join('; '),
     /pristineForwardEvidence.*liveApproval/,
   )
+
+  const unsealedManifest = structuredClone(manifest)
+  unsealedManifest.sealedStrategyArtifactDigestSha256 = null
+  await writeJson(manifestPath, unsealedManifest)
+  const unsealedIntegrity = loadValidationIntegrityManifest(repoDir)
+  fixture.validation.integrity = {
+    ...unsealedIntegrity.binding,
+    strategyContractDigestSha256: unsealedIntegrity.binding.sealedStrategyContractDigestSha256,
+  }
+  await writeJson(artifactPath, fixture)
+  const unsealedArtifact = loadAllYearStrategyArtifact(repoDir)
+  assert.equal(unsealedArtifact.binding.paperEligible, false)
+  assert.match(
+    unsealedArtifact.paperEligibilityFailures.join('; '),
+    /strategy-artifact core seal is missing/,
+  )
   process.env.QORE_VALIDATION_INTEGRITY_FILE = originalManifestPath
   process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE = originalArtifactPath
-  console.log('ok - paper eligibility can precede the pristine-evidence and live-approval gates')
+  console.log('ok - paper may precede forward evidence, but a strategy-artifact core seal is mandatory')
 }
 
 function today() {
@@ -280,10 +333,10 @@ function inferenceContract(season = inferenceSeason()) {
         scoreRowCount: 2,
       }
     : {
-        requiredSources: ['gfs', 'gefs-mean', 'aigfs'],
-        collectedSources: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
+        requiredSources: [...selectedContracts.winterFollow.liveSourceIds],
+        collectedSources: [...selectedContracts.winterFollow.liveHeatingDemandSourceIds],
         requiredLeads: [1, 2, 3, 7, 8, 9, 10],
-        scoreRowCount: 21,
+        scoreRowCount: selectedContracts.winterFollow.liveSourceIds.length * 7,
       }
 }
 
@@ -569,6 +622,7 @@ async function scenario({
   positionDriftDuringCancel = [],
   quoteOverridesByRead = [],
   expectedSubmittedQuantityBySymbol = null,
+  expectedSubmittedSymbols = null,
   expectedBrokerLockPresent = null,
   handoffNow = null,
   nowAfterFreshQuote = null,
@@ -825,17 +879,17 @@ async function scenario({
       if (fillSubmittedOrders) {
         const price = { UNG: 15, VOO: 100, QQQM: 50 }[order.symbol]
         const existing = brokerPositions.find((position) => position.symbol === order.symbol)
-        const currentNotionalUsd = Number(existing?.market_value ?? 0)
-        const filledNotionalUsd = Number(order.qty) * price * (order.side === 'buy' ? 1 : -1)
-        const marketValue = currentNotionalUsd + filledNotionalUsd
+        const currentSignedQuantity = Number(existing?.qty ?? 0) * (existing?.side === 'short' ? -1 : 1)
+        const filledSignedQuantity = Number(order.qty) * (order.side === 'buy' ? 1 : -1)
+        const nextSignedQuantity = currentSignedQuantity + filledSignedQuantity
         brokerPositions = [
           ...brokerPositions.filter((position) => position.symbol !== order.symbol),
           {
             symbol: order.symbol,
-            qty: String(Math.abs(marketValue / price)),
-            side: marketValue < 0 ? 'short' : 'long',
+            qty: String(Math.abs(nextSignedQuantity)),
+            side: nextSignedQuantity < 0 ? 'short' : 'long',
             current_price: String(price),
-            market_value: String(Math.abs(marketValue)),
+            market_value: String(Math.abs(nextSignedQuantity * price)),
           },
         ]
       }
@@ -1011,7 +1065,11 @@ async function scenario({
     assert.equal(status.executionStatus, 'no-op', `${name}: drift inside the deadband should be a no-op`)
     assert.equal(submittedOrders.length, 0, `${name}: no-op reconcile must submit no orders`)
   } else {
-    assert.equal(result.code, 0, `${name}: approved reconcile should exit 0 (${result.stderr})`)
+    assert.equal(
+      result.code,
+      0,
+      `${name}: approved reconcile should exit 0 (${result.stderr || result.stdout || status.blockedReasons?.join('; ')})`,
+    )
     assert.equal(status.approved, true, `${name}: reconcile should be approved`)
     assert.equal(status.executionStatus, 'submitted', `${name}: orders should be submitted`)
     assert.equal(submittedOrders.length, expectedOrderCount, `${name}: expected paper order count`)
@@ -1056,6 +1114,13 @@ async function scenario({
     for (const [symbol, expectedQuantity] of Object.entries(expectedSubmittedQuantityBySymbol)) {
       assert.equal(actualBySymbol[symbol], expectedQuantity, `${name}: refreshed ${symbol} order quantity`)
     }
+  }
+  if (expectedSubmittedSymbols) {
+    assert.deepEqual(
+      submittedOrders.map((order) => order.symbol),
+      expectedSubmittedSymbols,
+      `${name}: exposure-reducing orders must precede gross-increasing orders`,
+    )
   }
   if (expectedBrokerLockPresent !== null) {
     assert.equal(
@@ -2091,6 +2156,17 @@ async function runGit(cwd, args) {
 async function prepareExecutionRepoFixture(root, { initializeGit }) {
   await mkdir(root, { recursive: true })
   await symlink(path.join(repoDir, 'scripts'), path.join(root, 'scripts'), 'dir')
+  const allYearArtifactDir = path.join(
+    root,
+    'data/qore/research/strategy-agent-runs/ngas-all-year-beta',
+  )
+  await mkdir(allYearArtifactDir, { recursive: true })
+  for (const file of ['selected-trades.csv', 'display-curve.csv']) {
+    await symlink(
+      path.join(repoDir, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta', file),
+      path.join(allYearArtifactDir, file),
+    )
+  }
   await writeJson(
     path.join(root, 'config/qore-live-broker-settings.json'),
     JSON.parse(await readFile(path.join(repoDir, 'config/qore-live-broker-settings.json'), 'utf8')),
@@ -2604,6 +2680,19 @@ try {
     expectedAssetRequestCount: 0,
   })
   await scenario({
+    name: 'paper reconcile covers short UNG before rebuilding the index fallback',
+    positions: [{ symbol: 'UNG', qty: '133.333333', side: 'short', current_price: '15', market_value: '2000' }],
+    gasPosition: 0,
+    indexFraction: 1,
+    cashFraction: 0,
+    minCashBufferPct: '2',
+    fillSubmittedOrders: true,
+    expectedOrderCount: 3,
+    expectedFirstSide: 'buy',
+    expectedSubmittedSymbols: ['UNG', 'VOO', 'QQQM'],
+    expectedExposurePrefixes: [0, 7840, 9800],
+  })
+  await scenario({
     name: 'paper reconcile ignores mark-to-market drift inside the equity-relative deadband',
     positions: [
       { symbol: 'VOO', qty: '79.9', side: 'long', current_price: '100', market_value: '7990' },
@@ -2611,6 +2700,84 @@ try {
     ],
     expectedOrderCount: 0,
     expectedNoOp: true,
+  })
+  await scenario({
+    name: 'paper reconcile never suppresses a UNG exit inside the deadband',
+    positions: [
+      { symbol: 'UNG', qty: '1', side: 'long', current_price: '15', market_value: '15' },
+      { symbol: 'VOO', qty: '80', side: 'long', current_price: '100', market_value: '8000' },
+      { symbol: 'QQQM', qty: '40', side: 'long', current_price: '50', market_value: '2000' },
+    ],
+    expectedOrderCount: 1,
+    expectedFirstSide: 'sell',
+  })
+  await scenario({
+    name: 'paper reconcile carries paired index reductions with an executable UNG gross increase',
+    minCashBufferPct: '2',
+    positions: [
+      { symbol: 'VOO', qty: '78.4', side: 'long', current_price: '100', market_value: '7840' },
+      { symbol: 'QQQM', qty: '39.2', side: 'long', current_price: '50', market_value: '1960' },
+    ],
+    gasPosition: 0.01,
+    indexFraction: 0.99,
+    cashFraction: 0,
+    fillSubmittedOrders: true,
+    expectedOrderCount: 3,
+    expectedFirstSide: 'sell',
+  })
+  await scenario({
+    name: 'paper reconcile may suppress a same-direction UNG increase inside the deadband',
+    positions: [
+      { symbol: 'UNG', qty: '66', side: 'long', current_price: '15', market_value: '990' },
+      { symbol: 'VOO', qty: '72', side: 'long', current_price: '100', market_value: '7200' },
+      { symbol: 'QQQM', qty: '36', side: 'long', current_price: '50', market_value: '1800' },
+    ],
+    gasPosition: 0.1,
+    indexFraction: 0.9,
+    expectedOrderCount: 0,
+    expectedNoOp: true,
+  })
+  await scenario({
+    name: 'paper reconcile never suppresses a UNG risk reduction inside the deadband',
+    positions: [
+      { symbol: 'UNG', qty: '68', side: 'long', current_price: '15', market_value: '1020' },
+      { symbol: 'VOO', qty: '72', side: 'long', current_price: '100', market_value: '7200' },
+      { symbol: 'QQQM', qty: '36', side: 'long', current_price: '50', market_value: '1800' },
+    ],
+    gasPosition: 0.1,
+    indexFraction: 0.9,
+    expectedOrderCount: 1,
+    expectedFirstSide: 'sell',
+  })
+  await scenario({
+    name: 'paper reconcile never suppresses a UNG direction reversal inside the deadband',
+    positions: [
+      { symbol: 'UNG', qty: '0.666666', side: 'long', current_price: '15', market_value: '10' },
+      { symbol: 'VOO', qty: '79.92', side: 'long', current_price: '100', market_value: '7992' },
+      { symbol: 'QQQM', qty: '39.96', side: 'long', current_price: '50', market_value: '1998' },
+    ],
+    allowShorts: true,
+    gasPosition: -0.001,
+    indexFraction: 0.999,
+    expectedOrderCount: 1,
+    expectedFirstSide: 'sell',
+  })
+  await scenario({
+    name: 'paper reconcile never suppresses an over-deployment reduction inside the deadband',
+    positions: [
+      { symbol: 'VOO', qty: '80.2', side: 'long', current_price: '100', market_value: '8020' },
+      { symbol: 'QQQM', qty: '40', side: 'long', current_price: '50', market_value: '2000' },
+    ],
+    expectedOrderCount: 1,
+    expectedFirstSide: 'sell',
+  })
+  await scenario({
+    name: 'paper reconcile fails closed when an over-deployment reduction is below the minimum order',
+    positions: [
+      { symbol: 'VOO', qty: '80.05', side: 'long', current_price: '100', market_value: '8005' },
+      { symbol: 'QQQM', qty: '40', side: 'long', current_price: '50', market_value: '2000' },
+    ],
+    expectedBlock: /starts over the current-equity sizing envelope and no executable risk-reducing order/,
   })
   await scenario({
     name: 'paper reconcile applies the equity-relative deadband before the maximum order cap',

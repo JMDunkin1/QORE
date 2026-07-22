@@ -14,6 +14,7 @@ import {
   targetWeightsForAllocation,
   validateResearchExecutionContract,
 } from './lib/qore-research-execution.mjs'
+import { REBALANCE_DEADBAND_POLICY_ID } from './lib/qore-rebalance-deadband.mjs'
 import {
   eiaReportAvailableAtOpen,
   nasaPowerActualAvailableAtOpen,
@@ -27,6 +28,11 @@ import {
   COMPONENT_SELECTED_TRADES_BINDING_SCHEMA_VERSION,
   validateComponentArtifact,
 } from './lib/qore-component-artifact.mjs'
+import {
+  ALL_YEAR_OUTPUT_ARTIFACT_BINDING_SCHEMA_VERSION,
+  validateAllYearOutputArtifactInputs,
+  validateAllYearOutputArtifacts,
+} from './lib/qore-all-year-output-artifacts.mjs'
 import {
   executableLiveComponentContractDigestSha256,
   liveComponentContractDigestSha256,
@@ -47,6 +53,7 @@ function fixtureContract() {
     priceConvention: 'fixture adjusted open',
     deploymentFraction: 1,
     rebalanceDeadbandPct: 0,
+    rebalanceDeadbandPolicyId: REBALANCE_DEADBAND_POLICY_ID,
     indexWeights: { VOO: 0.8, QQQM: 0.2 },
     scenarios: {
       baseline: {
@@ -238,6 +245,70 @@ close(
   'overnight borrow belongs to the prior-close thesis',
 )
 
+const guardedDeadbandContract = { ...contract, rebalanceDeadbandPct: 0.75 }
+const smallUngEntry = applyExecutionStep({
+  state: { closeWeights: { UNG: 0, VOO: 0.8, QQQM: 0.2 }, previousDate: '2026-01-02' },
+  day: zeroDay,
+  targetWeights: { UNG: 0.005, VOO: 0.796, QQQM: 0.199 },
+  contract: guardedDeadbandContract,
+})
+close(smallUngEntry.executedWeights.UNG, 0.005, 1e-12, 'UNG entries bypass the rebalance deadband')
+close(smallUngEntry.executedWeights.VOO, 0.796, 1e-12, 'paired VOO reductions follow a bypassed UNG entry')
+close(smallUngEntry.executedWeights.QQQM, 0.199, 1e-12, 'paired QQQM reductions follow a bypassed UNG entry')
+
+const allocationEnvelopeContract = {
+  ...guardedDeadbandContract,
+  deploymentFraction: 0.98,
+}
+const pairedEntryReduction = applyExecutionStep({
+  state: { closeWeights: { UNG: 0, VOO: 0.784, QQQM: 0.196 }, previousDate: '2026-01-02' },
+  day: zeroDay,
+  targetWeights: { UNG: 0.005, VOO: 0.78, QQQM: 0.195 },
+  contract: allocationEnvelopeContract,
+})
+close(pairedEntryReduction.executedWeights.UNG, 0.005, 1e-12, 'small UNG entry executes atomically')
+close(pairedEntryReduction.executedWeights.VOO, 0.78, 1e-12, 'small paired VOO reduction executes atomically')
+close(pairedEntryReduction.executedWeights.QQQM, 0.195, 1e-12, 'small paired QQQM reduction executes atomically')
+close(
+  Object.values(pairedEntryReduction.executedWeights).reduce((sum, weight) => sum + Math.abs(weight), 0),
+  allocationEnvelopeContract.deploymentFraction,
+  1e-12,
+  'deadband bypass cannot exceed the deployment envelope',
+)
+
+const smallUngExit = applyExecutionStep({
+  state: { closeWeights: { UNG: 0.005, VOO: 0.796, QQQM: 0.199 }, previousDate: '2026-01-02' },
+  day: zeroDay,
+  targetWeights: { UNG: 0, VOO: 0.8, QQQM: 0.2 },
+  contract: guardedDeadbandContract,
+})
+close(smallUngExit.executedWeights.UNG, 0, 1e-12, 'UNG exits bypass the rebalance deadband')
+
+const smallUngIncrease = applyExecutionStep({
+  state: { closeWeights: { UNG: 0.35, VOO: 0.52, QQQM: 0.13 }, previousDate: '2026-01-02' },
+  day: zeroDay,
+  targetWeights: { UNG: 0.354, VOO: 0.5168, QQQM: 0.1292 },
+  contract: guardedDeadbandContract,
+})
+close(smallUngIncrease.executedWeights.UNG, 0.35, 1e-12, 'same-direction UNG increases may remain inside the deadband')
+
+const smallUngReduction = applyExecutionStep({
+  state: { closeWeights: { UNG: 0.354, VOO: 0.5168, QQQM: 0.1292 }, previousDate: '2026-01-02' },
+  day: zeroDay,
+  targetWeights: { UNG: 0.35, VOO: 0.52, QQQM: 0.13 },
+  contract: guardedDeadbandContract,
+})
+close(smallUngReduction.executedWeights.UNG, 0.35, 1e-12, 'UNG risk reductions bypass the rebalance deadband')
+
+const overDeploymentReduction = applyExecutionStep({
+  state: { closeWeights: { UNG: 0, VOO: 0.808, QQQM: 0.202 }, previousDate: '2026-01-02' },
+  day: zeroDay,
+  targetWeights: { UNG: 0, VOO: 0.8, QQQM: 0.2 },
+  contract: guardedDeadbandContract,
+})
+close(overDeploymentReduction.executedWeights.VOO, 0.8, 1e-12, 'over-deployment VOO reductions bypass the deadband')
+close(overDeploymentReduction.executedWeights.QQQM, 0.2, 1e-12, 'over-deployment QQQM reductions bypass the deadband')
+
 assert.deepEqual(
   causalReturnContributionsForRow({
     priorCloseThesisKind: 'cold-long',
@@ -273,8 +344,12 @@ const summaryPath = path.join(repoRoot, 'data/qore/research/strategy-agent-runs/
 const tradesPath = path.join(repoRoot, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv')
 const displayCurvePath = path.join(repoRoot, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/display-curve.csv')
 const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
-const rows = Papa.parse(fs.readFileSync(tradesPath, 'utf8'), { header: true, skipEmptyLines: true }).data
-const displayRows = Papa.parse(fs.readFileSync(displayCurvePath, 'utf8'), { header: true, skipEmptyLines: true }).data
+const tradesRaw = fs.readFileSync(tradesPath)
+const parsedAllYearTrades = Papa.parse(tradesRaw.toString('utf8'), { header: true, skipEmptyLines: true })
+const rows = parsedAllYearTrades.data
+const displayCurveRaw = fs.readFileSync(displayCurvePath)
+const parsedDisplayCurve = Papa.parse(displayCurveRaw.toString('utf8'), { header: true, skipEmptyLines: true })
+const displayRows = parsedDisplayCurve.data
 const summerTradesPath = path.join(
   repoRoot,
   'data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv',
@@ -309,6 +384,82 @@ const componentTradeArtifacts = new Map([
 ])
 const executionContract = loadResearchExecutionContract(repoRoot)
 assert.equal(summary.artifactSchemaVersion, ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION)
+assert.equal(
+  summary.data.selectedTradesArtifact.schemaVersion,
+  ALL_YEAR_OUTPUT_ARTIFACT_BINDING_SCHEMA_VERSION,
+)
+assert.equal(
+  summary.data.displayCurveArtifact.schemaVersion,
+  ALL_YEAR_OUTPUT_ARTIFACT_BINDING_SCHEMA_VERSION,
+)
+assert.equal(
+  summary.data.selectedTradesArtifact.contentDigestSha256,
+  crypto.createHash('sha256').update(tradesRaw).digest('hex'),
+)
+assert.equal(
+  summary.data.displayCurveArtifact.contentDigestSha256,
+  crypto.createHash('sha256').update(displayCurveRaw).digest('hex'),
+)
+assert.doesNotThrow(() => validateAllYearOutputArtifacts(repoRoot, summary))
+
+const allYearArtifactInputs = {
+  summary,
+  selectedTrades: {
+    raw: tradesRaw,
+    headers: parsedAllYearTrades.meta.fields ?? [],
+    rows,
+  },
+  displayCurve: {
+    raw: displayCurveRaw,
+    headers: parsedDisplayCurve.meta.fields ?? [],
+    rows: displayRows,
+  },
+}
+assert.throws(
+  () => validateAllYearOutputArtifactInputs({
+    ...allYearArtifactInputs,
+    displayCurve: {
+      ...allYearArtifactInputs.displayCurve,
+      raw: Buffer.concat([displayCurveRaw, Buffer.from('\n')]),
+    },
+  }),
+  /display-curve artifact binding does not match its reviewed summary/,
+  'changing display-curve bytes must invalidate the sealed summary binding',
+)
+const allYearLinesWithInteriorDeletion = tradesRaw.toString('utf8').trimEnd().split('\n')
+allYearLinesWithInteriorDeletion.splice(101, 1)
+const allYearRawWithInteriorDeletion = Buffer.from(`${allYearLinesWithInteriorDeletion.join('\n')}\n`)
+const allYearTradesWithInteriorDeletion = Papa.parse(allYearRawWithInteriorDeletion.toString('utf8'), {
+  header: true,
+  skipEmptyLines: true,
+})
+assert.throws(
+  () => validateAllYearOutputArtifactInputs({
+    ...allYearArtifactInputs,
+    selectedTrades: {
+      raw: allYearRawWithInteriorDeletion,
+      headers: allYearTradesWithInteriorDeletion.meta.fields ?? [],
+      rows: allYearTradesWithInteriorDeletion.data,
+    },
+  }),
+  /selected-trades and display-curve dates diverge/,
+  'removing one selected ledger row must fail the sealed cross-artifact date shape',
+)
+const displayRowsWithProjectionMismatch = structuredClone(displayRows)
+displayRowsWithProjectionMismatch[100].equityPct = String(
+  Number(displayRowsWithProjectionMismatch[100].equityPct) + 1,
+)
+assert.throws(
+  () => validateAllYearOutputArtifactInputs({
+    ...allYearArtifactInputs,
+    displayCurve: {
+      ...allYearArtifactInputs.displayCurve,
+      rows: displayRowsWithProjectionMismatch,
+    },
+  }),
+  /display-curve equityPct does not match selected-trades/,
+  'changing a displayed projection must fail even if a new display binding could be generated for it',
+)
 assert.equal(
   Object.hasOwn(summary.validation.integrity, 'paperExecutionAccountPseudonymSha256'),
   false,
@@ -353,14 +504,14 @@ assert.deepEqual(Object.keys(summary.validation.promotionGates).sort(), [
   'validationMaxDrawdown',
   'winterComponent',
 ])
-assert.equal(summary.validation.liveTargetParity.exactTargetParity, false)
+assert.equal(summary.validation.liveTargetParity.exactTargetParity, true)
 assert.equal(summary.validation.liveTargetParity.comparedRowCount, 1947)
-assert.equal(summary.validation.liveTargetParity.mismatchCount, 15)
+assert.equal(summary.validation.liveTargetParity.mismatchCount, 0)
 assert.equal(summary.validation.liveTargetParity.components.summer.comparedRowCount, 585)
 assert.equal(summary.validation.liveTargetParity.components.summer.mismatchCount, 0)
 assert.equal(summary.validation.liveTargetParity.components.winter.comparedRowCount, 1362)
-assert.equal(summary.validation.liveTargetParity.components.winter.mismatchCount, 15)
-assert.equal(summary.validation.promotionGates.liveTargetParity, false)
+assert.equal(summary.validation.liveTargetParity.components.winter.mismatchCount, 0)
+assert.equal(summary.validation.promotionGates.liveTargetParity, true)
 assert.equal(
   summary.validation.selectionRealityCheck.sampleCount,
   rows.filter((row) => row.entryTradeDate <= summary.contract.selectionEnd).length,

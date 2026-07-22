@@ -16,6 +16,7 @@ import {
   ALL_YEAR_SELECTION_CONTRACT,
   VALIDATION_INTEGRITY_MANIFEST_ID,
   VALIDATION_INTEGRITY_SCHEMA_VERSION,
+  allYearStrategyArtifactCoreDigestSha256,
   allYearStrategyContractDigestSha256,
   loadValidationIntegrityManifest,
 } from './lib/qore-validation-integrity.mjs'
@@ -28,23 +29,45 @@ const dataRoot = path.join(root, 'data', 'qore')
 const require = createRequire(import.meta.url)
 const validationFixtureDir = await mkdtemp(path.join(tmpdir(), 'qore-validation-integrity-'))
 const validationFixturePath = path.join(validationFixtureDir, 'pristine-validation-integrity.json')
+
+function promotionEligibleLiveTargetParity(parity) {
+  return {
+    ...parity,
+    status: 'pass',
+    matchedRowCount: parity.comparedRowCount,
+    mismatchCount: 0,
+    gasPositionMismatchCount: 0,
+    thesisKindMismatchCount: 0,
+    exactTargetParity: true,
+    comparisonDigestSha256: 'd'.repeat(64),
+    mismatches: [],
+  }
+}
+
+function promotionEligibleGates(gates) {
+  return Object.fromEntries(Object.keys(gates).map((gate) => [gate, true]))
+}
+
 const validationStrategySource = JSON.parse(await readFile(
   path.join(dataRoot, 'research', 'strategy-agent-runs', 'ngas-all-year-beta', 'run-summary.json'),
   'utf8',
 ))
 validationStrategySource.contract.allYearSelection = ALL_YEAR_SELECTION_CONTRACT
+validationStrategySource.validation.liveTargetParity = promotionEligibleLiveTargetParity(
+  validationStrategySource.validation.liveTargetParity,
+)
+validationStrategySource.validation.promotionGates = promotionEligibleGates(
+  validationStrategySource.validation.promotionGates,
+)
 const sealedStrategyContractDigestSha256 = allYearStrategyContractDigestSha256(validationStrategySource)
-const sealedStrategyArtifactDigestSha256 = crypto
-  .createHash('sha256')
-  .update(JSON.stringify(validationStrategySource))
-  .digest('hex')
+const sealedStrategyArtifactDigestSha256 = allYearStrategyArtifactCoreDigestSha256(validationStrategySource)
 const sealedBrokerExecutionProfileDigestSha256 = loadReviewedBrokerExecutionProfile(root).profileDigestSha256
 const paperAccountPseudonymSha256 = 'b'.repeat(64)
 const validationEvidenceFixtures = await writeValidationEvidenceTestFixtures({
   repoDir: root,
   manifestPath: validationFixturePath,
   strategyContractDigestSha256: sealedStrategyContractDigestSha256,
-  strategyArtifactDigestSha256: sealedStrategyArtifactDigestSha256,
+  strategyArtifactCoreDigestSha256: sealedStrategyArtifactDigestSha256,
   brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
   accountPseudonymSha256: paperAccountPseudonymSha256,
 })
@@ -138,9 +161,7 @@ function addDays(date, count) { return new Date(Date.parse(`${date}T00:00:00Z`) 
 async function writeStrategyArtifactFixture(filePath, { eligible }) {
   const sourcePath = path.join(dataRoot, 'research', 'strategy-agent-runs', 'ngas-all-year-beta', 'run-summary.json')
   const source = JSON.parse(await readFile(sourcePath, 'utf8'))
-  const promotionGates = Object.fromEntries(
-    Object.keys(source.validation.promotionGates).map((gate) => [gate, eligible]),
-  )
+  const promotionGates = promotionEligibleGates(source.validation.promotionGates)
   const fixture = {
     ...source,
     artifactSchemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION,
@@ -155,24 +176,14 @@ async function writeStrategyArtifactFixture(filePath, { eligible }) {
     validation: {
       ...source.validation,
       liveTargetParity: eligible
-        ? {
-            ...source.validation.liveTargetParity,
-            status: 'pass',
-            matchedRowCount: source.validation.liveTargetParity.comparedRowCount,
-            mismatchCount: 0,
-            gasPositionMismatchCount: 0,
-            thesisKindMismatchCount: 0,
-            exactTargetParity: true,
-            comparisonDigestSha256: 'd'.repeat(64),
-            mismatches: [],
-          }
+        ? promotionEligibleLiveTargetParity(source.validation.liveTargetParity)
         : source.validation.liveTargetParity,
       integrity: {
         ...pristineValidationIntegrity.binding,
         strategyContractDigestSha256: pristineValidationIntegrity.binding.sealedStrategyContractDigestSha256,
       },
       promotionGates: {
-        ...promotionGates,
+        ...Object.fromEntries(Object.keys(promotionGates).map((gate) => [gate, eligible])),
         pristineForwardEvidence: eligible,
         strategyContractSeal: eligible,
         paperApproval: eligible,
@@ -332,7 +343,10 @@ async function summerParity() {
     scores.push(...(await csv(path.join(dataRoot, scoreFile))).map((row) => ({ ...row, sourceId })))
     locations.push(...(await csv(path.join(dataRoot, locationFile))).map((row) => ({ ...row, sourceId })))
   }
-  const forecasts = enrichForecastRows(scores, locations, 'summer')
+  const forecasts = enrichForecastRows(scores, locations, 'summer', {
+    temperatureQualityMode: 'quarantine',
+    temperatureQualityLabel: 'Versioned Summer inference test inputs',
+  })
   const signals = new Map([...group(forecasts).entries()].map(([date, rows]) => [date, createSignal(rows, selectedContracts.summer, 'summer')]))
   const selected = await csv(path.join(dataRoot, 'research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv'))
   const expected = [...new Map(selected.filter((row) => row.windowId === 'weather-follow').map((row) => [row.issueDate, row])).values()]
@@ -354,7 +368,10 @@ async function winterParity() {
     scores.push(...(await csv(path.join(dataRoot, calendar.files.signalScores))).map((row) => ({ ...row, sourceId: calendar.id })))
     locations.push(...(await csv(path.join(dataRoot, calendar.files.locationAnomalies))).map((row) => ({ ...row, sourceId: calendar.id })))
   }
-  const forecasts = enrichForecastRows(scores, locations, 'winter')
+  const forecasts = enrichForecastRows(scores, locations, 'winter', {
+    temperatureQualityMode: 'quarantine',
+    temperatureQualityLabel: 'Versioned Winter inference test inputs',
+  })
   const eligible = forecasts.filter((row) => row.windowId === 'rumor' && row.leadDays >= 7 && row.leadDays <= 10 && [11, 12, 1, 2, 3].includes(Number(row.issueDate.slice(5, 7))))
   const signals = new Map([...group(eligible).entries()].map(([date, rows]) => [date, createSignal(rows, selectedContracts.winterFollow, 'winter')]))
   const fadeSignals = new Map([...group(eligible).entries()].map(([date, rows]) => [date, createSignal(rows, selectedContracts.winterFade, 'winter')]))
@@ -558,6 +575,10 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
     assert.equal(snapshot.strategyArtifact.liveEligible, true)
     assert.equal(snapshot.strategyArtifact.promotionEligible, true)
     assert.equal(snapshot.strategyArtifact.digestSha256, strategyArtifact.digestSha256)
+    assert.equal(
+      snapshot.strategyArtifact.strategyArtifactCoreDigestSha256,
+      sealedStrategyArtifactDigestSha256,
+    )
     assert.equal(snapshot.marketValidation.targetDate, date)
     assert.equal(snapshot.marketValidation.latestCommonDate, snapshot.marketValidation.latestIndexDate)
     assert.equal(snapshot.marketValidation.recentIndexSessionsValidated, 42)
@@ -685,7 +706,15 @@ async function liveFetchCoverage() {
   const scratch = await mkdtemp(path.join(tmpdir(), 'qore-live-source-fetch-'))
   const issueDate = '2026-07-01'
   const targetDate = addDays(issueDate, 10)
-  const weatherDirs = { gfs: 'noaa-gfs', 'gefs-mean': 'noaa-gefs', aigfs: 'aigfs', 'ecmwf-ifs': 'ecmwf-ifs', 'ecmwf-aifs': 'ecmwf-aifs' }
+  const weatherDirs = {
+    gfs: 'noaa-gfs',
+    'gefs-mean': 'noaa-gefs',
+    graphcastgfs: 'gfs-graphcast',
+    aigfs: 'aigfs',
+    'ecmwf-ifs': 'ecmwf-ifs',
+    'ecmwf-aifs': 'ecmwf-aifs',
+    'gem-global': 'gem-global',
+  }
   try {
     for (const sourceId of selectedContracts.winterFollow.liveHeatingDemandSourceIds) {
       const outputRoot = path.join(scratch, sourceId)
@@ -852,7 +881,12 @@ try {
 } finally {
   await yahooFixture.close()
 }
-const completeWinterFixtures = { 'ecmwf-aifs': 'ecmwf-ifs' }
+const completeWinterFixtures = {
+  'ecmwf-aifs': 'ecmwf-ifs',
+  // The versioned GEM archive has only the long leads; use a complete seven-lead
+  // calendar to exercise the live collector's all-lead contract for this fixture.
+  'gem-global': 'gfs',
+}
 await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.liveSourceIds, {
   fixtureSources: completeWinterFixtures,
   skipPositionParity: true,
@@ -866,7 +900,7 @@ await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.live
     latestStorage: { date: '2026-01-16', storageBcf: 3900, unit: 'Bcf', source: 'EIA Open Data API' },
     storageRows: [{ date: '2026-01-16', storageBcf: 3900, unit: 'Bcf', source: 'EIA Open Data API' }],
   },
-  expectedStorage: { latestInputDate: '2026-01-16', storageDate: '2026-01-16', storageBcf: 3900, allowed: false },
+  expectedStorage: { latestInputDate: '2026-01-16', storageDate: '2026-01-16', storageBcf: 3900, allowed: true },
   skipPositionParity: true,
 })
 await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.liveSourceIds, {

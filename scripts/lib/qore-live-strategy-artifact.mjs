@@ -8,6 +8,7 @@ import {
 } from './qore-live-contract.mjs'
 import {
   ALL_YEAR_SELECTION_CONTRACT,
+  allYearStrategyArtifactCoreDigestSha256,
   allYearStrategyContractDigestSha256,
   loadValidationIntegrityManifest,
 } from './qore-validation-integrity.mjs'
@@ -22,10 +23,11 @@ import {
   evaluateVersionedLiveTargetParity,
   versionedLiveTargetParityInputDigestSha256,
 } from './qore-live-target-parity.mjs'
+import { validateAllYearOutputArtifacts } from './qore-all-year-output-artifacts.mjs'
 
 const STRATEGY_ID = 'ngas-all-year-beta'
 const PROMOTION_STATUS = 'research-baseline'
-export const ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION = 5
+export const ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION = 6
 const REQUIRED_PAPER_GATES = [
   'positiveTrainEdge',
   'positiveValidationEdge',
@@ -225,6 +227,13 @@ function validationIntegrityFailures(summary, reviewedIntegrity) {
   if (reviewedIntegrity.binding.sealedStrategyContractDigestSha256 !== strategyContractDigestSha256) {
     failures.push('reviewed validation-integrity seal does not match the artifact strategy contract')
   }
+  const strategyArtifactCoreDigestSha256 = allYearStrategyArtifactCoreDigestSha256(summary)
+  const sealedStrategyArtifactCoreDigestSha256 = reviewedIntegrity.binding.sealedStrategyArtifactDigestSha256
+  if (!sealedStrategyArtifactCoreDigestSha256) {
+    failures.push('reviewed validation-integrity strategy-artifact core seal is missing')
+  } else if (sealedStrategyArtifactCoreDigestSha256 !== strategyArtifactCoreDigestSha256) {
+    failures.push('reviewed validation-integrity strategy-artifact core seal does not match the artifact')
+  }
   if (JSON.stringify(summary?.contract?.allYearSelection) !== JSON.stringify(ALL_YEAR_SELECTION_CONTRACT)) {
     failures.push('all-year selection contract does not match the executable reviewed selector')
   }
@@ -286,6 +295,7 @@ function contractIntegrityFailures(
   reviewedIntegrity,
   reviewedBrokerExecution,
   currentParity,
+  outputArtifactFailures,
 ) {
   const failures = []
   if (summary?.artifactSchemaVersion !== ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION) {
@@ -299,6 +309,7 @@ function contractIntegrityFailures(
   failures.push(...liveContractFailures(summary))
   failures.push(...liveTargetParityFailures(summary, currentParity))
   failures.push(...brokerExecutionFailures(summary, reviewedBrokerExecution))
+  failures.push(...outputArtifactFailures)
   return failures
 }
 
@@ -320,17 +331,25 @@ export function loadAllYearStrategyArtifact(repoDir) {
   } catch (error) {
     throw new Error(`Unable to verify live-target parity: ${error.message}`)
   }
+  const outputArtifactFailures = []
+  try {
+    validateAllYearOutputArtifacts(repoDir, summary)
+  } catch (error) {
+    outputArtifactFailures.push(`all-year output artifacts are invalid: ${error.message}`)
+  }
   const paperFailures = paperEligibilityFailures(
     summary,
     reviewedIntegrity,
     reviewedBrokerExecution,
     currentParity,
   )
+  paperFailures.push(...outputArtifactFailures)
   const integrityFailures = contractIntegrityFailures(
     summary,
     reviewedIntegrity,
     reviewedBrokerExecution,
     currentParity,
+    outputArtifactFailures,
   )
   const liveFailures = liveEligibilityFailures(summary, paperFailures)
   const paperEligible = paperFailures.length === 0
@@ -338,7 +357,10 @@ export function loadAllYearStrategyArtifact(repoDir) {
   const binding = {
     strategyId: summary?.strategyId ?? null,
     artifactSchemaVersion: summary?.artifactSchemaVersion ?? null,
+    // Raw handoff identity remains byte-exact; the core digest is the stable
+    // prospective-evidence seal after dynamic approval state is embedded.
     digestSha256: crypto.createHash('sha256').update(raw).digest('hex'),
+    strategyArtifactCoreDigestSha256: allYearStrategyArtifactCoreDigestSha256(summary),
     generatedAt: summary?.generatedAt ?? null,
     status: summary?.status ?? null,
     eligibleCandidateCount: summary?.search?.eligibleCandidateCount ?? null,
@@ -400,6 +422,7 @@ export function strategyArtifactBindingBlocks(providedBinding, currentArtifact, 
     'strategyId',
     'artifactSchemaVersion',
     'digestSha256',
+    'strategyArtifactCoreDigestSha256',
     'generatedAt',
     'status',
     'eligibleCandidateCount',

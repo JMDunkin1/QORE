@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   LIVE_TARGET_PARITY_POLICY,
   assessLiveTargetParity,
   evaluateVersionedLiveTargetParity,
+  versionedLiveTargetParityInputDigestSha256,
 } from './lib/qore-live-target-parity.mjs'
 import {
   liveTargetParityFailures,
-  loadAllYearStrategyArtifact,
 } from './lib/qore-live-strategy-artifact.mjs'
+import { inferAllYearTarget } from './lib/qore-live-all-year-inference.mjs'
 
 const passing = assessLiveTargetParity({
   expectedRows: [
@@ -76,23 +80,100 @@ assert.equal(allocationFailing.gasPositionMismatchCount, 0)
 assert.equal(allocationFailing.indexFractionMismatchCount, 1)
 assert.equal(allocationFailing.thesisKindMismatchCount, 0)
 
-const versioned = evaluateVersionedLiveTargetParity(process.cwd())
+const injectedStorageReleaseCalendar = {
+  calendarId: 'parity-injected-calendar',
+  byPeriodEndDate: new Map([
+    ['2024-12-13', { periodEndDate: '2024-12-13', releasedAt: '2024-12-19T15:30:00.000Z' }],
+    ['2024-12-20', { periodEndDate: '2024-12-20', releasedAt: '2025-01-07T15:30:00.000Z' }],
+    ['2024-12-27', { periodEndDate: '2024-12-27', releasedAt: '2025-01-10T15:30:00.000Z' }],
+  ]),
+}
+const injectedStorageInputs = {
+  forecastRows: [],
+  actualWeatherRows: [],
+  marketDays: [{ date: '2025-01-06', gasClose: 20 }],
+  storageRows: [
+    { date: '2024-12-13', storageBcf: 3600 },
+    { date: '2024-12-20', storageBcf: 3500 },
+    { date: '2024-12-27', storageBcf: 3400 },
+  ],
+  targetDate: '2025-01-06',
+}
+const defaultCalendarTarget = inferAllYearTarget(injectedStorageInputs)
+assert.equal(defaultCalendarTarget.diagnostics.storage.storageDate, '2024-12-27')
+const injectedCalendarTarget = inferAllYearTarget({
+  ...injectedStorageInputs,
+  storageReleaseCalendar: injectedStorageReleaseCalendar,
+})
+assert.equal(injectedCalendarTarget.diagnostics.storage.storageDate, '2024-12-13')
+assert.equal(
+  injectedCalendarTarget.diagnostics.storage.storageReleaseAt,
+  '2024-12-19T15:30:00.000Z',
+  'inference must consume the explicitly supplied release calendar instead of the module default',
+)
+
+let forwardedStorageReleaseCalendar = null
+assessLiveTargetParity({
+  expectedRows: [{
+    entryTradeDate: '2025-01-06',
+    ungPosition: '0',
+    indexFraction: '1',
+    thesisKind: 'index-fallback',
+  }],
+  forecastRows: [],
+  actualWeatherRows: [],
+  marketDays: [],
+  storageRows: [],
+  storageReleaseCalendar: injectedStorageReleaseCalendar,
+  inferTarget: (inputs) => {
+    forwardedStorageReleaseCalendar = inputs.storageReleaseCalendar
+    return { gasPosition: 0, indexFraction: 1, thesisKind: 'index-fallback' }
+  },
+})
+assert.equal(
+  forwardedStorageReleaseCalendar,
+  injectedStorageReleaseCalendar,
+  'parity assessment must forward the exact reviewed release-calendar object into inference',
+)
+
+const formerWinterMismatchDates = [
+  '2024-11-22',
+  '2024-11-25',
+  '2024-11-26',
+  '2024-11-29',
+  '2024-12-16',
+  '2024-12-17',
+  '2025-11-17',
+  '2025-11-24',
+  '2026-01-20',
+  '2026-01-21',
+  '2026-01-22',
+  '2026-01-23',
+  '2026-01-26',
+  '2026-01-27',
+  '2026-02-02',
+]
+const versioned = evaluateVersionedLiveTargetParity(process.cwd(), {
+  captureWinterTargetDates: formerWinterMismatchDates,
+})
 assert.equal(versioned.schemaVersion, LIVE_TARGET_PARITY_POLICY.schemaVersion)
-assert.equal(versioned.status, 'fail')
-assert.equal(versioned.exactTargetParity, false)
+assert.equal(versioned.status, 'pass')
+assert.equal(versioned.exactTargetParity, true)
 assert.equal(versioned.comparedRowCount, 1947)
-assert.equal(versioned.matchedRowCount, 1932)
-assert.equal(versioned.mismatchCount, 15)
-assert.equal(versioned.gasPositionMismatchCount, 15)
-assert.equal(versioned.indexFractionMismatchCount, 15)
-assert.equal(versioned.thesisKindMismatchCount, 10)
+assert.equal(versioned.matchedRowCount, 1947)
+assert.equal(versioned.mismatchCount, 0)
+assert.equal(versioned.gasPositionMismatchCount, 0)
+assert.equal(versioned.indexFractionMismatchCount, 0)
+assert.equal(versioned.thesisKindMismatchCount, 0)
 assert.deepEqual(versioned.productionForecastSourceIds.summer, ['gfs', 'gefs-mean'])
 assert.deepEqual(versioned.productionForecastSourceIds.winter, [
   'gfs',
   'gefs-mean',
+  'graphcastgfs',
+  'aigfs',
   'ecmwf-ifs',
   'ecmwf-aifs',
-  'aigfs',
+  'gem-global',
 ])
 assert.equal(versioned.components.summer.status, 'pass')
 assert.equal(versioned.components.summer.exactTargetParity, true)
@@ -105,67 +186,85 @@ assert.match(
   versioned.components.summer.inputFiles.forecastCalendars.join(';'),
   /2021-05-01-2025-09-30-leads-7-hours-0/,
 )
-assert.equal(versioned.components.winter.status, 'fail')
-assert.equal(versioned.components.winter.exactTargetParity, false)
+assert.equal(versioned.components.winter.status, 'pass')
+assert.equal(versioned.components.winter.exactTargetParity, true)
 assert.equal(versioned.components.winter.comparedRowCount, 1362)
-assert.equal(versioned.components.winter.matchedRowCount, 1347)
-assert.equal(versioned.components.winter.mismatchCount, 15)
+assert.equal(versioned.components.winter.matchedRowCount, 1362)
+assert.equal(versioned.components.winter.mismatchCount, 0)
 assert.deepEqual(
-  versioned.components.winter.mismatches.map((row) => row.targetDate),
+  versioned.components.winter.capturedComparisons.map((row) => row.targetDate),
+  formerWinterMismatchDates,
+)
+assert.ok(versioned.components.winter.capturedComparisons.every((row) => row.matches))
+assert.deepEqual(
+  versioned.components.winter.capturedComparisons
+    .filter((row) => ['2026-01-26', '2026-01-27'].includes(row.targetDate))
+    .map((row) => ({
+      targetDate: row.targetDate,
+      expectedGasPosition: row.expectedGasPosition,
+      replayGasPosition: row.replayGasPosition,
+      expectedThesisKind: row.expectedThesisKind,
+      replayThesisKind: row.replayThesisKind,
+    })),
   [
-    '2024-11-22',
-    '2024-11-25',
-    '2024-11-26',
-    '2024-11-29',
-    '2024-12-16',
-    '2024-12-17',
-    '2025-11-17',
-    '2025-11-24',
-    '2026-01-20',
-    '2026-01-21',
-    '2026-01-22',
-    '2026-01-23',
-    '2026-01-26',
-    '2026-01-27',
-    '2026-02-02',
+    {
+      targetDate: '2026-01-26',
+      expectedGasPosition: 0.3906,
+      replayGasPosition: 0.3906,
+      expectedThesisKind: 'cold-long',
+      replayThesisKind: 'cold-long',
+    },
+    {
+      targetDate: '2026-01-27',
+      expectedGasPosition: -0.25,
+      replayGasPosition: -0.25,
+      expectedThesisKind: 'reversion-short',
+      replayThesisKind: 'reversion-short',
+    },
   ],
 )
-assert.deepEqual(
-  versioned.components.winter.mismatches.find((row) => row.targetDate === '2024-11-25'),
-  {
-    targetDate: '2024-11-25',
-    expectedGasPosition: 0,
-    replayGasPosition: -0.2517,
-    gasPositionDifference: -0.2517,
-    expectedIndexFraction: 1,
-    replayIndexFraction: 0.7483,
-    indexFractionDifference: -0.2517,
-    expectedThesisKind: 'index-fallback',
-    replayThesisKind: 'reversion-short',
-    gasPositionMatches: false,
-    indexFractionMatches: false,
-    thesisKindMatches: false,
-    matches: false,
-  },
-)
-assert.deepEqual(
-  versioned.components.winter.mismatches.find((row) => row.targetDate === '2025-11-24'),
-  {
-    targetDate: '2025-11-24',
-    expectedGasPosition: -0.4681,
-    replayGasPosition: 0,
-    gasPositionDifference: 0.4681,
-    expectedIndexFraction: 0.5319,
-    replayIndexFraction: 1,
-    indexFractionDifference: 0.4681,
-    expectedThesisKind: 'warm-short',
-    replayThesisKind: 'index-fallback',
-    gasPositionMatches: false,
-    indexFractionMatches: false,
-    thesisKindMatches: false,
-    matches: false,
-  },
-)
+
+const storageReleaseCalendar =
+  'data/qore/fundamentals/eia/working-gas-storage-release-calendar.json'
+assert.equal(versioned.inputFiles.storageReleaseCalendar, storageReleaseCalendar)
+const versionedInputFiles = new Set([
+  versioned.inputFiles.storage,
+  versioned.inputFiles.storageReleaseCalendar,
+  versioned.inputFiles.summer.expectedTargets,
+  ...versioned.inputFiles.summer.forecastCalendars,
+  versioned.inputFiles.summer.market,
+  versioned.inputFiles.winter.datasetManifest,
+  versioned.inputFiles.winter.expectedTargets,
+  versioned.inputFiles.winter.actualWeather,
+  ...versioned.inputFiles.winter.forecastCalendars,
+  versioned.inputFiles.winter.market,
+])
+const scratchRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'qore-parity-calendar-digest-'))
+try {
+  for (const relativePath of versionedInputFiles) {
+    const scratchPath = path.join(scratchRepo, relativePath)
+    fs.mkdirSync(path.dirname(scratchPath), { recursive: true })
+    fs.symlinkSync(path.join(process.cwd(), relativePath), scratchPath)
+  }
+  assert.equal(
+    versionedLiveTargetParityInputDigestSha256(scratchRepo),
+    versioned.inputDigestSha256,
+    'the scratch replay must begin with the same versioned input digest',
+  )
+
+  const scratchCalendarPath = path.join(scratchRepo, storageReleaseCalendar)
+  const mutatedCalendar = JSON.parse(fs.readFileSync(scratchCalendarPath, 'utf8'))
+  mutatedCalendar.calendarId = `${mutatedCalendar.calendarId}-digest-regression`
+  fs.unlinkSync(scratchCalendarPath)
+  fs.writeFileSync(scratchCalendarPath, `${JSON.stringify(mutatedCalendar, null, 2)}\n`)
+  assert.notEqual(
+    versionedLiveTargetParityInputDigestSha256(scratchRepo),
+    versioned.inputDigestSha256,
+    'mutating the reviewed storage release calendar must invalidate the parity input digest',
+  )
+} finally {
+  fs.rmSync(scratchRepo, { recursive: true, force: true })
+}
 
 const paritySummary = {
   contract: { liveTargetParity: structuredClone(LIVE_TARGET_PARITY_POLICY) },
@@ -211,10 +310,6 @@ for (const [field, mutate, expectedFailure] of [
   )
 }
 
-const artifact = loadAllYearStrategyArtifact(process.cwd())
-assert.equal(artifact.binding.paperEligible, false)
-assert.match(artifact.paperEligibilityFailures.join('; '), /promotion gate liveTargetParity must pass/)
-
 console.log(
-  `ok - Summer parity passes ${versioned.components.summer.comparedRowCount} rows; Winter parity fails closed ${versioned.components.winter.mismatchCount}/${versioned.components.winter.comparedRowCount}`,
+  `ok - Summer parity passes ${versioned.components.summer.comparedRowCount} rows; Winter parity passes ${versioned.components.winter.comparedRowCount} rows with ${versioned.components.winter.mismatchCount} mismatches`,
 )

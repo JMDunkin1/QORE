@@ -26,6 +26,16 @@ import {
   COMPONENT_ARTIFACT_SCHEMA_VERSION,
   buildComponentSelectedTradesBinding,
 } from './lib/qore-component-artifact.mjs'
+import {
+  WINTER_HEATING_DEMAND_BASE_F as HEATING_DEMAND_BASE_F,
+  WINTER_MAX_EFFECTIVE_OVERLAY_CAP as MAX_EFFECTIVE_OVERLAY_CAP,
+  WINTER_PRODUCTION_HEATING_DEMAND_SOURCE_IDS,
+  evaluateWinterTargetDecision,
+  isWinterFollowRow as isFollowRow,
+  isWinterReversionRow as isReversionRow,
+  winterStorageSeasonStartFor,
+} from './lib/qore-winter-target-engine.mjs'
+import { validateForecastCalendarTemperatures } from './lib/qore-weather-data-quality.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -58,10 +68,8 @@ const BOOTSTRAP_ITERATIONS = 1200
 const BLOCK_LENGTH = 10
 const INDEX_TREND_LOOKBACK_SESSIONS = 200
 const WEATHER_RESOLUTION_SOURCE_IDS = new Set(['gfs', 'gefs-mean'])
-const MAX_EFFECTIVE_OVERLAY_CAP = 0.6
-const STORAGE_SEASON_START_MONTH = 9
 const STORAGE_SEASONAL_WINDOW_DAYS = 10
-const HEATING_DEMAND_BASE_F = 65
+const WINTER_HEATING_DEMAND_SOURCE_IDS = new Set(WINTER_PRODUCTION_HEATING_DEMAND_SOURCE_IDS)
 
 const FOLLOW_FRESHNESS_POLICIES = [
   {
@@ -758,13 +766,23 @@ function loadWeatherResolutionData() {
   const manifest = JSON.parse(readText(MANIFEST_PATH))
   const forecastByIssueTarget = new Map()
   const inputFiles = [path.relative(REPO_ROOT, MANIFEST_PATH), path.relative(REPO_ROOT, ACTUAL_DAILY_FILE)]
+  const temperatureQuality = []
 
   for (const calendar of manifest.forecastCalendars) {
     if (!WEATHER_RESOLUTION_SOURCE_IDS.has(calendar.id)) continue
     const scoresPath = path.join(DATA_ROOT, calendar.files.signalScores)
-    inputFiles.push(path.relative(REPO_ROOT, scoresPath))
+    const locationsPath = path.join(DATA_ROOT, calendar.files.locationAnomalies)
+    inputFiles.push(path.relative(REPO_ROOT, scoresPath), path.relative(REPO_ROOT, locationsPath))
+    const validated = validateForecastCalendarTemperatures({
+      scoreRows: parseCsv(scoresPath),
+      locationRows: parseCsv(locationsPath),
+      mode: 'quarantine',
+      label: `${calendar.id} Winter weather-resolution calendar`,
+      sourceId: calendar.id,
+    })
+    temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
 
-    for (const row of parseCsv(scoresPath)) {
+    for (const row of validated.scoreRows) {
       const leadDays = numberFrom(row.leadDays, Number.NaN)
       if (!Number.isFinite(leadDays) || leadDays < 1 || leadDays > 3) continue
       const key = `${row.issueDate}|${row.targetDate}`
@@ -819,7 +837,7 @@ function loadWeatherResolutionData() {
       .filter(([, row]) => Number.isFinite(row.weightedAnomalyF)),
   )
 
-  return { forecastsByTargetDate, actualByDate, inputFiles }
+  return { forecastsByTargetDate, actualByDate, inputFiles, temperatureQuality }
 }
 
 function heatingDemandAnomalyF(row) {
@@ -841,6 +859,7 @@ function loadHeatingDemandData() {
   const manifest = JSON.parse(readText(MANIFEST_PATH))
   const demandByKey = new Map()
   const inputFiles = [path.relative(REPO_ROOT, MANIFEST_PATH)]
+  const temperatureQuality = []
   const addDemand = (key, hddAnomalyF, weight) => {
     const current =
       demandByKey.get(key) ?? {
@@ -857,11 +876,19 @@ function loadHeatingDemandData() {
   }
 
   for (const calendar of manifest.forecastCalendars) {
+    if (!WINTER_HEATING_DEMAND_SOURCE_IDS.has(calendar.id)) continue
     const locationsPath = path.join(DATA_ROOT, calendar.files.locationAnomalies)
     if (!fs.existsSync(locationsPath)) continue
     inputFiles.push(path.relative(REPO_ROOT, locationsPath))
+    const validated = validateForecastCalendarTemperatures({
+      locationRows: parseCsv(locationsPath),
+      mode: 'quarantine',
+      label: `${calendar.id} Winter heating-demand calendar`,
+      sourceId: calendar.id,
+    })
+    temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
 
-    for (const row of parseCsv(locationsPath)) {
+    for (const row of validated.locationRows) {
       const hddAnomalyF = heatingDemandAnomalyF(row)
       if (!Number.isFinite(hddAnomalyF)) continue
       const weight = numberFrom(row.weight)
@@ -883,6 +910,7 @@ function loadHeatingDemandData() {
 
   return {
     inputFiles,
+    temperatureQuality,
     contextForRow(row) {
       return heatingDemandBySignal.get(heatingDemandKey(row)) ?? heatingDemandBySignal.get(heatingDemandBroadKey(row)) ?? null
     },
@@ -900,10 +928,7 @@ function addCalendarDays(isoDate, days) {
 }
 
 function storageSeasonStartFor(isoDate) {
-  const year = Number(isoDate.slice(0, 4))
-  const month = Number(isoDate.slice(5, 7))
-  const seasonYear = month >= STORAGE_SEASON_START_MONTH ? year : year - 1
-  return `${seasonYear}-${String(STORAGE_SEASON_START_MONTH).padStart(2, '0')}-01`
+  return winterStorageSeasonStartFor(isoDate)
 }
 
 function loadStorageData() {
@@ -1055,14 +1080,6 @@ function csvEscape(value) {
 
 function rowsToCsv(rows, headers) {
   return `${headers.join(',')}\n${rows.map((row) => headers.map((header) => csvEscape(row[header])).join(',')).join('\n')}${rows.length ? '\n' : ''}`
-}
-
-function isFollowRow(row) {
-  return row?.windowId === 'weather-follow'
-}
-
-function isReversionRow(row) {
-  return row?.windowId === 'weather-reversion'
 }
 
 function activeParentHoldLimit(row, holdPeriodPolicy) {
@@ -1221,10 +1238,6 @@ function baseFallbackRow(dualRow, weatherRow) {
   return dualRow ?? weatherRow
 }
 
-function sameDirection(firstPosition, secondPosition) {
-  return firstPosition !== 0 && secondPosition !== 0 && Math.sign(firstPosition) === Math.sign(secondPosition)
-}
-
 function latestCloseForecastFor(row, weatherResolutionData) {
   const forecasts = weatherResolutionData.forecastsByTargetDate.get(row.targetDate) ?? []
   let latest = null
@@ -1284,619 +1297,6 @@ function weatherResolutionForRow(row, position, weatherResolutionData) {
     action: 'kept',
     scale: 1,
   }
-}
-
-function weatherResolutionDecision(policy, reversionRow, reversionPosition, weatherResolutionData, blendLeg) {
-  const resolutionPolicy = policy.weatherResolutionPolicy ?? DEFAULT_WEATHER_RESOLUTION_POLICY
-  const resolution = weatherResolutionForRow(reversionRow, reversionPosition, weatherResolutionData)
-
-  if (resolutionPolicy.kind === 'none' || !resolution.available) {
-    return {
-      ...resolution,
-      policyId: resolutionPolicy.id,
-      action: resolution.action === 'missing-kept' ? resolution.action : 'none',
-      scale: 1,
-    }
-  }
-
-  if (resolutionPolicy.kind === 'confirm-shift') {
-    const confirmed = resolution.sameDirectionShift && resolution.absShiftF >= resolutionPolicy.minShiftF
-    return {
-      ...resolution,
-      policyId: resolutionPolicy.id,
-      action: confirmed ? 'confirmed-kept' : 'unconfirmed-dropped',
-      scale: confirmed ? 1 : 0,
-    }
-  }
-
-  if (resolutionPolicy.kind === 'confirm-relief') {
-    const confirmed = resolution.sameDirectionShift && resolution.reliefF >= resolutionPolicy.minReliefF
-    return {
-      ...resolution,
-      policyId: resolutionPolicy.id,
-      action: confirmed ? 'spared-kept' : 'not-spared-dropped',
-      scale: confirmed ? 1 : 0,
-    }
-  }
-
-  if (resolutionPolicy.kind === 'block-adverse') {
-    const blocked = resolution.adverseDirectionShift && resolution.absShiftF >= resolutionPolicy.minAdverseShiftF
-    return {
-      ...resolution,
-      policyId: resolutionPolicy.id,
-      action: blocked ? 'adverse-dropped' : 'not-adverse-kept',
-      scale: blocked ? 0 : 1,
-    }
-  }
-
-  if (isGradedShiftResolutionPolicy(policy)) {
-    const standaloneAdverseVeto =
-      blendLeg === 'weather-hybrid-reversion' && resolution.adverseDirectionShift
-    if (standaloneAdverseVeto) {
-      return {
-        ...resolution,
-        policyId: resolutionPolicy.id,
-        action: 'standalone-adverse-dropped',
-        scale: 0,
-      }
-    }
-
-    const scale = resolution.sameDirectionShift
-      ? clamp(0.75 + resolution.absShiftF / 8, 0.75, 1.25)
-      : resolution.adverseDirectionShift
-        ? clamp(0.9 - resolution.absShiftF / 10, 0.45, 0.9)
-        : 0.85
-    return {
-      ...resolution,
-      policyId: resolutionPolicy.id,
-      action: resolution.sameDirectionShift ? 'confirm-scaled' : resolution.adverseDirectionShift ? 'adverse-shrunk' : 'neutral-shrunk',
-      scale: round(scale, 4),
-    }
-  }
-
-  return {
-    ...resolution,
-    policyId: resolutionPolicy.id,
-    action: 'kept',
-    scale: 1,
-  }
-}
-
-function followSurvivesDroppedReversion(policy, followRow) {
-  if (!followRow) return false
-  if (['net-position', 'follow-first'].includes(policy.conflictPolicy)) return true
-  if (followRow.thesisKind !== 'cold-long') return false
-  return ['short-fade-plus-cold-follow', 'vol-confirmed-fade-plus-cold-follow', 'short-fade-plus-cold-follow-vol-long'].includes(
-    policy.conflictPolicy,
-  )
-}
-
-function coldFollowStorageDecision(policy, blend, storageContext) {
-  const storagePolicy = policy.coldFollowStoragePolicy ?? DEFAULT_COLD_FOLLOW_STORAGE_POLICY
-  if (storagePolicy.kind === 'none') {
-    return {
-      policyId: storagePolicy.id,
-      action: blend.followRow?.thesisKind === 'cold-long' ? 'not-gated' : 'not-cold-follow',
-      allowed: true,
-    }
-  }
-
-  if (blend.followRow?.thesisKind !== 'cold-long' || blend.followPosition === 0) {
-    return {
-      policyId: storagePolicy.id,
-      action: 'not-cold-follow',
-      allowed: true,
-    }
-  }
-
-  if (!storageContext?.available) {
-    return {
-      policyId: storagePolicy.id,
-      action: 'missing-storage-blocked',
-      allowed: false,
-    }
-  }
-
-  if (storagePolicy.kind === 'season-drawdown') {
-    const seasonDrawdownBcf = numberFrom(storageContext.storageSeasonDrawdownBcf, Number.NaN)
-    const allowed = seasonDrawdownBcf >= storagePolicy.minSeasonDrawdownBcf
-    return {
-      policyId: storagePolicy.id,
-      action: allowed ? 'storage-drawdown-confirmed' : 'blocked-insufficient-storage-drawdown',
-      allowed,
-      minSeasonDrawdownBcf: storagePolicy.minSeasonDrawdownBcf,
-      storageSeasonDrawdownBcf: Number.isFinite(seasonDrawdownBcf) ? round(seasonDrawdownBcf, 2) : '',
-    }
-  }
-
-  if (storagePolicy.kind === 'seasonal-tight') {
-    const storageVsSeasonalAverageBcf = numberFrom(storageContext.storageVsSeasonalAverageBcf, Number.NaN)
-    const allowed =
-      Number.isFinite(storageVsSeasonalAverageBcf) && storageVsSeasonalAverageBcf <= storagePolicy.maxStorageVsSeasonalAverageBcf
-    return {
-      policyId: storagePolicy.id,
-      action: allowed ? 'storage-seasonal-tight-confirmed' : 'blocked-storage-above-seasonal-normal',
-      allowed,
-      maxStorageVsSeasonalAverageBcf: storagePolicy.maxStorageVsSeasonalAverageBcf,
-      storageVsSeasonalAverageBcf: Number.isFinite(storageVsSeasonalAverageBcf) ? round(storageVsSeasonalAverageBcf, 2) : '',
-    }
-  }
-
-  if (storagePolicy.kind === 'drawdown-or-seasonal-tight') {
-    const seasonDrawdownBcf = numberFrom(storageContext.storageSeasonDrawdownBcf, Number.NaN)
-    const storageVsSeasonalAverageBcf = numberFrom(storageContext.storageVsSeasonalAverageBcf, Number.NaN)
-    const drawdownConfirmed = Number.isFinite(seasonDrawdownBcf) && seasonDrawdownBcf >= storagePolicy.minSeasonDrawdownBcf
-    const seasonalTight =
-      Number.isFinite(storageVsSeasonalAverageBcf) && storageVsSeasonalAverageBcf <= storagePolicy.maxStorageVsSeasonalAverageBcf
-    const allowed = drawdownConfirmed || seasonalTight
-    return {
-      policyId: storagePolicy.id,
-      action: allowed ? 'storage-drawdown-or-seasonal-tight-confirmed' : 'blocked-no-storage-tightness',
-      allowed,
-      minSeasonDrawdownBcf: storagePolicy.minSeasonDrawdownBcf,
-      maxStorageVsSeasonalAverageBcf: storagePolicy.maxStorageVsSeasonalAverageBcf,
-      storageSeasonDrawdownBcf: Number.isFinite(seasonDrawdownBcf) ? round(seasonDrawdownBcf, 2) : '',
-      storageVsSeasonalAverageBcf: Number.isFinite(storageVsSeasonalAverageBcf) ? round(storageVsSeasonalAverageBcf, 2) : '',
-    }
-  }
-
-  return {
-    policyId: storagePolicy.id,
-    action: 'kept',
-    allowed: true,
-  }
-}
-
-function applyColdFollowStorageGate(policy, blend, storageContext) {
-  const decision = coldFollowStorageDecision(policy, blend, storageContext)
-  if (decision.allowed) {
-    return {
-      ...blend,
-      coldFollowStorage: decision,
-    }
-  }
-
-  return {
-    ...blend,
-    followRow: null,
-    reversionRow: null,
-    followPosition: 0,
-    reversionPosition: 0,
-    position: 0,
-    blendLeg: 'index-fallback',
-    coldFollowStorage: decision,
-  }
-}
-
-function blendLegAfterWeatherResolution(blend, position) {
-  if (position === 0) return 'index-fallback'
-  if (blend.followRow && blend.reversionRow) return blend.blendLeg
-  if (blend.followRow) return blend.followRow.thesisKind === 'cold-long' ? 'dual-cold-follow' : 'dual-follow'
-  if (blend.reversionRow) return blend.blendLeg
-  return 'index-fallback'
-}
-
-function applyWeatherResolution(policy, blend, weatherResolutionData) {
-  if (!blend.reversionRow || blend.reversionPosition === 0) {
-    return {
-      ...blend,
-      weatherResolution: {
-        policyId: policy.weatherResolutionPolicy?.id ?? DEFAULT_WEATHER_RESOLUTION_POLICY.id,
-        action: 'no-reversion',
-        scale: 1,
-      },
-    }
-  }
-
-  const decision = weatherResolutionDecision(policy, blend.reversionRow, blend.reversionPosition, weatherResolutionData, blend.blendLeg)
-  const reversionPosition = blend.reversionPosition * decision.scale
-  let followRow = blend.followRow
-  let followPosition = blend.followPosition
-  let reversionRow = decision.scale === 0 ? null : blend.reversionRow
-
-  if (decision.scale === 0 && !followSurvivesDroppedReversion(policy, followRow)) {
-    followRow = null
-    followPosition = 0
-  }
-
-  const nextBlend = {
-    ...blend,
-    followRow,
-    reversionRow,
-    followPosition,
-    reversionPosition,
-    position: clamp(followPosition + reversionPosition, -policy.overlayCap, policy.overlayCap),
-    weatherResolution: decision,
-  }
-  return {
-    ...nextBlend,
-    blendLeg: blendLegAfterWeatherResolution(nextBlend, nextBlend.position),
-  }
-}
-
-function heatingDemandDecision(policy, row, position, heatingDemandData) {
-  const heatingDemandPolicy = policy.heatingDemandPolicy ?? DEFAULT_HEATING_DEMAND_POLICY
-  if (heatingDemandPolicy.kind === 'none' || !row || position === 0) {
-    return {
-      policyId: heatingDemandPolicy.id,
-      action: heatingDemandPolicy.kind === 'none' ? 'none' : 'not-follow',
-      scale: 1,
-    }
-  }
-
-  if (!isFollowRow(row) || !['cold-long', 'warm-short'].includes(row.thesisKind)) {
-    return {
-      policyId: heatingDemandPolicy.id,
-      action: 'not-follow',
-      scale: 1,
-    }
-  }
-
-  const context = heatingDemandData.contextForRow(row)
-  if (!context) {
-    return {
-      policyId: heatingDemandPolicy.id,
-      action: 'missing-kept',
-      scale: 1,
-    }
-  }
-
-  const demandAnomalyF = numberFrom(context.heatingDemandAnomalyF, Number.NaN)
-  const thesisDemandDirection = row.thesisKind === 'cold-long' ? 1 : -1
-  const confirmsDirection = Number.isFinite(demandAnomalyF) && Math.sign(demandAnomalyF) === thesisDemandDirection
-  const demandStrength = Math.abs(demandAnomalyF)
-
-  if (!confirmsDirection) {
-    return {
-      ...context,
-      policyId: heatingDemandPolicy.id,
-      action: 'hdd-direction-mismatch-dropped',
-      scale: 0,
-    }
-  }
-
-  if (heatingDemandPolicy.kind === 'follow-gate') {
-    const kept = demandStrength >= heatingDemandPolicy.minDemandAnomalyF
-    return {
-      ...context,
-      policyId: heatingDemandPolicy.id,
-      action: kept ? 'hdd-gate-kept' : 'hdd-gate-dropped',
-      scale: kept ? 1 : 0,
-    }
-  }
-
-  if (heatingDemandPolicy.kind === 'follow-tiered') {
-    const scale =
-      demandStrength >= 12
-        ? 1.25
-        : demandStrength >= 8
-          ? 1.1
-          : demandStrength >= heatingDemandPolicy.minDemandAnomalyF
-            ? 1
-            : 0.65
-    return {
-      ...context,
-      policyId: heatingDemandPolicy.id,
-      action: scale > 1 ? 'hdd-scaled-up' : scale < 1 ? 'hdd-scaled-down' : 'hdd-kept',
-      scale,
-    }
-  }
-
-  return {
-    ...context,
-    policyId: heatingDemandPolicy.id,
-    action: 'kept',
-    scale: 1,
-  }
-}
-
-function applyHeatingDemandPolicy(policy, blend, heatingDemandData) {
-  const decision = heatingDemandDecision(policy, blend.followRow, blend.followPosition, heatingDemandData)
-  if (decision.scale === 1) {
-    return {
-      ...blend,
-      heatingDemand: decision,
-    }
-  }
-
-  const followPosition = blend.followPosition * decision.scale
-  const followRow = decision.scale === 0 ? null : blend.followRow
-  const nextBlend = {
-    ...blend,
-    followRow,
-    followPosition,
-    position: clamp(followPosition + blend.reversionPosition, -policy.overlayCap, policy.overlayCap),
-    heatingDemand: decision,
-  }
-
-  return {
-    ...nextBlend,
-    blendLeg: blendLegAfterWeatherResolution(nextBlend, nextBlend.position),
-  }
-}
-
-function applyOverlayRiskMultiplier(policy, blend) {
-  const multiplier = policy.overlayRiskMultiplier ?? 1
-  const effectiveOverlayCap = Math.min(MAX_EFFECTIVE_OVERLAY_CAP, policy.overlayCap * multiplier)
-  if (multiplier === 1 || blend.position === 0) {
-    return {
-      ...blend,
-      overlayRiskMultiplier: multiplier,
-      effectiveOverlayCap,
-    }
-  }
-
-  const scaledPosition = clamp(blend.position * multiplier, -effectiveOverlayCap, effectiveOverlayCap)
-  const realizedMultiplier = blend.position ? scaledPosition / blend.position : 1
-
-  return {
-    ...blend,
-    followPosition: blend.followPosition * realizedMultiplier,
-    reversionPosition: blend.reversionPosition * realizedMultiplier,
-    position: scaledPosition,
-    overlayRiskMultiplier: multiplier,
-    effectiveOverlayCap,
-  }
-}
-
-function chooseDominantRow(followRow, reversionRow, position, policy) {
-  if (policy.conflictPolicy === 'vol-confirmed-fade-plus-cold-follow' && reversionRow) return reversionRow
-  if (policy.conflictPolicy === 'net-position' && followRow && reversionRow) {
-    return Math.abs(numberFrom(followRow.ungPosition)) >= Math.abs(numberFrom(reversionRow.ungPosition))
-      ? followRow
-      : reversionRow
-  }
-  if (position !== 0 && followRow) return followRow
-  if (position !== 0 && reversionRow) return reversionRow
-  return followRow ?? reversionRow
-}
-
-function blendPositionFor(policy, dualRow, weatherRow, volatilityRow) {
-  const followRow = isFollowRow(dualRow) ? dualRow : null
-  const reversionRow = isReversionRow(weatherRow) ? weatherRow : null
-  const followPosition = numberFrom(followRow?.ungPosition)
-  const reversionPosition = numberFrom(reversionRow?.ungPosition)
-  const volatilityPosition = volatilityDirection(volatilityRow)
-  const volatilityConfirmsReversion = reversionRow && volatilityPosition !== 0 && Math.sign(reversionPosition) === volatilityPosition
-
-  if (policy.conflictPolicy === 'net-position') {
-    return {
-      followRow,
-      reversionRow,
-      followPosition,
-      reversionPosition,
-      position: clamp(followPosition + reversionPosition, -policy.overlayCap, policy.overlayCap),
-      blendLeg:
-        followRow && reversionRow
-          ? 'dual-follow+weather-hybrid-reversion'
-          : followRow
-            ? 'dual-follow'
-            : reversionRow
-              ? 'weather-hybrid-reversion'
-              : 'index-fallback',
-    }
-  }
-
-  if (policy.conflictPolicy === 'fade-confirmed-follow') {
-    if (reversionRow && followRow && sameDirection(followPosition, reversionPosition)) {
-      return {
-        followRow,
-        reversionRow,
-        followPosition,
-        reversionPosition,
-        position: clamp(followPosition + reversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: 'confirmed-follow+weather-hybrid-reversion',
-      }
-    }
-    if (reversionRow) {
-      return {
-        followRow: null,
-        reversionRow,
-        followPosition: 0,
-        reversionPosition,
-        position: reversionPosition,
-        blendLeg: 'weather-hybrid-reversion',
-      }
-    }
-  }
-
-  if (
-    policy.conflictPolicy === 'confirmed-warm-short' ||
-    policy.conflictPolicy === 'confirmed-warm-short-plus-cold-follow'
-  ) {
-    if (
-      followRow?.thesisKind === 'warm-short' &&
-      reversionRow?.thesisKind === 'reversion-short' &&
-      sameDirection(followPosition, reversionPosition)
-    ) {
-      return {
-        followRow,
-        reversionRow,
-        followPosition,
-        reversionPosition,
-        position: clamp(followPosition + reversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: 'confirmed-warm-short+weather-hybrid-reversion',
-      }
-    }
-    if (policy.conflictPolicy === 'confirmed-warm-short-plus-cold-follow' && followRow?.thesisKind === 'cold-long') {
-      return {
-        followRow,
-        reversionRow: null,
-        followPosition,
-        reversionPosition: 0,
-        position: followPosition,
-        blendLeg: 'dual-cold-follow',
-      }
-    }
-  }
-
-  if (policy.conflictPolicy === 'short-fade-plus-cold-follow') {
-    if (followRow?.thesisKind === 'cold-long') {
-      const includeReversion = reversionRow && sameDirection(followPosition, reversionPosition)
-      const scaledReversionPosition = includeReversion ? reversionPosition : 0
-      return {
-        followRow,
-        reversionRow: includeReversion ? reversionRow : null,
-        followPosition,
-        reversionPosition: scaledReversionPosition,
-        position: clamp(followPosition + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: includeReversion ? 'confirmed-follow+weather-hybrid-reversion' : 'dual-cold-follow',
-      }
-    }
-    if (reversionRow?.thesisKind === 'reversion-short') {
-      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
-      const scaledReversionPosition = reversionPosition * (includeFollow ? 1 : (policy.standaloneReversionScale ?? 1))
-      return {
-        followRow: includeFollow ? followRow : null,
-        reversionRow,
-        followPosition: includeFollow ? followPosition : 0,
-        reversionPosition: scaledReversionPosition,
-        position: clamp((includeFollow ? followPosition : 0) + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: includeFollow ? 'confirmed-follow+weather-hybrid-reversion' : 'weather-hybrid-reversion',
-      }
-    }
-  }
-
-  if (policy.conflictPolicy === 'vol-confirmed-fade-plus-cold-follow') {
-    if (volatilityConfirmsReversion) {
-      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
-      return {
-        followRow: includeFollow ? followRow : null,
-        reversionRow,
-        followPosition: includeFollow ? followPosition : 0,
-        reversionPosition,
-        position: clamp((includeFollow ? followPosition : 0) + reversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: includeFollow ? 'vol-confirmed-follow+weather-hybrid-reversion' : 'vol-confirmed-weather-hybrid-reversion',
-      }
-    }
-    if (followRow?.thesisKind === 'cold-long') {
-      return {
-        followRow,
-        reversionRow: null,
-        followPosition,
-        reversionPosition: 0,
-        position: followPosition,
-        blendLeg: 'dual-cold-follow',
-      }
-    }
-  }
-
-  if (policy.conflictPolicy === 'short-fade-plus-cold-follow-vol-long') {
-    if (followRow?.thesisKind === 'cold-long') {
-      const includeReversion = reversionRow && sameDirection(followPosition, reversionPosition)
-      const scaledReversionPosition = includeReversion
-        ? reversionPosition * (reversionRow.thesisKind === 'reversion-long' ? (policy.reversionLongScale ?? 1) : 1)
-        : 0
-      return {
-        followRow,
-        reversionRow: includeReversion ? reversionRow : null,
-        followPosition,
-        reversionPosition: scaledReversionPosition,
-        position: clamp(followPosition + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: includeReversion ? 'confirmed-follow+weather-hybrid-reversion' : 'dual-cold-follow',
-      }
-    }
-    if (reversionRow?.thesisKind === 'reversion-long' && volatilityConfirmsReversion) {
-      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
-      const scaledReversionPosition = reversionPosition * (policy.reversionLongScale ?? 1)
-      return {
-        followRow: includeFollow ? followRow : null,
-        reversionRow,
-        followPosition: includeFollow ? followPosition : 0,
-        reversionPosition: scaledReversionPosition,
-        position: clamp((includeFollow ? followPosition : 0) + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: includeFollow ? 'vol-confirmed-follow+weather-hybrid-reversion' : 'vol-confirmed-weather-hybrid-reversion',
-      }
-    }
-    if (reversionRow?.thesisKind === 'reversion-short') {
-      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
-      const scaledReversionPosition = reversionPosition * (includeFollow ? 1 : (policy.standaloneReversionScale ?? 1))
-      return {
-        followRow: includeFollow ? followRow : null,
-        reversionRow,
-        followPosition: includeFollow ? followPosition : 0,
-        reversionPosition: scaledReversionPosition,
-        position: clamp((includeFollow ? followPosition : 0) + scaledReversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: includeFollow ? 'confirmed-follow+weather-hybrid-reversion' : 'weather-hybrid-reversion',
-      }
-    }
-  }
-
-  if (policy.conflictPolicy === 'short-fade-confirmed-long') {
-    if (reversionRow?.thesisKind === 'reversion-short') {
-      const includeFollow = followRow && sameDirection(followPosition, reversionPosition)
-      return {
-        followRow: includeFollow ? followRow : null,
-        reversionRow,
-        followPosition: includeFollow ? followPosition : 0,
-        reversionPosition,
-        position: clamp((includeFollow ? followPosition : 0) + reversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: includeFollow ? 'confirmed-follow+weather-hybrid-reversion' : 'weather-hybrid-reversion',
-      }
-    }
-    if (reversionRow?.thesisKind === 'reversion-long' && followRow && sameDirection(followPosition, reversionPosition)) {
-      return {
-        followRow,
-        reversionRow,
-        followPosition,
-        reversionPosition,
-        position: clamp(followPosition + reversionPosition, -policy.overlayCap, policy.overlayCap),
-        blendLeg: 'confirmed-follow+weather-hybrid-reversion',
-      }
-    }
-  }
-
-  if (policy.conflictPolicy === 'weather-hybrid-parent') {
-    if (reversionRow) {
-      return {
-        followRow: null,
-        reversionRow,
-        followPosition: 0,
-        reversionPosition,
-        position: reversionPosition,
-        blendLeg: 'weather-hybrid-reversion',
-      }
-    }
-  }
-
-  if (policy.conflictPolicy === 'short-fade-only') {
-    if (reversionRow?.thesisKind === 'reversion-short') {
-      return {
-        followRow: null,
-        reversionRow,
-        followPosition: 0,
-        reversionPosition,
-        position: reversionPosition,
-        blendLeg: 'weather-hybrid-reversion',
-      }
-    }
-  }
-
-  if (policy.conflictPolicy === 'follow-first') {
-    if (followRow) return { followRow, reversionRow, followPosition, reversionPosition: 0, position: followPosition, blendLeg: 'dual-follow' }
-    if (reversionRow) {
-      return { followRow, reversionRow, followPosition: 0, reversionPosition, position: reversionPosition, blendLeg: 'weather-hybrid-reversion' }
-    }
-  }
-
-  if (policy.conflictPolicy === 'fade-first') {
-    if (reversionRow) {
-      return { followRow, reversionRow, followPosition: 0, reversionPosition, position: reversionPosition, blendLeg: 'weather-hybrid-reversion' }
-    }
-    if (followRow) return { followRow, reversionRow, followPosition, reversionPosition: 0, position: followPosition, blendLeg: 'dual-follow' }
-  }
-
-  if (policy.conflictPolicy === 'short-fade-first') {
-    if (reversionRow?.thesisKind === 'reversion-short') {
-      return { followRow, reversionRow, followPosition: 0, reversionPosition, position: reversionPosition, blendLeg: 'weather-hybrid-reversion' }
-    }
-    if (followRow) return { followRow, reversionRow, followPosition, reversionPosition: 0, position: followPosition, blendLeg: 'dual-follow' }
-    if (reversionRow) {
-      return { followRow, reversionRow, followPosition: 0, reversionPosition, position: reversionPosition, blendLeg: 'weather-hybrid-reversion' }
-    }
-  }
-
-  return { followRow, reversionRow, followPosition: 0, reversionPosition: 0, position: 0, blendLeg: 'index-fallback' }
 }
 
 function buildIndexTrendRiskMap(marketRows) {
@@ -1995,16 +1395,24 @@ function buildRowsForPolicy(
     const volatilityRow = volatilityByDate.get(date)
     const fallback = baseFallbackRow(dualRow, weatherRow)
     const storageContext = storageData.contextForDate(date)
-    const rawBlend = blendPositionFor(policy, dualRow, weatherRow, volatilityRow)
-    const storageGatedBlend = applyColdFollowStorageGate(policy, rawBlend, storageContext)
-    const resolvedBlend = applyWeatherResolution(policy, storageGatedBlend, weatherResolutionData)
-    const heatingDemandBlend = applyHeatingDemandPolicy(policy, resolvedBlend, heatingDemandData)
-    const blend = applyOverlayRiskMultiplier(policy, heatingDemandBlend)
+    const blend = evaluateWinterTargetDecision({
+      policy,
+      dualRow,
+      weatherRow,
+      volatilityPosition: volatilityDirection(volatilityRow),
+      storageContext,
+      weatherResolutionContext: weatherResolutionForRow(
+        weatherRow,
+        numberFrom(weatherRow?.ungPosition),
+        weatherResolutionData,
+      ),
+      heatingDemandContext: dualRow ? heatingDemandData.contextForRow(dualRow) : null,
+    })
     const executedPosition = round(blend.position, 4)
     const weatherActive = blend.position !== 0
     const activeFollowRow = weatherActive ? blend.followRow : null
     const activeReversionRow = weatherActive ? blend.reversionRow : null
-    const dominant = weatherActive ? chooseDominantRow(activeFollowRow, activeReversionRow, blend.position, policy) ?? fallback : fallback
+    const dominant = weatherActive ? blend.dominantRow ?? fallback : fallback
     const isFallback = blend.position === 0
     const executionDay = executionByDate.get(date)
     if (!executionDay) throw new Error(`Winter Alpha is missing UNG/VOO/QQQM execution data for ${date}.`)
@@ -3079,6 +2487,10 @@ function main() {
       weatherResolutionInputs: weatherResolutionData.inputFiles,
       storageInputs: storageData.inputFiles,
       heatingDemandInputs: heatingDemandData.inputFiles,
+      weatherTemperatureQuality: {
+        weatherResolutionCalendars: weatherResolutionData.temperatureQuality,
+        heatingDemandCalendars: heatingDemandData.temperatureQuality,
+      },
       executionMarketFiles: ['UNG', 'VOO', 'QQQM'].map((symbol) => `data/qore/market/yahoo/${symbol}-daily.csv`),
       executionContractFile: path.relative(REPO_ROOT, EXECUTION_CONTRACT.filePath),
       marketStartDate: selected.allMetrics.firstEntry,
@@ -3106,6 +2518,7 @@ function main() {
         priceConvention: EXECUTION_CONTRACT.priceConvention,
         deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
         rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
+        rebalanceDeadbandPolicyId: EXECUTION_CONTRACT.rebalanceDeadbandPolicyId,
         indexWeights: EXECUTION_CONTRACT.indexWeights,
         selectionRule: EXECUTION_CONTRACT.selectionRule,
         costCalibration: EXECUTION_CONTRACT.costCalibration,

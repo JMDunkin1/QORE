@@ -87,8 +87,8 @@ export const SUMMER_SHADOW_CHALLENGER = Object.freeze({
   role: 'prospective-research-shadow',
   executionEligible: false,
   publicStrategy: false,
-  frozenOn: '2026-07-21',
-  prospectiveStart: '2026-07-22',
+  frozenOn: '2026-07-22',
+  prospectiveStart: '2026-07-23',
   comparatorComponentContract: SUMMER_SHADOW_COMPARATOR_COMPONENT_CONTRACT,
   comparatorComponentContractDigestSha256:
     SUMMER_SHADOW_COMPARATOR_COMPONENT_CONTRACT_DIGEST_SHA256,

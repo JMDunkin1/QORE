@@ -7,6 +7,7 @@ import { verifyValidationEvidenceArtifacts } from './qore-validation-evidence.mj
 export const VALIDATION_INTEGRITY_SCHEMA_VERSION = 3
 export const VALIDATION_INTEGRITY_MANIFEST_ID = 'ngas-all-year-beta-prospective-validation-v2'
 export const VALIDATION_INTEGRITY_STRATEGY_ID = 'ngas-all-year-beta'
+export const ALL_YEAR_STRATEGY_ARTIFACT_CORE_SCHEMA_VERSION = 2
 export const ALL_YEAR_SELECTION_CONTRACT = Object.freeze({
   schemaVersion: 1,
   policyId: 'summer-material-else-winter-material-else-index-v1',
@@ -92,6 +93,69 @@ function canonicalize(value) {
   return Object.fromEntries(
     Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]),
   )
+}
+
+function withoutObjectFields(value, fields) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value ?? null
+  return Object.fromEntries(
+    Object.entries(value).filter(([field]) => !fields.has(field)),
+  )
+}
+
+const ARTIFACT_DYNAMIC_SEARCH_FIELDS = new Set([
+  'eligibleCandidateCount',
+  'selectionStatus',
+  'paperEligible',
+  'liveEligible',
+])
+const ARTIFACT_DYNAMIC_VALIDATION_FIELDS = new Set([
+  'integrity',
+  'eligibility',
+])
+const ARTIFACT_DYNAMIC_PROMOTION_GATE_FIELDS = new Set([
+  'pristineForwardEvidence',
+  'strategyContractSeal',
+  'paperApproval',
+  'paperExecutionEvidence',
+  'liveApproval',
+])
+
+// This core is the immutable object sealed before prospective evidence starts.
+// It deliberately excludes the manifest/evidence/approval state written back into
+// the run summary, while retaining research results and independently verifiable
+// promotion gates. That makes sealing a fixed point instead of a raw-file cycle.
+export function allYearStrategyArtifactCore(summary) {
+  const artifact = withoutObjectFields(summary, new Set(['generatedAt', 'status']))
+  if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+    return {
+      schemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_CORE_SCHEMA_VERSION,
+      artifact: null,
+    }
+  }
+
+  artifact.search = withoutObjectFields(summary?.search, ARTIFACT_DYNAMIC_SEARCH_FIELDS)
+  artifact.validation = withoutObjectFields(summary?.validation, ARTIFACT_DYNAMIC_VALIDATION_FIELDS)
+  if (artifact.validation && typeof artifact.validation === 'object' && !Array.isArray(artifact.validation)) {
+    artifact.validation.promotionGates = withoutObjectFields(
+      summary?.validation?.promotionGates,
+      ARTIFACT_DYNAMIC_PROMOTION_GATE_FIELDS,
+    )
+  }
+  artifact.candidates = Array.isArray(summary?.candidates)
+    ? summary.candidates.map((candidate) => withoutObjectFields(candidate, new Set(['eligible'])))
+    : summary?.candidates ?? null
+
+  return {
+    schemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_CORE_SCHEMA_VERSION,
+    artifact,
+  }
+}
+
+export function allYearStrategyArtifactCoreDigestSha256(summary) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify(canonicalize(allYearStrategyArtifactCore(summary))))
+    .digest('hex')
 }
 
 export function allYearStrategyContract(summary) {

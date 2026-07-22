@@ -13,15 +13,125 @@ import {
 } from './lib/qore-validation-evidence.mjs'
 import { writeValidationEvidenceTestFixtures } from './lib/qore-validation-evidence-test-fixture.mjs'
 import {
+  ALL_YEAR_SELECTION_CONTRACT,
   VALIDATION_INTEGRITY_MANIFEST_ID,
   VALIDATION_INTEGRITY_SCHEMA_VERSION,
   VALIDATION_INTEGRITY_STRATEGY_ID,
+  allYearStrategyArtifactCoreDigestSha256,
   loadValidationIntegrityManifest,
   paperExecutionEvidenceSatisfied,
   resolveValidationIntegrityManifestPath,
   validationIntegrityBinding,
   validateValidationIntegrityManifest,
 } from './lib/qore-validation-integrity.mjs'
+
+const strategyArtifactCoreFixture = {
+  artifactSchemaVersion: 6,
+  generatedAt: '2026-07-21T10:00:00.000Z',
+  strategyId: 'ngas-all-year-beta',
+  displayName: 'Natural Gas All-Year Beta',
+  status: 'needs-validation',
+  data: {
+    summerSelectedTrades: 'summer-trades.csv',
+    winterSelectedTrades: 'winter-trades.csv',
+    marketEndDate: '2026-07-14',
+    selectedTradesArtifact: { contentDigestSha256: '4'.repeat(64), rowCount: 1400 },
+    displayCurveArtifact: { contentDigestSha256: '5'.repeat(64), rowCount: 1400 },
+  },
+  contract: {
+    allYearSelection: ALL_YEAR_SELECTION_CONTRACT,
+    selectionEnd: '2023-09-30',
+    liveInference: { componentContract: { summer: { selected: { weatherFraction: 0.35 } } } },
+  },
+  selected: {
+    candidateId: 'ngas-all-year-beta',
+    validationMetrics: { totalReturnPct: 12.5 },
+  },
+  search: {
+    candidateCount: 1,
+    eligibleCandidateCount: 0,
+    selectionStatus: 'fixed-composite-retained-needs-validation',
+    selectionUsedHoldout: false,
+    paperEligible: false,
+    liveEligible: false,
+  },
+  validation: {
+    integrity: {
+      manifestDigestSha256: '1'.repeat(64),
+      sealedStrategyArtifactDigestSha256: null,
+      pristineForwardEvidence: false,
+    },
+    eligibility: { paperEligible: false, liveEligible: false, promotionEligible: false },
+    selectionRealityCheck: { pValue: 0.04 },
+    liveTargetParity: { status: 'pass', mismatchCount: 0 },
+    promotionGates: {
+      positiveValidationEdge: true,
+      liveTargetParity: true,
+      pristineForwardEvidence: false,
+      strategyContractSeal: false,
+      paperApproval: false,
+      paperExecutionEvidence: false,
+      liveApproval: false,
+    },
+  },
+  outputFiles: { selectedTrades: 'selected-trades.csv', displayCurve: 'display-curve.csv' },
+  candidates: [{ candidateId: 'ngas-all-year-beta', eligible: false, validationEdgePct: 2.5 }],
+}
+
+const unsealedCoreDigestSha256 = allYearStrategyArtifactCoreDigestSha256(strategyArtifactCoreFixture)
+const sealedStrategyArtifactCoreFixture = structuredClone(strategyArtifactCoreFixture)
+sealedStrategyArtifactCoreFixture.generatedAt = '2026-07-22T10:00:00.000Z'
+sealedStrategyArtifactCoreFixture.status = 'research-baseline'
+sealedStrategyArtifactCoreFixture.search.eligibleCandidateCount = 1
+sealedStrategyArtifactCoreFixture.search.selectionStatus = 'fixed-composite-passes-promotion-gates'
+sealedStrategyArtifactCoreFixture.search.paperEligible = true
+sealedStrategyArtifactCoreFixture.search.liveEligible = true
+sealedStrategyArtifactCoreFixture.validation.integrity = {
+  manifestDigestSha256: '2'.repeat(64),
+  sealedStrategyArtifactDigestSha256: unsealedCoreDigestSha256,
+  pristineForwardEvidence: true,
+  forwardEvidenceArtifactDigestSha256: '3'.repeat(64),
+}
+sealedStrategyArtifactCoreFixture.validation.eligibility = {
+  paperEligible: true,
+  liveEligible: true,
+  promotionEligible: true,
+}
+for (const gate of [
+  'pristineForwardEvidence',
+  'strategyContractSeal',
+  'paperApproval',
+  'paperExecutionEvidence',
+  'liveApproval',
+]) sealedStrategyArtifactCoreFixture.validation.promotionGates[gate] = true
+sealedStrategyArtifactCoreFixture.candidates[0].eligible = true
+
+assert.notEqual(
+  crypto.createHash('sha256').update(JSON.stringify(strategyArtifactCoreFixture)).digest('hex'),
+  crypto.createHash('sha256').update(JSON.stringify(sealedStrategyArtifactCoreFixture)).digest('hex'),
+  'embedding a seal and approval state must still change the raw artifact digest',
+)
+assert.equal(
+  allYearStrategyArtifactCoreDigestSha256(sealedStrategyArtifactCoreFixture),
+  unsealedCoreDigestSha256,
+  'embedding the core seal and approval state must be a digest fixed point',
+)
+for (const mutate of [
+  (artifact) => { artifact.contract.selectionEnd = '2023-10-31' },
+  (artifact) => { artifact.selected.validationMetrics.totalReturnPct = 13.5 },
+  (artifact) => { artifact.validation.promotionGates.positiveValidationEdge = false },
+  (artifact) => { artifact.candidates[0].validationEdgePct = 3.5 },
+  (artifact) => { artifact.data.selectedTradesArtifact.contentDigestSha256 = '6'.repeat(64) },
+  (artifact) => { artifact.data.displayCurveArtifact.contentDigestSha256 = '7'.repeat(64) },
+]) {
+  const mutated = structuredClone(sealedStrategyArtifactCoreFixture)
+  mutate(mutated)
+  assert.notEqual(
+    allYearStrategyArtifactCoreDigestSha256(mutated),
+    unsealedCoreDigestSha256,
+    'strategy and research-result mutations must invalidate the core seal',
+  )
+}
 
 const sealedDigest = 'a'.repeat(64)
 const strategyArtifactDigestSha256 = 'b'.repeat(64)
@@ -33,7 +143,7 @@ const evidenceFixtures = await writeValidationEvidenceTestFixtures({
   repoDir: process.cwd(),
   manifestPath: fixtureManifestPath,
   strategyContractDigestSha256: sealedDigest,
-  strategyArtifactDigestSha256,
+  strategyArtifactCoreDigestSha256: strategyArtifactDigestSha256,
   brokerExecutionProfileDigestSha256,
   accountPseudonymSha256,
   submittedOrderCount: 12,

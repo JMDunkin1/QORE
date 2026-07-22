@@ -5,6 +5,10 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { loadLocalEnv } from './local-env.mjs'
 import { SUMMER_FORECAST_LOCATIONS } from './lib/qore-summer-location-universe.mjs'
+import {
+  assertForecastLocationTemperatures,
+  validateForecastCalendarTemperatures,
+} from './lib/qore-weather-data-quality.mjs'
 
 const require = createRequire(import.meta.url)
 const usePortableGribParser =
@@ -759,6 +763,18 @@ async function loadResumeState(expectedReturnRows) {
   const scoreCounts = await countRowsByKey(scorePath)
   const anomalyCounts = await countRowsByKey(anomalyPath)
   const returnCounts = await countRowsByKey(returnsPath)
+  const existingLocationRows = parseCsv(await readFile(anomalyPath, 'utf8'))
+  const temperatureQuality = validateForecastCalendarTemperatures({
+    locationRows: existingLocationRows,
+    mode: 'quarantine',
+    label: `${forecastSource} resumed forecast calendar`,
+    sourceId: forecastSource,
+  })
+  const implausibleKeys = new Set(
+    temperatureQuality.diagnostics.quarantinedGroups.map(
+      (group) => `${group.issueDate}|${group.leadDays}`,
+    ),
+  )
   const allKeys = new Set([...scoreCounts.keys(), ...anomalyCounts.keys(), ...returnCounts.keys()])
   const completeKeys = new Set()
   const prunedKeys = new Set()
@@ -768,7 +784,7 @@ async function loadResumeState(expectedReturnRows) {
       scoreCounts.get(key) === 1 &&
       anomalyCounts.get(key) === locations.length &&
       returnCounts.get(key) === expectedReturnRows
-    if (isComplete) {
+    if (isComplete && !implausibleKeys.has(key)) {
       completeKeys.add(key)
     } else {
       prunedKeys.add(key)
@@ -779,7 +795,7 @@ async function loadResumeState(expectedReturnRows) {
     await rewriteRowsWithoutKeys(anomalyPath, anomalyHeaders, prunedKeys)
     await rewriteRowsWithoutKeys(scorePath, scoreHeaders, prunedKeys)
     await rewriteRowsWithoutKeys(returnsPath, returnHeaders, prunedKeys)
-    console.warn(`${forecastSource} calendar resume pruned ${prunedKeys.size} incomplete output groups`)
+    console.warn(`${forecastSource} calendar resume pruned ${prunedKeys.size} incomplete or physically implausible output groups`)
   }
 
   return { completeKeys, prunedKeys }
@@ -839,6 +855,10 @@ async function buildItem(item, normalMeans) {
       nearestGridLongitude: nearest.nearestGridLongitude,
       source: sourceConfig.source,
     }
+  })
+  assertForecastLocationTemperatures(locationRows, {
+    label: `${forecastSource} ${item.issueDate} lead-${item.leadDays} forecast batch`,
+    sourceId: forecastSource,
   })
 
   const sampledWeight = locationRows.reduce((sum, row) => sum + Number(row.weight || 0), 0)

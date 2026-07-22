@@ -1,5 +1,12 @@
 import crypto from 'node:crypto'
 import { SUMMER_FORECAST_LOCATION_UNIVERSE } from './qore-summer-location-universe.mjs'
+import {
+  WINTER_GRADED_SHIFT_PARAMETERS,
+  WINTER_HEATING_DEMAND_BASE_F,
+  WINTER_HEATING_DEMAND_TIERS,
+  WINTER_PRODUCTION_HEATING_DEMAND_SOURCE_IDS,
+  WINTER_PRODUCTION_SIGNAL_SOURCE_IDS,
+} from './qore-winter-target-engine.mjs'
 
 export const LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION = 2
 
@@ -31,11 +38,11 @@ const SUMMER = {
 const WINTER_FOLLOW = {
   candidateId: 'dual-ncep-complex-bg-shrink-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-vol0-fixed',
   sourceSetId: 'ncep-complex',
-  sourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'aigfs'],
+  sourceIds: [...WINTER_PRODUCTION_SIGNAL_SOURCE_IDS],
   sourceWeightMode: 'bg-shrink',
-  heatingDemandSourceIds: ['gfs', 'gefs-mean', 'graphcastgfs', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs', 'gem-global'],
-  liveSourceIds: ['gfs', 'gefs-mean', 'aigfs'],
-  liveHeatingDemandSourceIds: ['gfs', 'gefs-mean', 'ecmwf-ifs', 'ecmwf-aifs', 'aigfs'],
+  heatingDemandSourceIds: [...WINTER_PRODUCTION_HEATING_DEMAND_SOURCE_IDS],
+  liveSourceIds: [...WINTER_PRODUCTION_SIGNAL_SOURCE_IDS],
+  liveHeatingDemandSourceIds: [...WINTER_PRODUCTION_HEATING_DEMAND_SOURCE_IDS],
   anomalyThreshold: 5,
   coverageThreshold: 0.5,
   minConfidence: 0.5,
@@ -132,26 +139,12 @@ const WINTER_IMPLEMENTATION = {
     sourceIds: ['gfs', 'gefs-mean'],
     minimumLeadDays: 1,
     maximumLeadDays: 3,
-    sameDirectionBaseScale: 0.75,
-    sameDirectionShiftDivisor: 8,
-    sameDirectionMinimumScale: 0.75,
-    sameDirectionMaximumScale: 1.25,
-    adverseBaseScale: 0.9,
-    adverseShiftDivisor: 10,
-    adverseMinimumScale: 0.45,
-    adverseMaximumScale: 0.9,
-    neutralScale: 0.85,
-    dropAdverseStandalone: true,
+    ...WINTER_GRADED_SHIFT_PARAMETERS,
   },
   heatingDemand: {
-    baseF: 65,
+    baseF: WINTER_HEATING_DEMAND_BASE_F,
     minimumAnomalyF: 4,
-    moderateAnomalyF: 8,
-    strongAnomalyF: 12,
-    subMinimumScale: 0.65,
-    minimumScale: 1,
-    moderateScale: 1.1,
-    strongScale: 1.25,
+    ...WINTER_HEATING_DEMAND_TIERS,
   },
 }
 

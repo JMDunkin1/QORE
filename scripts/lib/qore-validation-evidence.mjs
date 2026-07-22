@@ -304,7 +304,9 @@ function summarizeForwardArtifact(artifact, manifest, failures) {
   const prospectiveStart = manifest?.historicalEvidence?.prospectiveStart
   const observedThrough = manifest?.observedForwardEvidence?.observedThrough
   const sealedStrategyDigest = manifest?.sealedStrategyContractDigestSha256
-  const sealedArtifactDigest = manifest?.sealedStrategyArtifactDigestSha256
+  // The manifest field retains its v3 wire name, but it seals the canonical
+  // strategy-artifact core rather than the self-referential raw run-summary bytes.
+  const sealedArtifactCoreDigest = manifest?.sealedStrategyArtifactDigestSha256
   const observations = Array.isArray(artifact?.observations) ? artifact.observations : []
   if (!Array.isArray(artifact?.observations)) failures.push(`${prefix} observations must be an array`)
   const observationIds = new Set()
@@ -345,8 +347,11 @@ function summarizeForwardArtifact(artifact, manifest, failures) {
     if (observation?.strategyContractDigestSha256 !== sealedStrategyDigest) {
       failures.push(`${label}.strategyContractDigestSha256 must equal the sealed strategy contract`)
     }
-    if (observation?.strategyArtifactDigestSha256 !== sealedArtifactDigest || !isSha256(sealedArtifactDigest)) {
-      failures.push(`${label}.strategyArtifactDigestSha256 must equal the sealed strategy artifact`)
+    if (
+      observation?.strategyArtifactDigestSha256 !== sealedArtifactCoreDigest
+      || !isSha256(sealedArtifactCoreDigest)
+    ) {
+      failures.push(`${label}.strategyArtifactDigestSha256 must equal the sealed strategy-artifact core digest`)
     }
     if (!observation?.inference || typeof observation.inference !== 'object' || Array.isArray(observation.inference)) {
       failures.push(`${label}.inference must be an object`)

@@ -3,6 +3,7 @@ import allYearSummaryJson from '../../data/qore/research/strategy-agent-runs/nga
 import allYearDisplayCurveCsv from '../../data/qore/research/strategy-agent-runs/ngas-all-year-beta/display-curve.csv?raw'
 import overnightRiskCandidatesCsv from '../../data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-candidate-summary.csv?raw'
 import weatherQualityJson from '../../data/qore/research/ngas-weather-quality-summary.json?raw'
+import { assertCsvArtifactBinding, type CsvArtifactBinding } from './artifactIntegrity'
 
 export type BacktestMetrics = {
   totalReturnPct: number
@@ -95,6 +96,7 @@ type PromotionGateKey = (typeof promotionGateKeys)[number]
 type PromotionGates = Record<PromotionGateKey, boolean>
 
 type AllYearSummary = {
+  artifactSchemaVersion: number
   generatedAt: string
   strategyId: string
   displayName: string
@@ -103,6 +105,8 @@ type AllYearSummary = {
     marketStartDate: string
     marketEndDate: string
     marketDays: number
+    selectedTradesArtifact: CsvArtifactBinding
+    displayCurveArtifact: CsvArtifactBinding
   }
   contract: {
     trainEnd: string
@@ -151,6 +155,10 @@ type AllYearSummary = {
     realityCheck: RealityCheck
     componentRealityChecks: Record<string, { pValue: number; bestObservedCandidateId?: string; candidateFamilySize?: number }>
   }
+  outputFiles: {
+    selectedTrades: string
+    displayCurve: string
+  }
 }
 
 type WeatherQuality = {
@@ -177,6 +185,31 @@ type OvernightRiskHeatmapCell = {
   validationReturnPct: number
   validationSharpe: number
 }
+
+const displayCurveHeaders = [
+  'chartIndex',
+  'date',
+  'equityPct',
+  'benchmarkPct',
+  'drawdownPct',
+  'activeReturnPct',
+  'position',
+  'signal',
+  'netReturnPct',
+  'priorCloseReturnContributionPct',
+  'currentSessionReturnContributionPct',
+  'indexReturnPct',
+  'split',
+  'thesisKind',
+  'priorCloseThesisKind',
+  'equityUsd',
+  'component',
+  'researchInstrument',
+  'signalInstrument',
+  'direction',
+  'sourceId',
+  'confidence',
+]
 
 function parseAllYearSummary(raw: string): AllYearSummary {
   const parsed = JSON.parse(raw) as { validation?: { promotionGates?: unknown } }
@@ -213,11 +246,35 @@ function round(value: number, digits = 4) {
   return Math.round(value * factor) / factor
 }
 
-const parsedTrades = Papa.parse<RawDisplayRow>(allYearDisplayCurveCsv, {
+const parsedDisplayCurve = Papa.parse<RawDisplayRow>(allYearDisplayCurveCsv, {
   header: true,
   skipEmptyLines: true,
   transformHeader: (header) => header.trim(),
-}).data
+})
+if (parsedDisplayCurve.errors.length) {
+  throw new Error(`All-year display curve is invalid CSV: ${parsedDisplayCurve.errors[0].message}`)
+}
+const parsedTrades = parsedDisplayCurve.data
+assertCsvArtifactBinding({
+  raw: allYearDisplayCurveCsv,
+  headers: parsedDisplayCurve.meta.fields ?? [],
+  rows: parsedTrades,
+  binding: summary.data.displayCurveArtifact,
+  expectedArtifactKind: 'all-year-display-curve',
+  expectedFile: 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/display-curve.csv',
+  expectedHeaders: displayCurveHeaders,
+  label: 'All-year display curve',
+})
+if (
+  summary.artifactSchemaVersion !== 6
+  || summary.outputFiles.displayCurve !== summary.data.displayCurveArtifact.file
+  || summary.outputFiles.selectedTrades !== summary.data.selectedTradesArtifact.file
+  || summary.data.marketDays !== parsedTrades.length
+  || summary.data.marketStartDate !== parsedTrades[0]?.date
+  || summary.data.marketEndDate !== parsedTrades.at(-1)?.date
+) {
+  throw new Error('All-year display curve row/date metadata does not match the reviewed run summary.')
+}
 
 export const allYearTrades: StrategyTrade[] = parsedTrades.map((row, rowIndex) => {
   const thesisKind = row.thesisKind || 'index-fallback'

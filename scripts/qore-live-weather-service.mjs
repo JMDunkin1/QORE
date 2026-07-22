@@ -10,6 +10,7 @@ import { assertEiaStorageReleaseCalendarCoverage, eiaStorageReleaseAt } from './
 import { liveGasPositionContractBlocks } from './lib/qore-live-inference-provenance.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
+import { assertForecastLocationTemperatures } from './lib/qore-weather-data-quality.mjs'
 import { omitApiKeyFields, redactSecretText } from './lib/secret-redaction.mjs'
 
 const repoDir = process.cwd()
@@ -676,6 +677,10 @@ async function collectCurrentForecast() {
     sourceResults.push(result.result)
   }
 
+  assertForecastLocationTemperatures(locationRows, {
+    label: `Open-Meteo current forecast collected ${fetchedAt}`,
+    sourceId: 'open-meteo-current',
+  })
   const scores = scoreForecastRows(locationRows, locations)
   const latestActionableScore =
     scores.find((score) => score.qualifiesCold || score.qualifiesWarm) ??

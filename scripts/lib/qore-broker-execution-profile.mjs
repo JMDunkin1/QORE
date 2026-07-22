@@ -2,10 +2,11 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { validateIndexBasketConfig } from './qore-index-basket.mjs'
+import { REBALANCE_DEADBAND_POLICY_ID } from './qore-rebalance-deadband.mjs'
 
 export const BROKER_EXECUTION_PROFILE_SCHEMA_VERSION = 1
 export const BROKER_EXECUTION_PROFILE_ID = 'alpaca-etf-target-weight-route-v1'
-export const BROKER_IMPLEMENTATION_POLICY_ID = 'alpaca-live-etf-reconciler-v1'
+export const BROKER_IMPLEMENTATION_POLICY_ID = 'alpaca-live-etf-reconciler-v2'
 
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize)
@@ -109,6 +110,10 @@ export function canonicalBrokerExecutionProfile(profile) {
         'broker execution profile rebalanceDeadbandPct',
         { minimum: 0, maximum: 100 },
       ),
+      rebalanceDeadbandPolicyId: nonEmptyString(
+        profile?.sizing?.rebalanceDeadbandPolicyId,
+        'broker execution profile rebalanceDeadbandPolicyId',
+      ),
       minOrderUsd: finiteNumber(profile?.sizing?.minOrderUsd, 'broker execution profile minOrderUsd', { minimum: 0.01 }),
       maxOrderUsd: profile?.sizing?.maxOrderUsd === null
         ? null
@@ -186,6 +191,9 @@ export function canonicalBrokerExecutionProfile(profile) {
   }
   if (canonical.orders.fractionalShortSales !== false) {
     throw new Error('broker execution profile fractionalShortSales must remain false.')
+  }
+  if (canonical.sizing.rebalanceDeadbandPolicyId !== REBALANCE_DEADBAND_POLICY_ID) {
+    throw new Error(`broker execution profile rebalanceDeadbandPolicyId must equal ${REBALANCE_DEADBAND_POLICY_ID}.`)
   }
   if (canonical.risk.minConfidence > canonical.risk.maxConfidence) {
     throw new Error('broker execution profile minConfidence cannot exceed maxConfidence.')
@@ -341,6 +349,9 @@ export function brokerExecutionProfileTieOutFailures(profile, researchExecutionC
     failures.push('research execution rebalanceDeadbandPct must be a finite number')
   } else if (Math.abs(profile.sizing.rebalanceDeadbandPct - researchRebalanceDeadbandPct) > 1e-12) {
     failures.push('broker rebalance deadband does not equal the research execution deadband')
+  }
+  if (profile.sizing.rebalanceDeadbandPolicyId !== researchExecutionContract?.rebalanceDeadbandPolicyId) {
+    failures.push('broker rebalance deadband policy does not equal the research execution deadband policy')
   }
   const researchWeights = Object.entries(researchExecutionContract?.indexWeights ?? {})
     .map(([symbol, targetWeight]) => ({ symbol, targetWeight: Number(targetWeight) }))

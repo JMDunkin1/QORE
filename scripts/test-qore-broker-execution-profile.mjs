@@ -47,6 +47,18 @@ assert.match(
   brokerExecutionProfileTieOutFailures(changedBasket, researchExecution).join('; '),
   /index basket/,
 )
+const changedDeadbandPolicy = structuredClone(researchExecution)
+changedDeadbandPolicy.rebalanceDeadbandPolicyId = 'legacy-deadband-policy'
+assert.match(
+  brokerExecutionProfileTieOutFailures(reviewed.profile, changedDeadbandPolicy).join('; '),
+  /deadband policy/,
+)
+const invalidBrokerDeadbandPolicy = structuredClone(reviewed.profile)
+invalidBrokerDeadbandPolicy.sizing.rebalanceDeadbandPolicyId = 'legacy-deadband-policy'
+assert.throws(
+  () => brokerExecutionProfileDigestSha256(invalidBrokerDeadbandPolicy),
+  /rebalanceDeadbandPolicyId must equal/,
+)
 const sealedSummary = {
   strategyId: 'ngas-all-year-beta',
   contract: {

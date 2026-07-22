@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "contractId": "qore-causal-etf-execution-v1",
+  "contractId": "qore-causal-etf-execution-v2",
   "selectionScenarioId": "baseline",
   "priceConvention": "Yahoo daily split-and-distribution-adjusted open and close",
   "signalTiming": "prior close holdings earn close-to-open returns; the current target becomes effective at the current adjusted open",
   "initialState": "already invested in the configured VOO/QQQM fallback at the prior close",
   "deploymentFraction": 0.98,
   "rebalanceDeadbandPct": 0.25,
+  "rebalanceDeadbandPolicyId": "risk-reductions-and-ung-transitions-bypass-v1",
   "indexWeights": {
     "VOO": 0.8,
     "QQQM": 0.2

@@ -4,6 +4,10 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { appendFile, chmod, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
+import {
+  rebalanceDecision,
+  rebalanceDecisionsForAllocation,
+} from './lib/qore-rebalance-deadband.mjs'
 import { loadLocalEnv } from './local-env.mjs'
 import { inspectGitWorkingTree } from './lib/qore-git-state.mjs'
 import { assertQoreExecutionHost } from './lib/qore-execution-host.mjs'
@@ -1074,19 +1078,42 @@ function clientOrderIdFor(intent, symbol, side, targetDeltaNotionalUsd) {
   return `qore-${compactDate(intent.signalDate)}-${symbol}-${side}-${hash}`.slice(0, 48)
 }
 
+function plannedOrderReducesGrossExposure(order) {
+  const currentNotionalUsd = finiteNumber(order?.currentNotionalUsd)
+  const estimatedNotionalUsd = finiteNumber(order?.estimatedNotionalUsd)
+  if (currentNotionalUsd === null || estimatedNotionalUsd === null) return false
+  const signedOrderNotionalUsd = order.side === 'buy' ? estimatedNotionalUsd : -estimatedNotionalUsd
+  return Math.abs(currentNotionalUsd + signedOrderNotionalUsd) < Math.abs(currentNotionalUsd) - 0.01
+}
+
 function buildPlannedOrders({ signalSnapshot, targets, current, currentQuantities, prices, openOrders, accountEquityUsd }) {
   const intent = signalSnapshot.intent
   const planned = []
   const skipped = []
   const openSymbols = new Set((openOrders ?? []).map((order) => order.symbol).filter(Boolean))
   const rebalanceDeadbandUsd = Math.max(0, accountEquityUsd) * (rebalanceDeadbandPct / 100)
+  const currentGrossUsd = Object.values(current).reduce((sum, value) => sum + Math.abs(Number(value ?? 0)), 0)
+  const deploymentCeilingUsd = exposureCeilings(accountEquityUsd).effectiveExposureCeilingUsd
+  const startsOverDeploymentEnvelope = Number.isFinite(deploymentCeilingUsd)
+    && currentGrossUsd > deploymentCeilingUsd + 0.01
+  const targetEntries = Object.entries(targets)
+  const deadbandDecisions = rebalanceDecisionsForAllocation({
+    legs: targetEntries.map(([symbol, targetNotionalUsd]) => ({
+      symbol,
+      current: Number(current[symbol] ?? 0),
+      target: targetNotionalUsd,
+    })),
+    deadband: rebalanceDeadbandUsd,
+    forceRiskReduction: startsOverDeploymentEnvelope,
+  })
 
-  for (const [symbol, targetNotionalUsd] of Object.entries(targets)) {
+  for (const [symbol, targetNotionalUsd] of targetEntries) {
     const price = Number(prices[symbol])
     if (!Number.isFinite(price) || price <= 0) continue
     const currentNotionalUsd = Number(current[symbol] ?? 0)
     const targetDeltaNotionalUsd = targetNotionalUsd - currentNotionalUsd
-    if (Math.abs(targetDeltaNotionalUsd) < rebalanceDeadbandUsd) continue
+    const deadbandDecision = deadbandDecisions[symbol]
+    if (!deadbandDecision.executes) continue
     let deltaNotionalUsd = targetDeltaNotionalUsd
     if (maxOrderUsd && Math.abs(deltaNotionalUsd) > maxOrderUsd) {
       deltaNotionalUsd = Math.sign(deltaNotionalUsd) * maxOrderUsd
@@ -1109,6 +1136,7 @@ function buildPlannedOrders({ signalSnapshot, targets, current, currentQuantitie
       currentNotionalUsd: round(currentNotionalUsd, 2),
       currentSignedQuantity: currentQuantities[symbol] ?? 0,
       deltaNotionalUsd: round(deltaNotionalUsd, 2),
+      deadbandDecision: deadbandDecision.reason,
       reason: opensShort
         ? `${intent.strategyId} target-weight reconcile for ${intent.signalDate}; whole-share UNG quantity because Alpaca does not support fractional short-sale orders.`
         : `${intent.strategyId} target-weight reconcile for ${intent.signalDate}.`,
@@ -1122,7 +1150,12 @@ function buildPlannedOrders({ signalSnapshot, targets, current, currentQuantitie
     }
     planned.push(orderRequest)
   }
-  planned.sort((left, right) => Number(left.side === 'buy') - Number(right.side === 'buy'))
+  planned.sort((left, right) => {
+    const reductionPriority = Number(plannedOrderReducesGrossExposure(right))
+      - Number(plannedOrderReducesGrossExposure(left))
+    if (reductionPriority !== 0) return reductionPriority
+    return Number(left.side === 'buy') - Number(right.side === 'buy')
+  })
   return { plannedOrders: planned, skippedOrders: skipped }
 }
 
@@ -1179,6 +1212,11 @@ function exposureEnvelopeAssessment(exposurePlan, accountEquityUsd) {
   }
 
   const startsOverCap = startingGrossUsd > ceilings.effectiveExposureCeilingUsd + 0.01
+  if (brokerMode !== 'dry-run' && startsOverCap && prefixes.length === 0) {
+    blocks.push(
+      'Account starts over the current-equity sizing envelope and no executable risk-reducing order clears the minimum order constraints.',
+    )
+  }
   let previousGrossUsd = startingGrossUsd
   for (let index = 0; index < prefixes.length; index += 1) {
     const prefix = prefixes[index]
@@ -2279,7 +2317,14 @@ function refreshOrderFromQuote(order, freshSignedQuantity, quote, accountEquityU
   const currentReferenceNotionalUsd = freshSignedQuantity * quote.askPrice
   const targetDeltaNotionalUsd = Number(order.targetNotionalUsd) - currentReferenceNotionalUsd
   const rebalanceDeadbandUsd = Math.max(0, accountEquityUsd) * (rebalanceDeadbandPct / 100)
-  if (Math.abs(targetDeltaNotionalUsd) < rebalanceDeadbandUsd) {
+  const deadbandDecision = rebalanceDecision({
+    symbol: order.symbol,
+    current: currentReferenceNotionalUsd,
+    target: Number(order.targetNotionalUsd),
+    deadband: rebalanceDeadbandUsd,
+    forceRiskReduction: order.deadbandDecision === 'portfolio-risk-reduction',
+  })
+  if (!deadbandDecision.executes) {
     throw new Error(`Fresh ${order.symbol} quote moved the fixed reconcile delta inside the rebalance deadband.`)
   }
   let deltaNotionalUsd = targetDeltaNotionalUsd
@@ -2304,6 +2349,7 @@ function refreshOrderFromQuote(order, freshSignedQuantity, quote, accountEquityU
     currentSignedQuantity: freshSignedQuantity,
     currentNotionalUsd: round(freshSignedQuantity * quote.askPrice, 2),
     deltaNotionalUsd: round(deltaNotionalUsd, 2),
+    deadbandDecision: deadbandDecision.reason,
     estimatedNotionalUsd: round(quantity * quote.askPrice, 2),
     freshQuote: {
       bidPrice: quote.bidPrice,

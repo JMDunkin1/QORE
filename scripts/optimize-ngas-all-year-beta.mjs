@@ -17,6 +17,12 @@ import {
   validateComponentArtifact,
 } from './lib/qore-component-artifact.mjs'
 import {
+  ALL_YEAR_DISPLAY_CURVE_FILE,
+  ALL_YEAR_DISPLAY_CURVE_HEADERS,
+  ALL_YEAR_SELECTED_TRADES_FILE,
+  buildAllYearOutputArtifactBindings,
+} from './lib/qore-all-year-output-artifacts.mjs'
+import {
   LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
   canonicalComponentLiveContractFromSummaries,
   executableLiveComponentContractDigestSha256,
@@ -711,6 +717,7 @@ function main() {
     initialState: EXECUTION_CONTRACT.initialState,
     deploymentFraction: EXECUTION_CONTRACT.deploymentFraction,
     rebalanceDeadbandPct: EXECUTION_CONTRACT.rebalanceDeadbandPct,
+    rebalanceDeadbandPolicyId: EXECUTION_CONTRACT.rebalanceDeadbandPolicyId,
     indexWeights: EXECUTION_CONTRACT.indexWeights,
     turnoverConvention: EXECUTION_CONTRACT.turnoverConvention,
     benchmarkConvention: EXECUTION_CONTRACT.benchmarkConvention,
@@ -872,6 +879,34 @@ function main() {
     indexMetrics: selectionIndexMetricsBySplit,
     edges: selectionEdges,
   })
+  const headers = unique([
+    'strategyId',
+    'variant',
+    'componentStrategyId',
+    'componentVariant',
+    'researchInstrument',
+    'signalInstrument',
+    'componentGrossReturnPct',
+    'componentTradingCostPct',
+    'componentNetReturnPct',
+    ...summer.headers,
+    ...winter.headers,
+    'materialRow',
+    'activeReturnPct',
+    'componentSplit',
+    'split',
+  ])
+  const selectedTradesRaw = rowsToCsv(rows, headers)
+  const curveRows = displayCurveRows(rows)
+  const displayCurveRaw = rowsToCsv(curveRows, [...ALL_YEAR_DISPLAY_CURVE_HEADERS])
+  const outputArtifactBindings = buildAllYearOutputArtifactBindings({
+    selectedTrades: { raw: selectedTradesRaw, headers, rows },
+    displayCurve: {
+      raw: displayCurveRaw,
+      headers: [...ALL_YEAR_DISPLAY_CURVE_HEADERS],
+      rows: curveRows,
+    },
+  })
   const summary = {
     artifactSchemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION,
     generatedAt,
@@ -889,6 +924,7 @@ function main() {
       marketStartDate: selected.allMetrics.firstEntry,
       marketEndDate: selected.allMetrics.lastExit,
       marketDays: rows.length,
+      ...outputArtifactBindings,
     },
     contract: {
       allYearSelection: ALL_YEAR_SELECTION_CONTRACT,
@@ -969,8 +1005,8 @@ function main() {
       },
     },
     outputFiles: {
-      selectedTrades: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'selected-trades.csv')),
-      displayCurve: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'display-curve.csv')),
+      selectedTrades: ALL_YEAR_SELECTED_TRADES_FILE,
+      displayCurve: ALL_YEAR_DISPLAY_CURVE_FILE,
       candidateSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'candidate-summary.csv')),
       runSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'run-summary.json')),
       frictionStressSummary: path.relative(REPO_ROOT, path.join(OUTPUT_DIR, 'friction-stress-summary.csv')),
@@ -980,27 +1016,8 @@ function main() {
     candidates: [candidateRow],
   }
 
-  const headers = unique([
-    'strategyId',
-    'variant',
-    'componentStrategyId',
-    'componentVariant',
-    'researchInstrument',
-    'signalInstrument',
-    'componentGrossReturnPct',
-    'componentTradingCostPct',
-    'componentNetReturnPct',
-    ...summer.headers,
-    ...winter.headers,
-    'materialRow',
-    'activeReturnPct',
-    'componentSplit',
-    'split',
-  ])
-
-  writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), rowsToCsv(rows, headers))
-  const curveRows = displayCurveRows(rows)
-  writeText(path.join(OUTPUT_DIR, 'display-curve.csv'), rowsToCsv(curveRows, Object.keys(curveRows[0] ?? {})))
+  writeText(path.join(OUTPUT_DIR, 'selected-trades.csv'), selectedTradesRaw)
+  writeText(path.join(OUTPUT_DIR, 'display-curve.csv'), displayCurveRaw)
   writeText(path.join(OUTPUT_DIR, 'candidate-summary.csv'), rowsToCsv([candidateRow], Object.keys(candidateRow)))
   const frictionStressRows = Object.entries(frictionScenarios).map(([scenarioId, scenario]) => ({
     scenarioId,

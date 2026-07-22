@@ -212,7 +212,7 @@ const componentDigestAfter = liveComponentContractDigestSha256(
 assert.equal(componentDigestAfter, componentDigestBefore, 'research-only shadow metadata changed the live component digest')
 
 assert.deepEqual(
-  summerShadowRecordTiming({ targetDate: '2026-07-22', generatedAt: '2026-07-22T12:00:00.000Z' }),
+  summerShadowRecordTiming({ targetDate: '2026-07-23', generatedAt: '2026-07-23T12:00:00.000Z' }),
   { eligible: true, reason: null },
 )
 assert.deepEqual(
@@ -220,11 +220,11 @@ assert.deepEqual(
   { eligible: true, reason: null },
 )
 assert.equal(
-  summerShadowRecordTiming({ targetDate: '2026-07-22', generatedAt: '2026-07-22T13:30:00.000Z' }).reason,
+  summerShadowRecordTiming({ targetDate: '2026-07-23', generatedAt: '2026-07-23T13:30:00.000Z' }).reason,
   'at-or-after-session-open',
 )
 assert.equal(
-  summerShadowRecordTiming({ targetDate: '2026-07-21', generatedAt: '2026-07-21T12:00:00.000Z' }).reason,
+  summerShadowRecordTiming({ targetDate: '2026-07-22', generatedAt: '2026-07-22T12:00:00.000Z' }).reason,
   'before-prospective-start',
 )
 assert.deepEqual(
@@ -254,11 +254,11 @@ assert.equal(
   'unreviewed-session-calendar-year',
 )
 assert.deepEqual(
-  summerShadowRecordTiming({ targetDate: '2026-07-22', generatedAt: '2026-07-22T13:29:00.000Z' }),
+  summerShadowRecordTiming({ targetDate: '2026-07-23', generatedAt: '2026-07-23T13:29:00.000Z' }),
   { eligible: true, reason: null },
 )
 assert.equal(
-  summerShadowRecordTiming({ targetDate: '2026-07-22', generatedAt: '2026-07-22T13:30:00.000Z' }).reason,
+  summerShadowRecordTiming({ targetDate: '2026-07-23', generatedAt: '2026-07-23T13:30:00.000Z' }).reason,
   'at-or-after-session-open',
 )
 assert.equal(
@@ -292,12 +292,12 @@ try {
     storageValidation: { fixture: true },
   }
   const record = createSummerShadowTargetRecord({
-    generatedAt: '2026-07-22T12:00:00.000Z',
-    targetDate: '2026-07-22',
+    generatedAt: '2026-07-23T12:00:00.000Z',
+    targetDate: '2026-07-23',
     activeStrategyContractDigestSha256: 'a'.repeat(64),
     activeStrategyArtifactDigestSha256: 'b'.repeat(64),
-    activeTarget: projectedTarget({ targetDate: '2026-07-22' }),
-    shadowTarget: projectedTarget({ targetDate: '2026-07-22', shadow: true }),
+    activeTarget: projectedTarget({ targetDate: '2026-07-23' }),
+    shadowTarget: projectedTarget({ targetDate: '2026-07-23', shadow: true }),
     inputProvenance,
   })
   assert.equal(validateSummerShadowTargetRecord(record), true)
@@ -311,7 +311,7 @@ try {
   assert.throws(
     () => validateSummerShadowTargetRecord({
       ...record,
-      shadowTarget: { ...record.shadowTarget, targetDate: '2026-07-23' },
+      shadowTarget: { ...record.shadowTarget, targetDate: '2026-07-24' },
     }),
     /targetDate must match/,
   )
@@ -340,7 +340,7 @@ try {
   assert.equal(fileStat.isFile(), true)
   assert.equal(fileStat.mode & 0o077, 0, 'shadow evidence must not grant group or other permissions')
 
-  const changedRecord = { ...record, generatedAt: '2026-07-22T12:01:00.000Z' }
+  const changedRecord = { ...record, generatedAt: '2026-07-23T12:01:00.000Z' }
   const second = await appendSummerShadowTargetRecord({ stateDir: temporaryRoot, record: changedRecord })
   assert.deepEqual(
     { written: second.written, reason: second.reason },
@@ -350,10 +350,10 @@ try {
 
   const lateRecord = {
     ...record,
-    targetDate: '2026-07-23',
-    generatedAt: '2026-07-23T13:30:00.000Z',
-    activeTarget: projectedTarget({ targetDate: '2026-07-23' }),
-    shadowTarget: projectedTarget({ targetDate: '2026-07-23', shadow: true }),
+    targetDate: '2026-07-24',
+    generatedAt: '2026-07-24T13:30:00.000Z',
+    activeTarget: projectedTarget({ targetDate: '2026-07-24' }),
+    shadowTarget: projectedTarget({ targetDate: '2026-07-24', shadow: true }),
   }
   const late = await appendSummerShadowTargetRecord({ stateDir: temporaryRoot, record: lateRecord })
   assert.deepEqual(
