@@ -382,6 +382,13 @@ export function CommandView() {
   const connectionLabel = transportConnected
     ? !brokerKnown ? 'M1 / CHECKING BROKER' : brokerConnected ? `M1 / ${telemetry.mode.toUpperCase()} ONLINE` : 'M1 / BROKER OFFLINE'
     : connection?.phase?.replaceAll('-', ' ').toUpperCase() ?? 'STARTING'
+  const accountModeLabel = telemetry?.mode === 'paper'
+    ? 'Paper account'
+    : telemetry?.mode === 'live'
+      ? 'Live account'
+      : telemetry?.mode === 'dry-run'
+        ? 'Dry-run account'
+        : 'Alpaca account'
   const marketStatus = telemetry?.marketClock?.isOpen === true
     ? 'MARKET OPEN'
     : telemetry?.marketClock?.isOpen === false ? 'MARKET CLOSED' : 'MARKET UNKNOWN'
@@ -390,7 +397,7 @@ export function CommandView() {
     <main className="view" id="command-view">
       <header className="view-header">
         <div className="view-heading">
-          <span>ACTUAL ALPACA ACCOUNT</span>
+          <span>{accountModeLabel.toUpperCase()}</span>
           <h1>Command</h1>
         </div>
         <div className="view-status-line" aria-label="Command status">
@@ -424,10 +431,10 @@ export function CommandView() {
       {!error && transportConnected && stale && sourceAgeSeconds !== null && <div className="warning-line"><strong>STALE BROKER STATE</strong><span>The most recent Alpaca snapshot is {formatNumber(sourceAgeSeconds / 60, 1)} minutes old. Refresh before acting on it.</span></div>}
       {!error && historyProvenanceWarning && <div className="warning-line"><strong>HISTORY PROVENANCE</strong><span>Portfolio history was read at {timestampLabel(historySourceGeneratedAt)}; selected account data was read at {timestampLabel(telemetry?.sourceGeneratedAt)}.</span></div>}
 
-      <MetricRail metrics={accountMetrics(telemetry, performance)} ariaLabel="Actual Alpaca account metrics" />
+      <MetricRail metrics={accountMetrics(telemetry, performance)} ariaLabel={`${accountModeLabel} metrics`} />
 
       <PerformanceChart
-        title="Live account"
+        title={accountModeLabel}
         meta={`${performance.length} DAYS · ACCOUNT LEVEL`}
         data={performance}
         series={livePerformanceSeries}
