@@ -6,7 +6,10 @@ import process from 'node:process'
 import { spawnSync } from 'node:child_process'
 import { loadLocalEnv } from './local-env.mjs'
 import { inspectGitWorkingTree } from './lib/qore-git-state.mjs'
-import { liveInferenceProvenanceBlocks } from './lib/qore-live-inference-provenance.mjs'
+import {
+  liveInferenceProvenanceBlocks,
+  liveInferenceSourceTargetBlocks,
+} from './lib/qore-live-inference-provenance.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
 
@@ -20,6 +23,10 @@ const supervisorPrestart = rawArgs.includes('--supervisor-prestart')
 const mode = normalizeMode(argValue('--mode') ?? process.env.QORE_BROKER_MODE ?? 'dry-run')
 const { stateDir: weatherStateDir } = resolveLiveWeatherPaths(repoDir)
 const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(weatherStateDir, 'signal-intent-reconcile.json'))
+const liveInferencePath = path.resolve(
+  process.env.QORE_LIVE_INFERENCE_FILE
+    ?? path.join(repoDir, '.local', 'qore', 'live-inference', 'all-year-target.json'),
+)
 const maxSignalAgeDays = 1
 const checks = []
 
@@ -178,7 +185,9 @@ if (!supervisorPrestart && dataManifest) {
 }
 
 const signalHandoff = readJson(signalIntentPath)
+const sourceInference = readJson(liveInferencePath)
 const inferenceProvenanceBlocks = liveInferenceProvenanceBlocks(signalHandoff)
+const sourceTargetBlocks = liveInferenceSourceTargetBlocks(signalHandoff, sourceInference)
 let strategyArtifactBlocks
 try {
   strategyArtifactBlocks = strategyArtifactBindingBlocks(
@@ -189,7 +198,11 @@ try {
 } catch (error) {
   strategyArtifactBlocks = [`current reviewed strategy artifact is unavailable: ${error.message}`]
 }
-const liveInferenceBlocks = [...inferenceProvenanceBlocks, ...strategyArtifactBlocks]
+const liveInferenceBlocks = [
+  ...inferenceProvenanceBlocks,
+  ...sourceTargetBlocks,
+  ...strategyArtifactBlocks,
+]
 if (
   !supervisorPrestart
   && signalHandoff?.inference?.strategyId === 'ngas-all-year-beta'

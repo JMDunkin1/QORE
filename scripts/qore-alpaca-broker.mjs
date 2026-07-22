@@ -11,7 +11,10 @@ import {
 import { loadLocalEnv } from './local-env.mjs'
 import { inspectGitWorkingTree } from './lib/qore-git-state.mjs'
 import { assertQoreExecutionHost } from './lib/qore-execution-host.mjs'
-import { liveInferenceProvenanceBlocks } from './lib/qore-live-inference-provenance.mjs'
+import {
+  liveInferenceProvenanceBlocks,
+  liveInferenceSourceTargetBlocks,
+} from './lib/qore-live-inference-provenance.mjs'
 import { validateIndexBasketConfig } from './lib/qore-index-basket.mjs'
 import {
   brokerExecutionProfileDigestSha256,
@@ -29,6 +32,10 @@ const args = new Set(rawArgs)
 const { stateDir, operatorStatePath } = resolveLiveWeatherPaths(repoDir)
 const brokerDir = path.resolve(process.env.QORE_BROKER_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'broker'))
 const signalIntentPath = path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(stateDir, 'signal-intent-reconcile.json'))
+const liveInferencePath = path.resolve(
+  process.env.QORE_LIVE_INFERENCE_FILE
+    ?? path.join(repoDir, '.local', 'qore', 'live-inference', 'all-year-target.json'),
+)
 const marketReferencePath = path.resolve(process.env.QORE_LIVE_MARKET_REFERENCE_FILE ?? path.join(stateDir, 'market-reference-prices.json'))
 const riskStatePath = path.resolve(process.env.QORE_LIVE_RISK_STATE_FILE ?? path.join(stateDir, 'risk-and-kill-switch-state.json'))
 const brokerSnapshotPath = path.resolve(process.env.QORE_BROKER_ACCOUNT_SNAPSHOT_FILE ?? path.join(brokerDir, 'account-snapshot.json'))
@@ -428,7 +435,8 @@ function localTestEndpointsConfirmed() {
 function reviewedArtifactOverridesConfigured() {
   return Boolean(
     process.env.QORE_VALIDATION_INTEGRITY_FILE
-    || process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE,
+    || process.env.QORE_LIVE_STRATEGY_ARTIFACT_FILE
+    || process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES === '1',
   )
 }
 
@@ -470,15 +478,54 @@ function requireCredentials() {
 
 async function fetchAlpacaPayload(url, options, requestLabel) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), alpacaRequestTimeoutMs)
+  let activeReader = null
+  let requestTimedOut = false
+  const timeout = setTimeout(() => {
+    requestTimedOut = true
+    controller.abort()
+    // AbortController alone does not reliably wake a locked undici reader once
+    // response headers have arrived. Cancel the reader as the timeout fires.
+    void activeReader?.cancel().catch(() => {})
+  }, alpacaRequestTimeoutMs)
   try {
     const response = await fetch(url, { ...options, signal: controller.signal, redirect: 'error' })
-    const text = await response.text()
+    let text = ''
+    if (response.body) {
+      const reader = response.body.getReader()
+      activeReader = reader
+      const decoder = new TextDecoder()
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          text += decoder.decode(value, { stream: true })
+        }
+        text += decoder.decode()
+      } catch (error) {
+        // Node's fetch can leave a headers-complete, body-stalled undici socket
+        // alive after AbortController fires. Cancel the locked reader explicitly
+        // so the CLI can release its broker lock and terminate.
+        if (!requestTimedOut) void reader.cancel(error).catch(() => {})
+        throw error
+      } finally {
+        activeReader = null
+        try {
+          reader.releaseLock()
+        } catch {
+          // The abort/cancel path may already have released the stream lock.
+        }
+      }
+    }
+    if (requestTimedOut) {
+      const error = new Error('request timed out while reading the response body')
+      error.name = 'AbortError'
+      throw error
+    }
     let payload = null
     if (text) payload = JSON.parse(text)
     return { response, text, payload }
   } catch (error) {
-    if (error?.name === 'AbortError') {
+    if (requestTimedOut || error?.name === 'AbortError') {
       throw new Error(`${requestLabel} timed out after ${alpacaRequestTimeoutMs}ms.`)
     }
     throw error
@@ -923,6 +970,10 @@ function readSignalIntent() {
   const snapshot = readJsonFile(signalIntentPath)
   if (!snapshot?.intent) throw new Error(`Missing signal intent. Run npm run trade:weather:once to write ${relative(signalIntentPath)}.`)
   return snapshot
+}
+
+function readSourceInference() {
+  return readJsonFile(liveInferencePath)
 }
 
 function readMarketReference() {
@@ -1409,6 +1460,49 @@ async function assertMutationBoundary(options = {}) {
   }
 }
 
+function assertCancellationExecutionBinding(executionBinding, brokerOrderId) {
+  let currentSignalSnapshot
+  let currentSourceInferenceSnapshot
+  let currentRiskSnapshot
+  try {
+    currentSignalSnapshot = readSignalIntent()
+  } catch (error) {
+    throw new Error(`Final canonical signal recheck failed before canceling Alpaca order ${brokerOrderId}: ${error.message}`)
+  }
+  try {
+    currentSourceInferenceSnapshot = readSourceInference()
+  } catch (error) {
+    throw new Error(`Final source inference recheck failed before canceling Alpaca order ${brokerOrderId}: ${error.message}`)
+  }
+  try {
+    currentRiskSnapshot = readRiskState()
+  } catch (error) {
+    throw new Error(`Final canonical risk recheck failed before canceling Alpaca order ${brokerOrderId}: ${error.message}`)
+  }
+
+  // Everything below is synchronous. Keep this validation immediately adjacent
+  // to the DELETE so no network or filesystem await can stale a checked context.
+  const asOf = currentTime()
+  const blocks = [
+    ...localMutationBoundaryBlocks(),
+    ...finalSignalSnapshotBlocks(
+      currentSignalSnapshot,
+      executionBinding.signalSha256,
+      currentSourceInferenceSnapshot,
+      executionBinding.sourceInferenceSha256,
+      asOf,
+    ),
+    ...finalRiskSnapshotBlocks(currentRiskSnapshot, executionBinding.riskSha256, asOf),
+  ]
+  if (blocks.length) {
+    const error = new Error(
+      `Final execution snapshot recheck blocked cancellation of Alpaca order ${brokerOrderId}: ${blocks.join(' ')}`,
+    )
+    error.qoreMutationBoundary = true
+    throw error
+  }
+}
+
 async function alpacaMutationRequest(method, endpoint, body = null, { deferConfirmation = false } = {}) {
   brokerMutationStarted = true
   brokerMutationOutcomeUncertain = true
@@ -1422,7 +1516,7 @@ async function alpacaMutationRequest(method, endpoint, body = null, { deferConfi
   }
 }
 
-async function cancelOpenOrder(openOrder, expectedQuantities) {
+async function cancelOpenOrder(openOrder, expectedQuantities, executionBinding) {
   const brokerOrderId = openOrderId(openOrder)
   if (!brokerOrderId) {
     throw new Error(`Open order for ${openOrder?.symbol ?? 'unknown symbol'} is missing an Alpaca order id.`)
@@ -1432,6 +1526,7 @@ async function cancelOpenOrder(openOrder, expectedQuantities) {
     throw new Error(`Open order ${brokerOrderId} must have filled_qty exactly zero before safe replacement.`)
   }
   await assertMutationBoundary()
+  assertCancellationExecutionBinding(executionBinding, brokerOrderId)
   const raw = await alpacaMutationRequest(
     'DELETE',
     `/v2/orders/${encodeURIComponent(String(brokerOrderId))}`,
@@ -1482,13 +1577,13 @@ async function cancelOpenOrder(openOrder, expectedQuantities) {
   }
 }
 
-async function cancelMatchingOpenOrders(openOrders, plannedOrders, expectedQuantities) {
+async function cancelMatchingOpenOrders(openOrders, plannedOrders, expectedQuantities, executionBinding) {
   const plannedSymbols = new Set(plannedOrders.map((order) => order.symbol))
   const cancellationResults = []
   let haltedReason = null
   for (const openOrder of matchingOpenOrders(openOrders, plannedSymbols)) {
     try {
-      cancellationResults.push(await cancelOpenOrder(openOrder, expectedQuantities))
+      cancellationResults.push(await cancelOpenOrder(openOrder, expectedQuantities, executionBinding))
     } catch (error) {
       cancellationResults.push({
         symbol: openOrder?.symbol ?? 'unknown',
@@ -1504,9 +1599,9 @@ async function cancelMatchingOpenOrders(openOrders, plannedOrders, expectedQuant
   return { cancellationResults, haltedReason }
 }
 
-async function replaceOpenOrdersForPlannedSymbols(openOrders, plannedOrders, expectedQuantities) {
+async function replaceOpenOrdersForPlannedSymbols(openOrders, plannedOrders, expectedQuantities, executionBinding) {
   const plannedSymbols = new Set(plannedOrders.map((order) => order.symbol))
-  const cancellation = await cancelMatchingOpenOrders(openOrders, plannedOrders, expectedQuantities)
+  const cancellation = await cancelMatchingOpenOrders(openOrders, plannedOrders, expectedQuantities, executionBinding)
   const { cancellationResults, haltedReason } = cancellation
   const blockedSymbols = new Set()
   let verification = {
@@ -2003,7 +2098,7 @@ function liveRiskPolicyGate({ signalSnapshot, riskSnapshot, marketSnapshot, quot
   return { blocks, warnings, checks }
 }
 
-function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnapshot, quoteError, brokerSnapshot, prices, targets, current, plannedOrders, skippedOrders, exposurePlan }) {
+function contextBlocks({ signalSnapshot, sourceInferenceSnapshot, riskSnapshot, marketSnapshot, quoteSnapshot, quoteError, brokerSnapshot, prices, targets, current, plannedOrders, skippedOrders, exposurePlan }) {
   const blocks = []
   const warnings = []
   const staleBlock = signalAgeBlock(signalSnapshot)
@@ -2017,6 +2112,9 @@ function contextBlocks({ signalSnapshot, riskSnapshot, marketSnapshot, quoteSnap
   if (brokerMode !== 'dry-run') {
     for (const detail of liveInferenceProvenanceBlocks(signalSnapshot, currentTime())) {
       blocks.push(`Current live forecast provenance is invalid: ${detail}.`)
+    }
+    for (const detail of liveInferenceSourceTargetBlocks(signalSnapshot, sourceInferenceSnapshot)) {
+      blocks.push(`Current source inference target binding is invalid: ${detail}.`)
     }
     for (const detail of liveStrategyArtifactBlocks(signalSnapshot)) {
       blocks.push(`Current live strategy artifact is invalid: ${detail}.`)
@@ -2094,17 +2192,27 @@ function summarizeExecution({ preflightApproved, dryRun, plannedOrders, orderRes
   return { executionStatus: 'submitted', executionOk: true, failedOrderCount, replacementBlockedOrderCount, skippedOrderCount }
 }
 
-function executionSnapshotBinding(signalSnapshot, riskSnapshot) {
+function executionSnapshotBinding(signalSnapshot, sourceInferenceSnapshot, riskSnapshot) {
   return {
     signalSha256: fullSnapshotHash(signalSnapshot),
+    sourceInferenceSha256: fullSnapshotHash(sourceInferenceSnapshot),
     riskSha256: fullSnapshotHash(riskSnapshot),
   }
 }
 
-function finalSignalSnapshotBlocks(signalSnapshot, expectedSha256, asOf) {
+function finalSignalSnapshotBlocks(
+  signalSnapshot,
+  expectedSha256,
+  sourceInferenceSnapshot,
+  expectedSourceInferenceSha256,
+  asOf,
+) {
   const blocks = []
   if (fullSnapshotHash(signalSnapshot) !== expectedSha256) {
     blocks.push('Canonical signal intent changed after reconcile planning; the fixed execution plan is stale.')
+  }
+  if (fullSnapshotHash(sourceInferenceSnapshot) !== expectedSourceInferenceSha256) {
+    blocks.push('Canonical source inference changed after reconcile planning; the fixed execution plan is stale.')
   }
   try {
     buildTargets(signalSnapshot, 1)
@@ -2119,6 +2227,9 @@ function finalSignalSnapshotBlocks(signalSnapshot, expectedSha256, asOf) {
   }
   for (const detail of liveInferenceProvenanceBlocks(signalSnapshot, asOf)) {
     blocks.push(`Current live forecast provenance is invalid: ${detail}.`)
+  }
+  for (const detail of liveInferenceSourceTargetBlocks(signalSnapshot, sourceInferenceSnapshot)) {
+    blocks.push(`Current source inference target binding is invalid: ${detail}.`)
   }
   if (brokerMode !== 'dry-run') {
     for (const detail of liveStrategyArtifactBlocks(signalSnapshot)) {
@@ -2173,11 +2284,17 @@ async function dispatchOrderAtFinalSubmissionBoundary(order, executionBinding, p
   }
 
   let currentSignalSnapshot
+  let currentSourceInferenceSnapshot
   let currentRiskSnapshot
   try {
     currentSignalSnapshot = readSignalIntent()
   } catch (error) {
     throw new Error(`Final canonical signal recheck failed before order submission: ${error.message}`)
+  }
+  try {
+    currentSourceInferenceSnapshot = readSourceInference()
+  } catch (error) {
+    throw new Error(`Final source inference recheck failed before order submission: ${error.message}`)
   }
   try {
     currentRiskSnapshot = readRiskState()
@@ -2221,7 +2338,13 @@ async function dispatchOrderAtFinalSubmissionBoundary(order, executionBinding, p
     ...finalExposurePlan.blocks,
     ...clockSafetyBlocks(clock, 'Mutation-boundary Alpaca market clock', asOf),
     ...freshQuoteAssessment(order.freshQuote, order.symbol, asOf).blocks,
-    ...finalSignalSnapshotBlocks(currentSignalSnapshot, executionBinding.signalSha256, asOf),
+    ...finalSignalSnapshotBlocks(
+      currentSignalSnapshot,
+      executionBinding.signalSha256,
+      currentSourceInferenceSnapshot,
+      executionBinding.sourceInferenceSha256,
+      asOf,
+    ),
     ...finalRiskSnapshotBlocks(currentRiskSnapshot, executionBinding.riskSha256, asOf),
   ]
   if (needsUngBorrow) {
@@ -2438,7 +2561,12 @@ async function reconcileOnce() {
   const signalSnapshot = readSignalIntent()
   const marketSnapshot = readMarketReference()
   const riskSnapshot = readRiskState()
-  const executionBinding = executionSnapshotBinding(signalSnapshot, riskSnapshot)
+  const sourceInferenceSnapshot = readSourceInference()
+  const executionBinding = executionSnapshotBinding(
+    signalSnapshot,
+    sourceInferenceSnapshot,
+    riskSnapshot,
+  )
   const brokerSnapshot = await getAlpacaBrokerSnapshot({ allowOffline: brokerMode === 'dry-run' })
   const accountEquityUsd = Number(brokerSnapshot?.account?.equityUsd ?? 0)
   const targets = buildTargets(signalSnapshot, accountEquityUsd)
@@ -2473,6 +2601,7 @@ async function reconcileOnce() {
   })
   const gateResult = contextBlocks({
     signalSnapshot,
+    sourceInferenceSnapshot,
     riskSnapshot,
     marketSnapshot,
     quoteSnapshot,
@@ -2520,6 +2649,7 @@ async function reconcileOnce() {
       brokerSnapshot.openOrders,
       plannedOrders,
       currentQuantities,
+      executionBinding,
     )
     if (openOrderReplacement.halted) {
       const replacementReason =
@@ -2830,6 +2960,16 @@ function requestBrokerShutdown(signal) {
   })()
 }
 
+async function flushCliOutput() {
+  await Promise.all([process.stdout, process.stderr].map((stream) => new Promise((resolve) => {
+    if (!stream.writable || stream.destroyed) {
+      resolve()
+      return
+    }
+    stream.write('', () => resolve())
+  })))
+}
+
 process.once('SIGINT', () => requestBrokerShutdown('SIGINT'))
 process.once('SIGTERM', () => requestBrokerShutdown('SIGTERM'))
 
@@ -2841,4 +2981,12 @@ if (loop) {
   }
 }
 
-if (once || statusOnly) await runCommand()
+if (once || statusOnly) {
+  await runCommand()
+  // A canceled, headers-complete undici response can retain an internal socket
+  // after the command and lock cleanup have finished. This is a short-lived CLI;
+  // flush its complete result, then terminate instead of letting transport state
+  // keep a status/preflight/reconcile process alive indefinitely.
+  await flushCliOutput()
+  process.exit(process.exitCode ?? 0)
+}

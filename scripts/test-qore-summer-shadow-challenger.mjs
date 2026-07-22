@@ -141,25 +141,55 @@ assert.equal(
 const summerSummary = JSON.parse(fs.readFileSync(summerSummaryPath, 'utf8'))
 const winterSummary = JSON.parse(fs.readFileSync(winterSummaryPath, 'utf8'))
 const embeddedShadow = summerSummary.researchOnly?.prospectiveShadowChallenger
-assert.deepEqual(
+assert.match(
   summerShadowCompatibilityFailures({
     activeComponentContract: executableLiveComponentContract.summer,
     embeddedShadow,
+  }).join('; '),
+  /does not match the current frozen contract|digest is stale or malformed|does not bind corrected temporal inputs/,
+  'the checked-in hours-0 shadow comparator must stop accumulating prospective evidence after the temporal-contract rotation',
+)
+const correctedEmbeddedShadow = {
+  ...SUMMER_SHADOW_CHALLENGER,
+  contractDigestSha256: SUMMER_SHADOW_CHALLENGER_DIGEST_SHA256,
+  comparator: {
+    candidateId: SUMMER_SHADOW_CHALLENGER.comparatorCandidateId,
+    selectedContractUnchanged: true,
+    forecastTemporalContractId:
+      executableLiveComponentContract.summer.implementation.forecastTemporalContract.contractId,
+  },
+}
+assert.deepEqual(
+  summerShadowCompatibilityFailures({
+    activeComponentContract: executableLiveComponentContract.summer,
+    embeddedShadow: correctedEmbeddedShadow,
   }),
   [],
-  'the checked-in Summer shadow contract must match its active comparator',
 )
 assert.match(
   summerShadowCompatibilityFailures({
     activeComponentContract: executableLiveComponentContract.summer,
-    embeddedShadow: { ...embeddedShadow, role: 'execution-candidate' },
+    embeddedShadow: {
+      ...correctedEmbeddedShadow,
+      comparator: {
+        ...correctedEmbeddedShadow.comparator,
+        forecastTemporalContractId: null,
+      },
+    },
+  }).join('; '),
+  /does not bind corrected temporal inputs/,
+)
+assert.match(
+  summerShadowCompatibilityFailures({
+    activeComponentContract: executableLiveComponentContract.summer,
+    embeddedShadow: { ...correctedEmbeddedShadow, role: 'execution-candidate' },
   }).join('; '),
   /does not match the current frozen contract/,
 )
 assert.match(
   summerShadowCompatibilityFailures({
     activeComponentContract: executableLiveComponentContract.summer,
-    embeddedShadow: { ...embeddedShadow, contractDigestSha256: '0'.repeat(64) },
+    embeddedShadow: { ...correctedEmbeddedShadow, contractDigestSha256: '0'.repeat(64) },
   }).join('; '),
   /digest is stale or malformed/,
 )
@@ -169,7 +199,7 @@ assert.match(
       ...executableLiveComponentContract.summer,
       selected: { ...active, candidateId: 'obsolete-comparator' },
     },
-    embeddedShadow,
+    embeddedShadow: correctedEmbeddedShadow,
   }).join('; '),
   /does not match the frozen comparator/,
 )
@@ -179,7 +209,7 @@ assert.match(
       ...executableLiveComponentContract.summer,
       selected: { ...active, weatherFraction: 0.99 },
     },
-    embeddedShadow,
+    embeddedShadow: correctedEmbeddedShadow,
   }).join('; '),
   /parameters do not match|component contract does not match/,
 )
@@ -192,7 +222,7 @@ assert.match(
         storageDeficitHeatMultiplier: 9,
       },
     },
-    embeddedShadow,
+    embeddedShadow: correctedEmbeddedShadow,
   }).join('; '),
   /component contract does not match/,
 )
@@ -267,6 +297,8 @@ assert.equal(
 )
 
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'qore-summer-shadow-'))
+const priorNodeEnv = process.env.NODE_ENV
+const priorArtifactOverrideCapability = process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES
 try {
   const projectedTarget = ({ targetDate, shadow = false }) => ({
     strategyId: shadow ? 'ngas-summer-shadow-challenger' : 'ngas-all-year-beta',
@@ -333,7 +365,21 @@ try {
     () => validateSummerShadowTargetRecord({ ...record, inputProvenance: null }),
     /inputProvenance must be an object/,
   )
-  const first = await appendSummerShadowTargetRecord({ stateDir: temporaryRoot, record })
+  await assert.rejects(
+    appendSummerShadowTargetRecord({
+      stateDir: temporaryRoot,
+      record,
+      testNow: '2026-07-23T12:00:00.000Z',
+    }),
+    /explicit reviewed-artifact test capability/,
+  )
+  process.env.NODE_ENV = 'test'
+  process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES = '1'
+  const first = await appendSummerShadowTargetRecord({
+    stateDir: temporaryRoot,
+    record,
+    testNow: '2026-07-23T12:00:00.000Z',
+  })
   assert.equal(first.written, true)
   const originalBytes = await readFile(first.filePath)
   const fileStat = await stat(first.filePath)
@@ -341,12 +387,48 @@ try {
   assert.equal(fileStat.mode & 0o077, 0, 'shadow evidence must not grant group or other permissions')
 
   const changedRecord = { ...record, generatedAt: '2026-07-23T12:01:00.000Z' }
-  const second = await appendSummerShadowTargetRecord({ stateDir: temporaryRoot, record: changedRecord })
+  const second = await appendSummerShadowTargetRecord({
+    stateDir: temporaryRoot,
+    record: changedRecord,
+    testNow: '2026-07-23T12:01:00.000Z',
+  })
   assert.deepEqual(
     { written: second.written, reason: second.reason },
     { written: false, reason: 'already-recorded' },
   )
   assert.deepEqual(await readFile(first.filePath), originalBytes, 'a repeated run overwrote the first shadow record')
+
+  const backfill = await appendSummerShadowTargetRecord({
+    stateDir: temporaryRoot,
+    record: {
+      ...record,
+      targetDate: '2026-07-24',
+      generatedAt: '2026-07-24T12:00:00.000Z',
+      activeTarget: projectedTarget({ targetDate: '2026-07-24' }),
+      shadowTarget: projectedTarget({ targetDate: '2026-07-24', shadow: true }),
+    },
+    testNow: '2026-07-27T12:00:00.000Z',
+  })
+  assert.deepEqual(
+    { written: backfill.written, reason: backfill.reason },
+    { written: false, reason: 'not-current-target-session-date' },
+  )
+
+  const staleGeneration = await appendSummerShadowTargetRecord({
+    stateDir: temporaryRoot,
+    record: {
+      ...record,
+      targetDate: '2026-07-24',
+      generatedAt: '2026-07-24T12:00:00.000Z',
+      activeTarget: projectedTarget({ targetDate: '2026-07-24' }),
+      shadowTarget: projectedTarget({ targetDate: '2026-07-24', shadow: true }),
+    },
+    testNow: '2026-07-24T12:02:00.001Z',
+  })
+  assert.deepEqual(
+    { written: staleGeneration.written, reason: staleGeneration.reason },
+    { written: false, reason: 'generation-time-not-current' },
+  )
 
   const lateRecord = {
     ...record,
@@ -355,7 +437,11 @@ try {
     activeTarget: projectedTarget({ targetDate: '2026-07-24' }),
     shadowTarget: projectedTarget({ targetDate: '2026-07-24', shadow: true }),
   }
-  const late = await appendSummerShadowTargetRecord({ stateDir: temporaryRoot, record: lateRecord })
+  const late = await appendSummerShadowTargetRecord({
+    stateDir: temporaryRoot,
+    record: lateRecord,
+    testNow: '2026-07-24T13:30:00.000Z',
+  })
   assert.deepEqual(
     { written: late.written, reason: late.reason },
     { written: false, reason: 'at-or-after-session-open' },
@@ -368,7 +454,11 @@ try {
     activeTarget: projectedTarget({ targetDate: '2026-11-26' }),
     shadowTarget: projectedTarget({ targetDate: '2026-11-26', shadow: true }),
   }
-  const holiday = await appendSummerShadowTargetRecord({ stateDir: temporaryRoot, record: holidayRecord })
+  const holiday = await appendSummerShadowTargetRecord({
+    stateDir: temporaryRoot,
+    record: holidayRecord,
+    testNow: '2026-11-26T12:00:00.000Z',
+  })
   assert.deepEqual(
     { written: holiday.written, reason: holiday.reason },
     { written: false, reason: 'not-us-equity-market-session' },
@@ -379,9 +469,21 @@ try {
     'holiday shadow evidence must not be created',
   )
 } finally {
+  if (priorNodeEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = priorNodeEnv
+  if (priorArtifactOverrideCapability === undefined) {
+    delete process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES
+  } else {
+    process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES = priorArtifactOverrideCapability
+  }
   await rm(temporaryRoot, { recursive: true, force: true })
 }
 
 console.log(
   `summer shadow challenger passed digest=${SUMMER_SHADOW_CHALLENGER_DIGEST_SHA256} activeGas=${activeTargetBefore.gasPosition} shadowGas=${shadowTarget.gasPosition}`,
 )
+
+// Keep the separately sealed spatial/revision shadow inside the existing
+// research-shadow test entrypoint without changing the production-sealed
+// package command surface.
+await import('./test-qore-spatial-demand-revision-shadow.mjs')

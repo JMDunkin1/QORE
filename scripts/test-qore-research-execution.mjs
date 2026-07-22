@@ -341,8 +341,19 @@ assert.deepEqual(
 )
 
 const summaryPath = path.join(repoRoot, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json')
+const summerSummaryPath = path.join(
+  repoRoot,
+  'data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json',
+)
 const tradesPath = path.join(repoRoot, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv')
 const displayCurvePath = path.join(repoRoot, 'data/qore/research/strategy-agent-runs/ngas-all-year-beta/display-curve.csv')
+for (const checkedInSummaryPath of [summaryPath, summerSummaryPath]) {
+  const sizeBytes = fs.statSync(checkedInSummaryPath).size
+  assert.ok(
+    sizeBytes <= 512 * 1024,
+    `${path.relative(repoRoot, checkedInSummaryPath)} must stay at or below 512 KiB; received ${sizeBytes} bytes`,
+  )
+}
 const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
 const tradesRaw = fs.readFileSync(tradesPath)
 const parsedAllYearTrades = Papa.parse(tradesRaw.toString('utf8'), { header: true, skipEmptyLines: true })
@@ -470,9 +481,10 @@ assert.equal(
   summary.contract.liveInference.componentContractDigestSha256,
   liveComponentContractDigestSha256(summary.contract.liveInference.componentContract),
 )
-assert.equal(
+assert.notEqual(
   summary.contract.liveInference.componentContractDigestSha256,
   executableLiveComponentContractDigestSha256,
+  'legacy hours-0 Summer research must not match the corrected executable component contract',
 )
 assert.equal(summary.search.selectionUsedHoldout, false)
 assert.equal(summary.search.eligibleCandidateCount, summary.status === 'research-baseline' ? 1 : 0)
@@ -500,18 +512,29 @@ assert.deepEqual(Object.keys(summary.validation.promotionGates).sort(), [
   'pristineForwardEvidence',
   'strategyContractSeal',
   'summerComponent',
+  'summerTemporalContract',
   'trainMaxDrawdown',
   'validationMaxDrawdown',
   'winterComponent',
 ])
-assert.equal(summary.validation.liveTargetParity.exactTargetParity, true)
+assert.equal(summary.validation.liveTargetParity.exactTargetParity, false)
+assert.equal(summary.validation.liveTargetParity.inputContractValid, false)
 assert.equal(summary.validation.liveTargetParity.comparedRowCount, 1947)
 assert.equal(summary.validation.liveTargetParity.mismatchCount, 0)
+assert.equal(summary.validation.liveTargetParity.componentStrategyIdMismatchCount, 0)
+assert.equal(summary.validation.liveTargetParity.windowIdMismatchCount, 0)
+assert.ok(summary.validation.liveTargetParity.inputContractFailureCount > 20)
+assert.equal(summary.validation.liveTargetParity.inputContractFailureSamples.length, 20)
+assert.match(summary.validation.liveTargetParity.inputContractFailureDigestSha256, /^[a-f0-9]{64}$/)
+assert.equal(Object.hasOwn(summary.validation.liveTargetParity, 'inputContractFailures'), false)
 assert.equal(summary.validation.liveTargetParity.components.summer.comparedRowCount, 585)
 assert.equal(summary.validation.liveTargetParity.components.summer.mismatchCount, 0)
+assert.equal(summary.validation.liveTargetParity.components.summer.targetReplayExact, true)
+assert.equal(summary.validation.liveTargetParity.components.summer.inputContractValid, false)
 assert.equal(summary.validation.liveTargetParity.components.winter.comparedRowCount, 1362)
 assert.equal(summary.validation.liveTargetParity.components.winter.mismatchCount, 0)
-assert.equal(summary.validation.promotionGates.liveTargetParity, true)
+assert.equal(summary.validation.liveTargetParity.components.winter.exactTargetParity, true)
+assert.equal(summary.validation.promotionGates.liveTargetParity, false)
 assert.equal(
   summary.validation.selectionRealityCheck.sampleCount,
   rows.filter((row) => row.entryTradeDate <= summary.contract.selectionEnd).length,

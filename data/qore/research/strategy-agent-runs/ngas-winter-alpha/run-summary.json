@@ -1,6 +1,6 @@
 {
   "artifactSchemaVersion": 3,
-  "generatedAt": "2026-07-22T04:29:44.848Z",
+  "generatedAt": "2026-07-22T18:29:37.349Z",
   "strategyId": "ngas-winter-alpha",
   "data": {
     "frozenInputManifest": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/frozen-inputs/input-manifest.json",
@@ -40,6 +40,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 105732,
           "acceptedLocationRowCount": 105714,
           "quarantinedLocationRowCount": 18,
@@ -79,6 +80,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 105876,
           "acceptedLocationRowCount": 105858,
           "quarantinedLocationRowCount": 18,
@@ -120,6 +122,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 105732,
           "acceptedLocationRowCount": 105714,
           "quarantinedLocationRowCount": 18,
@@ -159,6 +162,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 105876,
           "acceptedLocationRowCount": 105858,
           "quarantinedLocationRowCount": 18,
@@ -198,6 +202,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 38052,
           "acceptedLocationRowCount": 38052,
           "quarantinedLocationRowCount": 0,
@@ -216,6 +221,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 41238,
           "acceptedLocationRowCount": 41238,
           "quarantinedLocationRowCount": 0,
@@ -234,6 +240,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 3528,
           "acceptedLocationRowCount": 3528,
           "quarantinedLocationRowCount": 0,
@@ -252,6 +259,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 9810,
           "acceptedLocationRowCount": 9810,
           "quarantinedLocationRowCount": 0,
@@ -270,6 +278,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-versioned-legacy-score-location-aggregate-v1",
           "inputLocationRowCount": 26766,
           "acceptedLocationRowCount": 26766,
           "quarantinedLocationRowCount": 0,

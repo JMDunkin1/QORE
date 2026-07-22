@@ -8,29 +8,46 @@ import {
   selectedContracts,
 } from './qore-live-all-year-inference.mjs'
 import { loadEiaStorageReleaseCalendar } from './eia-release-time.mjs'
-import { validateForecastCalendarTemperatures } from './qore-weather-data-quality.mjs'
+import {
+  LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  validateForecastCalendarTemperatures,
+} from './qore-weather-data-quality.mjs'
+import {
+  SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  compactSummerForecastFailures,
+  summarizeSummerForecastTemporalInputs,
+} from './qore-summer-forecast-contract.mjs'
 
 const SUMMER_FORECAST_CALENDARS = Object.freeze([
   Object.freeze({
     sourceId: 'gfs',
     signalScores: 'research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
     locationAnomalies: 'weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
+    manifest: 'weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json',
   }),
   Object.freeze({
     sourceId: 'gefs-mean',
     signalScores: 'research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
     locationAnomalies: 'weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
+    manifest: 'weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json',
   }),
 ])
 
 export const LIVE_TARGET_PARITY_POLICY = Object.freeze({
-  schemaVersion: 3,
-  policyId: 'all-year-component-production-source-exact-target-replay-v3',
+  schemaVersion: 6,
+  policyId: 'all-year-component-production-source-exact-target-identity-and-input-contract-replay-v6',
   componentStrategyId: 'ngas-all-year-beta',
   componentStrategyIds: Object.freeze(['ngas-summer-alpha', 'ngas-winter-alpha']),
-  comparisonFields: Object.freeze(['gasPosition', 'indexFraction', 'thesisKind']),
-  gasPositionTolerance: 0.001,
-  indexFractionTolerance: 0.001,
+  comparisonFields: Object.freeze([
+    'gasPosition',
+    'indexFraction',
+    'thesisKind',
+    'componentStrategyId',
+    'windowId',
+  ]),
+  comparisonPrecisionDecimals: 4,
+  gasPositionTolerance: 0,
+  indexFractionTolerance: 0,
   replayContract: Object.freeze({
     targetDateField: 'entryTradeDate',
     storage: 'versioned-EIA-lower48-weekly-with-reviewed-release-calendar',
@@ -41,6 +58,7 @@ export const LIVE_TARGET_PARITY_POLICY = Object.freeze({
       targetSeasonField: 'targetDate',
       targetSeasonMonths: Object.freeze([5, 6, 7, 8, 9]),
       marketDays: 'versioned-NG=F-adjusted-close',
+      temporalContract: SUMMER_FORECAST_TEMPORAL_CONTRACT,
     }),
     winter: Object.freeze({
       expectedTargets: 'versioned-ngas-winter-alpha-selected-trades',
@@ -104,6 +122,7 @@ function versionedInputPaths(repoDir, manifest) {
     sourceId: calendar.sourceId,
     signalScores: path.join(dataRoot, calendar.signalScores),
     locationAnomalies: path.join(dataRoot, calendar.locationAnomalies),
+    manifest: path.join(dataRoot, calendar.manifest),
   }))
   return {
     manifestPath: path.join(dataRoot, 'dataset-manifest.json'),
@@ -160,6 +179,7 @@ export function versionedLiveTargetParityInputDigestSha256(repoDir = process.cwd
     ...paths.summerForecastCalendars.flatMap((calendar) => [
       calendar.signalScores,
       calendar.locationAnomalies,
+      calendar.manifest,
     ]),
     ...paths.winterForecastCalendars.flatMap((calendar) => [
       calendar.signalScores,
@@ -205,17 +225,39 @@ export function assessLiveTargetParity({
     }
     seenDates.add(targetDate)
 
-    const expectedGasPosition = finiteNumber(
+    const expectedRawGasPosition = finiteNumber(
       row?.ungPosition,
       `Live-target parity expected UNG position on ${targetDate}`,
     )
-    const expectedIndexFraction = finiteNumber(
+    const expectedRawIndexFraction = finiteNumber(
       row?.indexFraction,
       `Live-target parity expected index fraction on ${targetDate}`,
     )
+    const expectedGasPosition = round(
+      expectedRawGasPosition,
+      policy.comparisonPrecisionDecimals,
+    )
+    const expectedIndexFraction = round(
+      expectedRawIndexFraction,
+      policy.comparisonPrecisionDecimals,
+    )
+    const expectedGasPositionCanonical = expectedRawGasPosition === expectedGasPosition
+    const expectedIndexFractionCanonical = expectedRawIndexFraction === expectedIndexFraction
     const expectedThesisKind = String(row?.thesisKind ?? '')
     if (!expectedThesisKind) {
       throw new Error(`Live-target parity expected thesisKind is missing on ${targetDate}.`)
+    }
+    const expectedComponentStrategyId = String(
+      row?.componentStrategyId
+        ?? (expectedGasPosition === 0 ? 'index-fallback' : row?.strategyId)
+        ?? '',
+    )
+    if (!expectedComponentStrategyId) {
+      throw new Error(`Live-target parity expected componentStrategyId is missing on ${targetDate}.`)
+    }
+    const expectedWindowId = String(row?.windowId ?? '')
+    if (!expectedWindowId) {
+      throw new Error(`Live-target parity expected windowId is missing on ${targetDate}.`)
     }
     const replay = inferTarget({
       forecastRows,
@@ -225,37 +267,79 @@ export function assessLiveTargetParity({
       storageReleaseCalendar,
       targetDate,
     })
-    const replayGasPosition = finiteNumber(
+    const replayRawGasPosition = finiteNumber(
       replay?.gasPosition,
       `Live-target parity replay gas position on ${targetDate}`,
     )
-    const replayIndexFraction = finiteNumber(
+    const replayRawIndexFraction = finiteNumber(
       replay?.indexFraction,
       `Live-target parity replay index fraction on ${targetDate}`,
     )
+    const replayGasPosition = round(
+      replayRawGasPosition,
+      policy.comparisonPrecisionDecimals,
+    )
+    const replayIndexFraction = round(
+      replayRawIndexFraction,
+      policy.comparisonPrecisionDecimals,
+    )
+    const replayGasPositionCanonical = replayRawGasPosition === replayGasPosition
+    const replayIndexFractionCanonical = replayRawIndexFraction === replayIndexFraction
     const replayThesisKind = String(replay?.thesisKind ?? '')
     if (!replayThesisKind) {
       throw new Error(`Live-target parity replay thesisKind is missing on ${targetDate}.`)
     }
+    const replayComponentStrategyId = String(replay?.componentStrategyId ?? '')
+    if (!replayComponentStrategyId) {
+      throw new Error(`Live-target parity replay componentStrategyId is missing on ${targetDate}.`)
+    }
+    const replayWindowId = String(replay?.windowId ?? '')
+    if (!replayWindowId) {
+      throw new Error(`Live-target parity replay windowId is missing on ${targetDate}.`)
+    }
     const gasPositionDifference = round(replayGasPosition - expectedGasPosition)
     const indexFractionDifference = round(replayIndexFraction - expectedIndexFraction)
-    const gasPositionMatches = Math.abs(gasPositionDifference) <= policy.gasPositionTolerance
-    const indexFractionMatches = Math.abs(indexFractionDifference) <= policy.indexFractionTolerance
+    const gasPositionMatches = expectedGasPositionCanonical
+      && replayGasPositionCanonical
+      && Math.abs(gasPositionDifference) <= policy.gasPositionTolerance
+    const indexFractionMatches = expectedIndexFractionCanonical
+      && replayIndexFractionCanonical
+      && Math.abs(indexFractionDifference) <= policy.indexFractionTolerance
     const thesisKindMatches = replayThesisKind === expectedThesisKind
+    const componentStrategyIdMatches = replayComponentStrategyId === expectedComponentStrategyId
+    const windowIdMatches = replayWindowId === expectedWindowId
     return {
       targetDate,
       expectedGasPosition,
       replayGasPosition,
+      expectedGasPositionCanonical,
+      replayGasPositionCanonical,
+      ...(!expectedGasPositionCanonical ? { expectedRawGasPosition } : {}),
+      ...(!replayGasPositionCanonical ? { replayRawGasPosition } : {}),
       gasPositionDifference,
       expectedIndexFraction,
       replayIndexFraction,
+      expectedIndexFractionCanonical,
+      replayIndexFractionCanonical,
+      ...(!expectedIndexFractionCanonical ? { expectedRawIndexFraction } : {}),
+      ...(!replayIndexFractionCanonical ? { replayRawIndexFraction } : {}),
       indexFractionDifference,
       expectedThesisKind,
       replayThesisKind,
+      expectedComponentStrategyId,
+      replayComponentStrategyId,
+      expectedWindowId,
+      replayWindowId,
       gasPositionMatches,
       indexFractionMatches,
       thesisKindMatches,
-      matches: gasPositionMatches && indexFractionMatches && thesisKindMatches,
+      componentStrategyIdMatches,
+      windowIdMatches,
+      matches: gasPositionMatches
+        && indexFractionMatches
+        && thesisKindMatches
+        && componentStrategyIdMatches
+        && windowIdMatches,
     }
   })
   const mismatches = comparisons.filter((row) => !row.matches)
@@ -267,6 +351,9 @@ export function assessLiveTargetParity({
     gasPositionMismatchCount: mismatches.filter((row) => !row.gasPositionMatches).length,
     indexFractionMismatchCount: mismatches.filter((row) => !row.indexFractionMatches).length,
     thesisKindMismatchCount: mismatches.filter((row) => !row.thesisKindMatches).length,
+    componentStrategyIdMismatchCount:
+      mismatches.filter((row) => !row.componentStrategyIdMatches).length,
+    windowIdMismatchCount: mismatches.filter((row) => !row.windowIdMatches).length,
     exactTargetParity: mismatches.length === 0,
     comparisonDigestSha256: crypto
       .createHash('sha256')
@@ -306,20 +393,32 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
     const scoreRows = []
     const locationRows = []
     const inputFiles = []
+    const temporalInputs = []
     for (const calendar of calendars) {
       const sourceId = String(calendar?.sourceId ?? '')
       if (!sourceId || !calendar?.signalScores || !calendar?.locationAnomalies) {
         throw new Error(`${label} contains an incomplete forecast calendar entry.`)
       }
-      for (const row of readCsv(calendar.signalScores, `${sourceId} ${label} forecast scores`)) {
+      const calendarScoreRows = readCsv(calendar.signalScores, `${sourceId} ${label} forecast scores`)
+      const calendarLocationRows = readCsv(calendar.locationAnomalies, `${sourceId} ${label} forecast locations`)
+      for (const row of calendarScoreRows) {
         scoreRows.push({ ...row, sourceId })
       }
-      for (const row of readCsv(calendar.locationAnomalies, `${sourceId} ${label} forecast locations`)) {
+      for (const row of calendarLocationRows) {
         locationRows.push({ ...row, sourceId })
       }
       inputFiles.push(calendar.signalScores, calendar.locationAnomalies)
+      if (calendar.manifest) inputFiles.push(calendar.manifest)
+      temporalInputs.push({
+        sourceId,
+        manifest: calendar.manifest
+          ? readJson(calendar.manifest, `${sourceId} ${label} manifest`)
+          : null,
+        scoreRows: calendarScoreRows,
+        locationRows: calendarLocationRows,
+      })
     }
-    return { scoreRows, locationRows, inputFiles }
+    return { scoreRows, locationRows, inputFiles, temporalInputs }
   }
 
   const summerProductionForecastSourceIds = [...selectedContracts.summer.sourceIds]
@@ -338,6 +437,27 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
   const summerInputs = readForecastCalendars(
     inputPaths.summerForecastCalendars,
     'dedicated Summer lead-7 calendar',
+  )
+  const summerTemporalInputs = summerInputs.temporalInputs.map((input) =>
+    summarizeSummerForecastTemporalInputs(input))
+  const summerInputContractFailures = summerTemporalInputs.flatMap((summary) =>
+    summary.failures.map((failure) => `${summary.sourceId}: ${failure}`))
+  if (summerTemporalInputs.length !== summerProductionForecastSourceIds.length) {
+    summerInputContractFailures.push(
+      `expected ${summerProductionForecastSourceIds.length} temporal inputs but found ${summerTemporalInputs.length}`,
+    )
+  }
+  const summerInputContractValid = summerInputContractFailures.length === 0
+  const compactSummerTemporalInputs = summerTemporalInputs.map((summary) => {
+    const { failures, ...metadata } = summary
+    return { ...metadata, ...compactSummerForecastFailures(failures) }
+  })
+  const summerInputContractDiagnostics = compactSummerForecastFailures(
+    summerInputContractFailures,
+  )
+  const winterInputContractFailures = []
+  const winterInputContractDiagnostics = compactSummerForecastFailures(
+    winterInputContractFailures,
   )
   const summerTemperatureQuality = validateForecastCalendarTemperatures({
     scoreRows: summerInputs.scoreRows,
@@ -381,6 +501,7 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
     winterTemperatureQuality.scoreRows,
     winterTemperatureQuality.locationRows,
     'winter',
+    { scoreLocationAggregateContract: LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT },
   ).filter((row) => winterSourceSet.has(row.sourceId))
   if (!winterForecastRows.length) {
     throw new Error('Versioned production-source Winter forecast replay is empty.')
@@ -419,16 +540,23 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
   const components = {
     summer: {
       componentStrategyId: 'ngas-summer-alpha',
-      status: summerAssessment.exactTargetParity ? 'pass' : 'fail',
+      status: summerAssessment.exactTargetParity && summerInputContractValid ? 'pass' : 'fail',
       productionForecastSourceIds: summerProductionForecastSourceIds,
       productionSignalSourceIds: [...selectedContracts.summer.sourceIds],
       forecastRowCount: summerForecastRows.length,
       weatherTemperatureQuality: summerTemperatureQuality.diagnostics,
+      temporalInputs: compactSummerTemporalInputs,
+      inputContractValid: summerInputContractValid,
+      inputContractFailureCount: summerInputContractDiagnostics.failureCount,
+      inputContractFailureDigestSha256: summerInputContractDiagnostics.failureDigestSha256,
+      inputContractFailureSamples: summerInputContractDiagnostics.failureSamples,
       inputFiles: {
         expectedTargets: path.relative(repoDir, summerExpectedTargetsPath),
         forecastCalendars: summerInputs.inputFiles.map((filePath) => path.relative(repoDir, filePath)),
       },
       ...summerAssessment,
+      targetReplayExact: summerAssessment.exactTargetParity,
+      exactTargetParity: summerAssessment.exactTargetParity && summerInputContractValid,
     },
     winter: {
       componentStrategyId: 'ngas-winter-alpha',
@@ -437,6 +565,10 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
       productionSignalSourceIds: [...selectedContracts.winterFollow.liveSourceIds],
       forecastRowCount: winterForecastRows.length,
       weatherTemperatureQuality: winterTemperatureQuality.diagnostics,
+      inputContractValid: true,
+      inputContractFailureCount: winterInputContractDiagnostics.failureCount,
+      inputContractFailureDigestSha256: winterInputContractDiagnostics.failureDigestSha256,
+      inputContractFailureSamples: winterInputContractDiagnostics.failureSamples,
       inputFiles: {
         datasetManifest: path.relative(repoDir, manifestPath),
         expectedTargets: path.relative(repoDir, winterExpectedTargetsPath),
@@ -452,6 +584,12 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
       ...row,
     })))
   const exactTargetParity = components.summer.exactTargetParity && components.winter.exactTargetParity
+  const inputContractFailures = [
+    ...summerInputContractFailures.map((failure) => `ngas-summer-alpha: ${failure}`),
+    ...winterInputContractFailures.map((failure) => `ngas-winter-alpha: ${failure}`),
+  ]
+  const inputContractValid = inputContractFailures.length === 0
+  const inputContractDiagnostics = compactSummerForecastFailures(inputContractFailures)
   const comparisonDigestSha256 = crypto
     .createHash('sha256')
     .update(JSON.stringify({
@@ -472,6 +610,10 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
       winter: components.winter.productionSignalSourceIds,
     },
     forecastRowCount: components.summer.forecastRowCount + components.winter.forecastRowCount,
+    inputContractValid,
+    inputContractFailureCount: inputContractDiagnostics.failureCount,
+    inputContractFailureDigestSha256: inputContractDiagnostics.failureDigestSha256,
+    inputContractFailureSamples: inputContractDiagnostics.failureSamples,
     inputDigestSha256,
     inputFiles: {
       storage: path.relative(repoDir, storagePath),
@@ -494,6 +636,11 @@ export function evaluateVersionedLiveTargetParity(repoDir = process.cwd(), { cap
       components.summer.indexFractionMismatchCount + components.winter.indexFractionMismatchCount,
     thesisKindMismatchCount:
       components.summer.thesisKindMismatchCount + components.winter.thesisKindMismatchCount,
+    componentStrategyIdMismatchCount:
+      components.summer.componentStrategyIdMismatchCount
+      + components.winter.componentStrategyIdMismatchCount,
+    windowIdMismatchCount:
+      components.summer.windowIdMismatchCount + components.winter.windowIdMismatchCount,
     exactTargetParity,
     comparisonDigestSha256,
     mismatches,

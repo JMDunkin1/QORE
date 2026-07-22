@@ -1,14 +1,29 @@
 #!/usr/bin/env node
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { loadLocalEnv } from './local-env.mjs'
 import { SUMMER_FORECAST_LOCATIONS } from './lib/qore-summer-location-universe.mjs'
 import {
+  FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  assertForecastScoreLocationAggregates,
   assertForecastLocationTemperatures,
+  forecastLocationGroupKey,
   validateForecastCalendarTemperatures,
 } from './lib/qore-weather-data-quality.mjs'
+import {
+  SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT,
+  SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+  forecastValidTimeForTargetOffset,
+  forecastLocationSampleSetDigestSha256,
+  forecastSampleProvenanceDigestSha256,
+  forecastSampleVectorDigestSha256,
+  forecastTemporalValueBindingFailures,
+  summerForecastTemporalSamplingMetadata,
+  validateForecastTimeOffsets,
+} from './lib/qore-summer-forecast-contract.mjs'
 
 const require = createRequire(import.meta.url)
 const usePortableGribParser =
@@ -31,7 +46,36 @@ const normalStartDate = validatedDate(process.env.QORE_NORMAL_START ?? '1991-01-
 const normalEndDate = validatedDate(process.env.QORE_NORMAL_END ?? '2020-12-31', 'normal end')
 const runHour = validatedRunHour(process.env.QORE_GFS_RUN_HOUR ?? '00')
 const leadDays = validatedIntegerList(listFromEnv('QORE_GFS_LEAD_DAYS', [1, 2, 3, 7, 8, 9, 10]), 'lead days', 0, 100)
-const validHoursUtc = validatedIntegerList(listFromEnv('QORE_GFS_VALID_HOURS', [0]), 'valid hours', 0, 23)
+if (process.env.QORE_GFS_VALID_OFFSETS_HOURS && process.env.QORE_GFS_VALID_HOURS) {
+  throw new Error('Set only QORE_GFS_VALID_OFFSETS_HOURS; QORE_GFS_VALID_HOURS is retained only as a legacy alias.')
+}
+const validTimeOffsetsHours = validateForecastTimeOffsets(
+  listFromEnv(
+    process.env.QORE_GFS_VALID_OFFSETS_HOURS
+      ? 'QORE_GFS_VALID_OFFSETS_HOURS'
+      : 'QORE_GFS_VALID_HOURS',
+    [0],
+  ).map(Number),
+  { label: 'QORE GFS valid-time offsets' },
+)
+const requestedTemporalContractId = process.env.QORE_GFS_TEMPORAL_CONTRACT_ID || null
+const temporalSampling = summerForecastTemporalSamplingMetadata({
+  runHourUtc: runHour,
+  leadDays,
+  offsets: validTimeOffsetsHours,
+  requestedContractId: requestedTemporalContractId,
+})
+if (
+  temporalSampling.summerExecutionEligible
+  && (
+    normalStartDate !== SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.startDate
+    || normalEndDate !== SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.endDate
+  )
+) {
+  throw new Error(
+    `Corrected Summer forecasts require reviewed NASA POWER normals ${SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.startDate} through ${SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.endDate}.`,
+  )
+}
 const coolingSeasonOnly = truthy(process.env.QORE_GFS_COOLING_SEASON_ONLY)
 const heatingSeasonOnly = truthy(process.env.QORE_GFS_HEATING_SEASON_ONLY ?? (coolingSeasonOnly ? 'false' : 'true'))
 const resume = truthy(process.env.QORE_GFS_RESUME)
@@ -143,7 +187,7 @@ if (!sourceConfig) {
   throw new Error(`Unsupported QORE_FORECAST_SOURCE=${forecastSource}. Expected one of: ${Object.keys(sourceConfigs).join(', ')}`)
 }
 const rangeLabel = `${startDate}-${endDate}`
-const validHourLabel = validHoursUtc.join('-')
+const validHourLabel = validTimeOffsetsHours.join('-')
 const leadLabel = leadDays.join('-')
 const defaultBaseName = `${sourceConfig.outputPrefix}-${runHour}z-daily-forecast-calendar-${rangeLabel}-leads-${leadLabel}-hours-${validHourLabel}`
 const baseName = validatedOutputBasename(
@@ -168,7 +212,15 @@ const anomalyHeaders = [
   'forecastMeanF',
   'normalMeanF',
   'forecastAnomalyF',
+  'normalSourceContractId',
+  'normalSourceContractDigestSha256',
+  'normalSourcePayloadDigestSha256',
+  'forecastTemporalContractId',
+  'sampledValidTimeOffsetsHours',
   'sampledValidHoursUtc',
+  'sampledForecastValuesF',
+  'forecastSampleProvenanceDigestSha256',
+  'forecastSampleVectorDigestSha256',
   'nearestGridLatitude',
   'nearestGridLongitude',
   'source',
@@ -184,7 +236,12 @@ const scoreHeaders = [
   'extremeCount',
   'sampledWeight',
   'locationCount',
+  'forecastTemporalContractId',
+  'sampledValidTimeOffsetsHours',
   'sampledValidHoursUtc',
+  'forecastSampleProvenanceJson',
+  'forecastSampleProvenanceDigestSha256',
+  'locationSampleVectorSetDigestSha256',
   'qualifies',
   'source',
 ]
@@ -358,6 +415,19 @@ async function ensureDir(dir) {
   await mkdir(dir, { recursive: true })
 }
 
+async function ensureOutputFileHeader(filePath, headers) {
+  if (!existsSync(filePath)) {
+    await writeFile(filePath, `${headers.join(',')}\n`)
+    return
+  }
+  if (!resume) return
+  const text = await readFile(filePath, 'utf8')
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? ''
+  if (parseCsvLine(firstLine).join('\0') === headers.join('\0')) return
+  const rows = parseCsv(text)
+  await writeFile(filePath, `${headers.join(',')}\n${rowsToCsv(rows, headers)}`)
+}
+
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -382,11 +452,14 @@ async function fetchText(url) {
   return text
 }
 
-async function fetchJson(url) {
+async function fetchJsonWithPayloadDigest(url) {
   const response = await fetchWithTimeout(url)
   const text = await response.text()
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 180)}`)
-  return JSON.parse(text)
+  return {
+    json: JSON.parse(text),
+    sourcePayloadDigestSha256: createHash('sha256').update(text).digest('hex'),
+  }
 }
 
 async function fetchRange(url, start, end) {
@@ -412,6 +485,15 @@ async function fetchWithRetry(label, fn, retries = 2) {
 }
 
 async function fetchForecastIndex(issueDate, fhr) {
+  if (
+    process.env.QORE_GFS_OBJECT_BASE
+    && !(
+      process.env.NODE_ENV === 'test'
+      && process.env.QORE_TEST_LIVE_INFERENCE_OVERRIDES === '1'
+    )
+  ) {
+    throw new Error('QORE_GFS_OBJECT_BASE is restricted to the explicit reviewed test-input capability.')
+  }
   const bases = process.env.QORE_GFS_OBJECT_BASE
     ? [process.env.QORE_GFS_OBJECT_BASE]
     : sourceConfig.objectBases(issueDate, fhr)
@@ -420,7 +502,12 @@ async function fetchForecastIndex(issueDate, fhr) {
     const idxUrl = `${gribUrl}.idx`
     try {
       const text = await fetchWithRetry(`index ${idxUrl}`, () => fetchText(idxUrl))
-      return { gribUrl, idxUrl, text }
+      return {
+        gribUrl,
+        idxUrl,
+        text,
+        indexPayloadDigestSha256: createHash('sha256').update(text).digest('hex'),
+      }
     } catch (error) {
       errors.push(`${idxUrl}: ${error.message}`)
     }
@@ -609,7 +696,19 @@ function parseFirstMessage(bytes) {
 
 async function fetchForecastSamples(issueDate, fhr) {
   if (sourceConfig.openMeteoModel) {
-    const url = new URL('https://single-runs-api.open-meteo.com/v1/forecast')
+    if (
+      process.env.QORE_OPEN_METEO_SINGLE_RUNS_BASE_URL
+      && !(
+        process.env.NODE_ENV === 'test'
+        && process.env.QORE_TEST_LIVE_INFERENCE_OVERRIDES === '1'
+      )
+    ) {
+      throw new Error('QORE_OPEN_METEO_SINGLE_RUNS_BASE_URL is restricted to the explicit reviewed test-input capability.')
+    }
+    const url = new URL(
+      process.env.QORE_OPEN_METEO_SINGLE_RUNS_BASE_URL
+        ?? 'https://single-runs-api.open-meteo.com/v1/forecast',
+    )
     url.searchParams.set('latitude', locations.map((location) => location.latitude).join(','))
     url.searchParams.set('longitude', locations.map((location) => location.longitude).join(','))
     url.searchParams.set('run', `${issueDate}T${runHour}:00`)
@@ -618,13 +717,18 @@ async function fetchForecastSamples(issueDate, fhr) {
     url.searchParams.set('temperature_unit', 'fahrenheit')
     url.searchParams.set('forecast_days', '16')
     url.searchParams.set('timezone', 'UTC')
-    const json = await fetchWithRetry(`Open-Meteo ${forecastSource} ${issueDate}`, () => fetchJson(url))
+    const { json, sourcePayloadDigestSha256 } = await fetchWithRetry(
+      `Open-Meteo ${forecastSource} ${issueDate}`,
+      () => fetchJsonWithPayloadDigest(url),
+    )
     const responses = Array.isArray(json) ? json : [json]
     const validTime = new Date(Date.parse(`${issueDate}T${runHour}:00:00Z`) + fhr * 3600000).toISOString().slice(0, 16)
     return {
       sourceUrl: url.toString(),
       indexUrl: '',
       indexLine: '',
+      sourceIndexPayloadDigestSha256: '',
+      sourcePayloadDigestSha256,
       samples: Object.fromEntries(locations.map((location, index) => {
         const response = responses[index] ?? responses[0]
         const timeIndex = response?.hourly?.time?.indexOf(validTime) ?? -1
@@ -638,7 +742,7 @@ async function fetchForecastSamples(issueDate, fhr) {
       })),
     }
   }
-  const { gribUrl, idxUrl, text } = await fetchForecastIndex(issueDate, fhr)
+  const { gribUrl, idxUrl, text, indexPayloadDigestSha256 } = await fetchForecastIndex(issueDate, fhr)
   const { start, end, indexLine } = targetRangeFromIndex(text)
   const bytes = await fetchWithRetry(`grib ${gribUrl}`, () => fetchRange(gribUrl, start, end))
   const message = parseFirstMessage(bytes)
@@ -647,6 +751,8 @@ async function fetchForecastSamples(issueDate, fhr) {
     sourceUrl: gribUrl,
     indexUrl: idxUrl,
     indexLine,
+    sourceIndexPayloadDigestSha256: indexPayloadDigestSha256,
+    sourcePayloadDigestSha256: createHash('sha256').update(bytes).digest('hex'),
     samples: Object.fromEntries(locations.map((location) => [location.id, sampleLocation(message, location)])),
   }
 }
@@ -657,8 +763,35 @@ async function loadNormalMeans() {
   for (const location of locations) {
     const filePath = path.join(dataRoot, 'weather', 'nasa-power', 'normals', `${location.id}-${normalStartDate}-${normalEndDate}.json`)
     try {
-      const json = JSON.parse(await readFile(filePath, 'utf8'))
+      const raw = await readFile(filePath, 'utf8')
+      const json = JSON.parse(raw)
+      if (temporalSampling.summerExecutionEligible) {
+        const normalMetadataMatches =
+          json.header?.api?.name === SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.apiName
+          && json.header?.api?.version === SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.apiVersion
+          && Array.isArray(json.header?.sources)
+          && json.header.sources.length === 1
+          && json.header.sources[0] === SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.upstreamSource
+          && json.header?.time_standard === SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.timeStandard
+          && json.header?.start === compactDate(SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.startDate)
+          && json.header?.end === compactDate(SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.endDate)
+          && json.parameters?.T2M?.units === 'C'
+        if (!normalMetadataMatches) {
+          throw new Error('NASA POWER normal metadata does not match the reviewed source/version contract')
+        }
+      }
       const values = json.properties?.parameter?.T2M ?? {}
+      const normalSourcePayloadDigestSha256 = createHash('sha256').update(raw).digest('hex')
+      const expectedNormalSourcePayloadDigestSha256 =
+        SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.payloadDigestSha256ByLocationId[location.id]
+      if (
+        temporalSampling.summerExecutionEligible
+        && normalSourcePayloadDigestSha256 !== expectedNormalSourcePayloadDigestSha256
+      ) {
+        throw new Error(
+          'NASA POWER normal payload does not match the reviewed retained payload for this location',
+        )
+      }
       const byMonthDay = new Map()
       for (const [date, value] of Object.entries(values)) {
         if (typeof value !== 'number' || value <= -900) continue
@@ -666,7 +799,13 @@ async function loadNormalMeans() {
         byMonthDay.set(monthDay, [...(byMonthDay.get(monthDay) ?? []), fahrenheitFromCelsius(value)])
       }
       for (const [monthDay, monthDayValues] of byMonthDay.entries()) {
-        means.set(`${location.id}-${monthDay}`, average(monthDayValues))
+        means.set(`${location.id}-${monthDay}`, {
+          meanF: average(monthDayValues),
+          normalSourceContractId: SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.contractId,
+          normalSourceContractDigestSha256:
+            SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+          normalSourcePayloadDigestSha256,
+        })
       }
     } catch (error) {
       missing.push({ locationId: location.id, file: path.relative(repoDir, filePath), error: error.message })
@@ -731,13 +870,26 @@ async function prepareOutputFiles() {
     await rm(scorePath, { force: true })
     await rm(returnsPath, { force: true })
   }
-  if (!existsSync(anomalyPath)) await writeFile(anomalyPath, `${anomalyHeaders.join(',')}\n`)
-  if (!existsSync(scorePath)) await writeFile(scorePath, `${scoreHeaders.join(',')}\n`)
-  if (!existsSync(returnsPath)) await writeFile(returnsPath, `${returnHeaders.join(',')}\n`)
+  await ensureOutputFileHeader(anomalyPath, anomalyHeaders)
+  await ensureOutputFileHeader(scorePath, scoreHeaders)
+  await ensureOutputFileHeader(returnsPath, returnHeaders)
 }
 
 function rowKey(row) {
   return `${row.issueDate}|${row.leadDays}`
+}
+
+function forecastValueBindingGroupKey(row) {
+  return [row.issueDate, row.targetDate, row.leadDays, row.windowId, row.modelId].join('|')
+}
+
+function rowMatchesTemporalSampling(row) {
+  const sampledOffsets = String(row?.sampledValidTimeOffsetsHours ?? '')
+  const legacyAlias = String(row?.sampledValidHoursUtc ?? '')
+  const expectedOffsets = validTimeOffsetsHours.join('|')
+  return row?.forecastTemporalContractId === temporalSampling.contractId
+    && sampledOffsets === expectedOffsets
+    && legacyAlias === expectedOffsets
 }
 
 async function countRowsByKey(filePath) {
@@ -763,18 +915,46 @@ async function loadResumeState(expectedReturnRows) {
   const scoreCounts = await countRowsByKey(scorePath)
   const anomalyCounts = await countRowsByKey(anomalyPath)
   const returnCounts = await countRowsByKey(returnsPath)
+  const existingScoreRows = parseCsv(await readFile(scorePath, 'utf8'))
   const existingLocationRows = parseCsv(await readFile(anomalyPath, 'utf8'))
   const temperatureQuality = validateForecastCalendarTemperatures({
+    scoreRows: existingScoreRows,
     locationRows: existingLocationRows,
     mode: 'quarantine',
     label: `${forecastSource} resumed forecast calendar`,
     sourceId: forecastSource,
+    scoreLocationAggregateContract: FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
   })
   const implausibleKeys = new Set(
     temperatureQuality.diagnostics.quarantinedGroups.map(
       (group) => `${group.issueDate}|${group.leadDays}`,
     ),
   )
+  const temporalMismatchKeys = new Set(
+    [...existingScoreRows, ...existingLocationRows]
+      .filter((row) => !rowMatchesTemporalSampling(row))
+      .map(rowKey),
+  )
+  const locationsByGroup = new Map()
+  for (const row of existingLocationRows) {
+    const groupKey = forecastValueBindingGroupKey(row)
+    locationsByGroup.set(groupKey, [...(locationsByGroup.get(groupKey) ?? []), row])
+  }
+  const valueBindingMismatchKeys = new Set(existingScoreRows
+    .filter((scoreRow) => (
+      temperatureQuality.invalidGroupKeys.has(
+        forecastLocationGroupKey(scoreRow, { sourceId: forecastSource }),
+      )
+      || (
+        temporalSampling.summerExecutionEligible
+        && forecastTemporalValueBindingFailures({
+          scoreRows: [scoreRow],
+          locationRows: locationsByGroup.get(forecastValueBindingGroupKey(scoreRow)) ?? [],
+          sourceId: forecastSource,
+        }).length > 0
+      )
+    ))
+    .map(rowKey))
   const allKeys = new Set([...scoreCounts.keys(), ...anomalyCounts.keys(), ...returnCounts.keys()])
   const completeKeys = new Set()
   const prunedKeys = new Set()
@@ -784,7 +964,12 @@ async function loadResumeState(expectedReturnRows) {
       scoreCounts.get(key) === 1 &&
       anomalyCounts.get(key) === locations.length &&
       returnCounts.get(key) === expectedReturnRows
-    if (isComplete && !implausibleKeys.has(key)) {
+    if (
+      isComplete
+      && !implausibleKeys.has(key)
+      && !temporalMismatchKeys.has(key)
+      && !valueBindingMismatchKeys.has(key)
+    ) {
       completeKeys.add(key)
     } else {
       prunedKeys.add(key)
@@ -795,7 +980,7 @@ async function loadResumeState(expectedReturnRows) {
     await rewriteRowsWithoutKeys(anomalyPath, anomalyHeaders, prunedKeys)
     await rewriteRowsWithoutKeys(scorePath, scoreHeaders, prunedKeys)
     await rewriteRowsWithoutKeys(returnsPath, returnHeaders, prunedKeys)
-    console.warn(`${forecastSource} calendar resume pruned ${prunedKeys.size} incomplete or physically implausible output groups`)
+    console.warn(`${forecastSource} calendar resume pruned ${prunedKeys.size} incomplete, temporally incompatible, or physically implausible output groups`)
   }
 
   return { completeKeys, prunedKeys }
@@ -826,34 +1011,101 @@ function buildWorkItems(doneKeys, options = {}) {
 
 async function buildItem(item, normalMeans) {
   const validSamples = []
-  for (const validHour of validHoursUtc) {
-    const fhr = item.leadDays * 24 + validHour
+  for (const validTimeOffsetHours of validTimeOffsetsHours) {
+    const fhr = item.leadDays * 24 + validTimeOffsetHours
     const samples = await fetchForecastSamples(item.issueDate, fhr)
-    validSamples.push({ validHour, fhr, ...samples })
+    validSamples.push({
+      validTimeOffsetHours,
+      validTimeUtc: forecastValidTimeForTargetOffset({
+        targetDate: item.targetDate,
+        offsetHours: validTimeOffsetHours,
+      }),
+      fhr,
+      ...samples,
+    })
   }
 
+  const modelId = sourceConfig.modelId()
+  const sampleProvenance = validSamples.map((sample) => ({
+    offsetHours: sample.validTimeOffsetHours,
+    validTimeUtc: sample.validTimeUtc,
+    forecastHour: sample.fhr,
+    sourceUrl: sample.sourceUrl,
+    indexUrl: sample.indexUrl,
+    indexLine: sample.indexLine,
+    sourceIndexPayloadDigestSha256: sample.sourceIndexPayloadDigestSha256,
+    sourcePayloadDigestSha256: sample.sourcePayloadDigestSha256,
+  }))
+  const forecastSampleProvenanceJson = JSON.stringify(sampleProvenance)
+  const forecastSampleProvenanceDigest = forecastSampleProvenanceDigestSha256({
+    contractId: temporalSampling.contractId,
+    issueDate: item.issueDate,
+    targetDate: item.targetDate,
+    leadDays: item.leadDays,
+    modelId,
+    samples: sampleProvenance,
+  })
+
   const locationRows = locations.map((location) => {
-    const values = validSamples.map((sample) => sample.samples[location.id]).filter(Boolean)
-    const forecastMeanF = average(values.map((value) => value.valueF))
+    const values = validSamples.map((sample) => sample.samples[location.id])
+    if (values.some((value) => !value)) {
+      throw new Error(`${forecastSource} sample vector is incomplete for ${location.id}.`)
+    }
+    // Persist JavaScript's decimal round-trip representation so recomputing the
+    // mean preserves the pre-binding mean-then-round statistic exactly.
+    const sampleValuesF = values.map((value) => Number(value.valueF))
+    const forecastMeanRawF = average(sampleValuesF)
+    const forecastMeanF = round(forecastMeanRawF, 3)
     const monthDay = compactDate(item.targetDate).slice(4)
-    const normalMeanF = normalMeans.get(`${location.id}-${monthDay}`)
+    const normal = normalMeans.get(`${location.id}-${monthDay}`)
+    if (!normal) throw new Error(`Missing reviewed normal for ${location.id} month-day ${monthDay}.`)
+    const normalMeanF = round(normal.meanF, 3)
     const nearest = values[0] ?? {}
-    return {
+    const row = {
       issueDate: item.issueDate,
       targetDate: item.targetDate,
       leadDays: item.leadDays,
       windowId: item.windowId,
-      modelId: sourceConfig.modelId(),
+      modelId,
       locationId: location.id,
       region: location.region,
       weight: location.weight,
-      forecastMeanF: round(forecastMeanF, 3),
-      normalMeanF: round(normalMeanF, 3),
-      forecastAnomalyF: round(forecastMeanF - normalMeanF, 3),
-      sampledValidHoursUtc: validHoursUtc.join('|'),
+      forecastMeanF,
+      normalMeanF,
+      // Preserve the pre-binding statistic: anomaly uses the full-precision
+      // forecast and normal aggregates; their display fields remain 3dp.
+      forecastAnomalyF: round(forecastMeanRawF - normal.meanF, 3),
+      normalSourceContractId: normal.normalSourceContractId,
+      normalSourceContractDigestSha256: normal.normalSourceContractDigestSha256,
+      normalSourcePayloadDigestSha256: normal.normalSourcePayloadDigestSha256,
+      forecastTemporalContractId: temporalSampling.contractId,
+      sampledValidTimeOffsetsHours: validTimeOffsetsHours.join('|'),
+      sampledValidHoursUtc: validTimeOffsetsHours.join('|'),
+      sampledForecastValuesF: sampleValuesF.join('|'),
+      forecastSampleProvenanceDigestSha256: forecastSampleProvenanceDigest,
       nearestGridLatitude: nearest.nearestGridLatitude,
       nearestGridLongitude: nearest.nearestGridLongitude,
       source: sourceConfig.source,
+    }
+    return {
+      ...row,
+      forecastSampleVectorDigestSha256: forecastSampleVectorDigestSha256({
+        contractId: row.forecastTemporalContractId,
+        issueDate: row.issueDate,
+        targetDate: row.targetDate,
+        leadDays: row.leadDays,
+        modelId: row.modelId,
+        locationId: row.locationId,
+        weight: row.weight,
+        offsets: validTimeOffsetsHours,
+        sampleValuesF,
+        normalMeanF: row.normalMeanF,
+        forecastAnomalyF: row.forecastAnomalyF,
+        normalSourceContractId: row.normalSourceContractId,
+        normalSourceContractDigestSha256: row.normalSourceContractDigestSha256,
+        normalSourcePayloadDigestSha256: row.normalSourcePayloadDigestSha256,
+        provenanceDigestSha256: forecastSampleProvenanceDigest,
+      }),
     }
   })
   assertForecastLocationTemperatures(locationRows, {
@@ -874,18 +1126,36 @@ async function buildItem(item, normalMeans) {
     targetDate: item.targetDate,
     leadDays: item.leadDays,
     windowId: item.windowId,
-    modelId: sourceConfig.modelId(),
+    modelId,
     weightedAnomalyF: round(weightedAnomalyF, 3),
     coveragePct: round(coveragePct, 3),
     extremeCount: locationRows.filter((row) => row.forecastAnomalyF <= arcticBlastThresholds.extremeAnomalyF).length,
     sampledWeight: round(sampledWeight, 3),
     locationCount: locationRows.length,
-    sampledValidHoursUtc: validHoursUtc.join('|'),
+    forecastTemporalContractId: temporalSampling.contractId,
+    sampledValidTimeOffsetsHours: validTimeOffsetsHours.join('|'),
+    sampledValidHoursUtc: validTimeOffsetsHours.join('|'),
+    forecastSampleProvenanceJson,
+    forecastSampleProvenanceDigestSha256: forecastSampleProvenanceDigest,
+    locationSampleVectorSetDigestSha256: forecastLocationSampleSetDigestSha256({
+      contractId: temporalSampling.contractId,
+      issueDate: item.issueDate,
+      targetDate: item.targetDate,
+      leadDays: item.leadDays,
+      modelId,
+      locationRows,
+    }),
     qualifies:
       weightedAnomalyF <= arcticBlastThresholds.coldAnomalyF &&
       coveragePct >= arcticBlastThresholds.minCoveragePct,
     source: sourceConfig.source,
   }
+  assertForecastScoreLocationAggregates({
+    scoreRows: [scoreRow],
+    locationRows,
+    sourceId: forecastSource,
+    contract: FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  })
 
   return { item, locationRows, scoreRow }
 }
@@ -963,7 +1233,7 @@ async function main() {
   }
 
   console.log(
-    `${forecastSource} calendar start: ${items.length} items, range ${startDate}..${endDate}, leads ${leadDays.join(',')}, valid hours ${validHoursUtc.join(',')}, concurrency ${concurrency}`,
+    `${forecastSource} calendar start: ${items.length} items, range ${startDate}..${endDate}, leads ${leadDays.join(',')}, valid-time offsets ${validTimeOffsetsHours.join(',')}, temporal contract ${temporalSampling.contractId}, concurrency ${concurrency}`,
   )
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
   await writeQueue
@@ -975,7 +1245,11 @@ async function main() {
     range: { startDate, issueEndDate, targetEndDate: endDate },
     runHour,
     leadDays,
-    validHoursUtc,
+    validTimeOffsetsHoursFromTargetUtcMidnight: validTimeOffsetsHours,
+    // Retained for compatibility with historical readers; values are offsets
+    // from target UTC midnight, so 24 intentionally means the next midnight.
+    validHoursUtc: validTimeOffsetsHours,
+    temporalSampling,
     heatingSeasonOnly,
     coolingSeasonOnly,
     allowPartial,

@@ -22,12 +22,56 @@ import {
 } from './lib/qore-summer-shadow-challenger.mjs'
 import { summarizeSummerForecastLocationBreadth } from './lib/qore-summer-forecast-coverage.mjs'
 import {
+  LEGACY_FORECAST_TEMPORAL_CONTRACT,
+  LEGACY_FORECAST_TEMPORAL_CONTRACT_ID,
+  SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+  assertSummerForecastTemporalInputs,
+} from './lib/qore-summer-forecast-contract.mjs'
+import {
   assertPaperEligibleStrategyArtifact,
   assertStrategyArtifactContractIntegrity,
 } from './lib/qore-live-strategy-artifact.mjs'
 
 const repoDir = process.cwd()
 loadLocalEnv(repoDir)
+const reviewedTestInputOverridesEnabled =
+  process.env.NODE_ENV === 'test'
+  && process.env.QORE_TEST_LIVE_INFERENCE_OVERRIDES === '1'
+const testOnlyPathOverrideNames = [
+  'QORE_LIVE_INFERENCE_GAS_MARKET_FILE',
+  'QORE_LIVE_INFERENCE_INDEX_MARKET_FILE',
+  'QORE_LIVE_INFERENCE_STORAGE_FILE',
+  'QORE_LIVE_ACTUAL_WEATHER_FILE',
+  'QORE_GFS_OBJECT_BASE',
+  'QORE_LIVE_MARKET_HISTORY_YAHOO_BASE_URL',
+  'QORE_OPEN_METEO_SINGLE_RUNS_BASE_URL',
+]
+const testOnlyFlagOverrideNames = [
+  'QORE_LIVE_INFERENCE_SKIP_FETCH',
+  'QORE_LIVE_INFERENCE_SKIP_MARKET_REFRESH',
+]
+const testOnlyReviewedValueDefaults = Object.freeze({
+  QORE_LIVE_INFERENCE_LOOKBACK_DAYS: '16',
+  QORE_LIVE_INFERENCE_MAX_MARKET_AGE_DAYS: '4',
+})
+const enabledOverrideFlag = (value) =>
+  ['1', 'true', 'yes', 'on'].includes(String(value ?? '').toLowerCase())
+const activeTestOnlyInputOverrideNames = [
+  ...testOnlyPathOverrideNames.filter((name) => Boolean(process.env[name])),
+  ...testOnlyFlagOverrideNames.filter((name) => enabledOverrideFlag(process.env[name])),
+  ...Object.entries(testOnlyReviewedValueDefaults)
+    .filter(([name, reviewedValue]) => (
+      process.env[name] !== undefined
+      && String(Number(process.env[name])) !== String(Number(reviewedValue))
+    ))
+    .map(([name]) => name),
+]
+for (const name of activeTestOnlyInputOverrideNames) {
+  if (!reviewedTestInputOverridesEnabled) {
+    throw new Error(`${name} is restricted to the explicit reviewed test-input capability.`)
+  }
+}
 const shadowOnly = process.argv.includes('--summer-shadow')
 const dataRoot = path.join(repoDir, 'data', 'qore')
 const stateDir = path.resolve(process.env.QORE_LIVE_INFERENCE_STATE_DIR ?? path.join(repoDir, '.local', 'qore', 'live-inference'))
@@ -147,17 +191,28 @@ function sourcePaths(sourceId) {
 async function collectNoaa(sourceId) {
   const paths = sourcePaths(sourceId)
   const result = await run(process.execPath, ['scripts/build-gfs-forecast-calendar.mjs'], {
+    QORE_DATA_ROOT: dataRoot,
+    QORE_NORMAL_START: '1991-01-01',
+    QORE_NORMAL_END: '2020-12-31',
     QORE_FORECAST_SOURCE: sourceId,
     QORE_GFS_RUN_HOUR: '00',
     QORE_GFS_CALENDAR_START: addDays(today, -lookbackDays),
     QORE_GFS_CALENDAR_ISSUE_END: today,
     QORE_GFS_CALENDAR_END: addDays(today, 10),
     QORE_GFS_LEAD_DAYS: requiredLeads.join(','),
+    QORE_GFS_VALID_HOURS: '',
+    QORE_GFS_VALID_OFFSETS_HOURS: summer ? '6,12,18,24' : '0',
+    QORE_GFS_TEMPORAL_CONTRACT_ID: summer
+      ? SUMMER_FORECAST_TEMPORAL_CONTRACT_ID
+      : LEGACY_FORECAST_TEMPORAL_CONTRACT_ID,
     QORE_GFS_HEATING_SEASON_ONLY: '0',
     QORE_GFS_COOLING_SEASON_ONLY: '0',
     QORE_GFS_RESUME: '1',
     QORE_GFS_ALLOW_PARTIAL: '1',
     QORE_GFS_CONCURRENCY: process.env.QORE_LIVE_INFERENCE_FETCH_CONCURRENCY ?? '4',
+    QORE_GFS_MAX_ITEMS: '0',
+    QORE_GFS_FORCE_DEFAULT_OUTPUT_BASENAME: '0',
+    QORE_GFS_PORTABLE_GRIB_PARSER: '1',
     QORE_FETCH_TIMEOUT_MS: String(fetchTimeoutMs),
     QORE_GFS_OUTPUT_ROOT: forecastRoot,
     QORE_GFS_OUTPUT_BASENAME: paths.base,
@@ -171,9 +226,22 @@ async function loadForecastRows() {
   const scores = []; const locations = []; const manifests = []
   for (const sourceId of collectedSources) {
     const paths = sourcePaths(sourceId)
-    for (const row of await readCsv(paths.score)) scores.push({ ...row, sourceId })
-    for (const row of await readCsv(paths.locations)) locations.push({ ...row, sourceId })
-    if (existsSync(paths.manifest)) manifests.push(JSON.parse(await readFile(paths.manifest, 'utf8')))
+    const sourceScores = await readCsv(paths.score)
+    const sourceLocations = await readCsv(paths.locations)
+    const sourceManifest = existsSync(paths.manifest)
+      ? JSON.parse(await readFile(paths.manifest, 'utf8'))
+      : null
+    if (summer) {
+      assertSummerForecastTemporalInputs({
+        sourceId,
+        manifest: sourceManifest,
+        scoreRows: sourceScores,
+        locationRows: sourceLocations,
+      })
+    }
+    for (const row of sourceScores) scores.push({ ...row, sourceId })
+    for (const row of sourceLocations) locations.push({ ...row, sourceId })
+    if (sourceManifest) manifests.push(sourceManifest)
   }
   const locationCoverage = new Map()
   for (const row of locations) {
@@ -393,6 +461,7 @@ async function main() {
     await run(process.execPath, ['scripts/qore-live-market-history.mjs'], {
       QORE_LIVE_MARKET_HISTORY_DATE: today,
       QORE_LIVE_MARKET_HISTORY_STATE_DIR: marketHistoryStateDir,
+      QORE_INDEX_BASKET_CONFIG: path.join(dataRoot, 'market', 'index-basket-config.json'),
     })
   }
   const { rows: days, validation: marketValidation } = await marketDays()
@@ -438,12 +507,20 @@ async function main() {
   const snapshot = {
     generatedAt: new Date().toISOString(), serviceId: 'qore-live-all-year-inference',
     validated: strategyArtifact.binding.paperEligible,
+    inputProfile: {
+      schemaVersion: 1,
+      profileId: 'qore-reviewed-production-inputs-v1',
+      testOnlyOverrideNames: activeTestOnlyInputOverrideNames,
+    },
     inferenceMode: 'selected-contract-live-source-set-00z', liveForecastAppliedToTarget: true,
     strategyId: 'ngas-all-year-beta', season: summer ? 'summer' : 'winter', target,
     strategyArtifact: strategyArtifact.binding,
     forecastValidation: {
       latestCommonIssueDate: latestIssueDate, issueAgeDays: round(issueAgeDays, 2), runHourUtc: '00',
       requiredSources, collectedSources, requiredLeads,
+      temporalContract: summer
+        ? SUMMER_FORECAST_TEMPORAL_CONTRACT
+        : LEGACY_FORECAST_TEMPORAL_CONTRACT,
       scoreRowCount: inferenceRows.filter((row) => requiredLeads.includes(row.leadDays)).length,
     },
     marketValidation,
@@ -454,7 +531,12 @@ async function main() {
       forecastState: path.relative(repoDir, forecastRoot),
       marketHistory: configuredGasMarketPath ? null : path.relative(repoDir, marketHistoryStateDir),
     },
-    collection: { attempted: collections.length > 0, manifests: manifests.map((manifest) => ({ source: manifest.forecastSource, generatedAt: manifest.generatedAt, failures: manifest.failures?.length ?? 0 })) },
+    collection: { attempted: collections.length > 0, manifests: manifests.map((manifest) => ({
+      source: manifest.forecastSource,
+      generatedAt: manifest.generatedAt,
+      failures: manifest.failures?.length ?? 0,
+      temporalSampling: manifest.temporalSampling ?? null,
+    })) },
   }
   await writeJsonAtomic(outputPath, snapshot)
   console.log(`live-inference validated=true season=${snapshot.season} issue=${latestIssueDate} target=${today} gas=${target.gasPosition} file=${path.relative(repoDir, outputPath)}`)

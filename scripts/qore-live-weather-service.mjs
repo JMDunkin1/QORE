@@ -7,7 +7,12 @@ import path from 'node:path'
 import process from 'node:process'
 import { loadLocalEnv } from './local-env.mjs'
 import { assertEiaStorageReleaseCalendarCoverage, eiaStorageReleaseAt } from './lib/eia-release-time.mjs'
-import { liveGasPositionContractBlocks } from './lib/qore-live-inference-provenance.mjs'
+import {
+  LIVE_INFERENCE_TARGET_BINDING_SCHEMA_VERSION,
+  liveGasPositionContractBlocks,
+  liveInferenceTargetDigestSha256,
+  liveTargetAllocationBlocks,
+} from './lib/qore-live-inference-provenance.mjs'
 import { resolveLiveWeatherPaths } from './lib/qore-live-paths.mjs'
 import { loadAllYearStrategyArtifact, strategyArtifactBindingBlocks } from './lib/qore-live-strategy-artifact.mjs'
 import { assertForecastLocationTemperatures } from './lib/qore-weather-data-quality.mjs'
@@ -254,11 +259,13 @@ function validatedLiveTargetContract(target, inference) {
   if (indexFraction < 0 || indexFraction > 1) throw new Error('Validated live inference target.indexFraction must be between 0 and 1.')
   if (cashFraction < 0 || cashFraction > 1) throw new Error('Validated live inference target.cashFraction must be between 0 and 1.')
   if (confidence < 0 || confidence > 1) throw new Error('Validated live inference target.confidence must be between 0 and 1.')
-  const allocationTotal = Math.abs(gasPosition) + indexFraction + cashFraction
-  if (Math.abs(allocationTotal - 1) > 0.001) {
-    throw new Error(
-      `Validated live inference target weights are out of contract: abs(gasPosition) + indexFraction + cashFraction must equal 1 (received ${round(allocationTotal, 6)}).`,
-    )
+  const allocationBlocks = liveTargetAllocationBlocks({
+    gasPosition,
+    indexFraction,
+    cashFraction,
+  })
+  if (allocationBlocks.length) {
+    throw new Error(`Validated live inference target allocation is invalid: ${allocationBlocks.join('; ')}.`)
   }
   const direction = gasPosition > 0 ? 'long' : gasPosition < 0 ? 'short' : 'flat'
   if (target?.direction !== direction) {
@@ -991,6 +998,12 @@ async function reconcileSignalIntent() {
     generatedAt,
     serviceId: 'qore-live-signal-intent-reconcile',
     sourceFile: relative(liveInferencePath),
+    sourceInferenceTargetBinding: {
+      schemaVersion: LIVE_INFERENCE_TARGET_BINDING_SCHEMA_VERSION,
+      digestSha256: liveInferenceTargetDigestSha256(latest),
+      sourceServiceId: inference.serviceId,
+      sourceGeneratedAt: inference.generatedAt,
+    },
     stale: inference.forecastValidation.issueAgeDays > 2,
     signalAgeDays: signalAgeDays === null ? null : round(signalAgeDays, 2),
     intent,
@@ -1002,6 +1015,7 @@ async function reconcileSignalIntent() {
       liveForecastAppliedToTarget: true,
       validated: strategyArtifact.paperEligible,
       strategyArtifact,
+      inputProfile: inference.inputProfile,
       forecastValidation: inference.forecastValidation,
       componentStrategyId: latest.componentStrategyId,
       windowId: latest.windowId,

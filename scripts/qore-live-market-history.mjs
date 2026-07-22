@@ -168,8 +168,14 @@ async function main() {
   if (!Number.isFinite(fetchTimeoutMs) || fetchTimeoutMs < 1_000 || fetchTimeoutMs > 120_000) {
     throw new Error(`QORE_LIVE_MARKET_HISTORY_FETCH_TIMEOUT_MS must be from 1000 through 120000; received ${fetchTimeoutMs}.`)
   }
-  if (configuredBaseUrl && process.env.NODE_ENV !== 'test') {
-    throw new Error('QORE_LIVE_MARKET_HISTORY_YAHOO_BASE_URL is test-only; production collection is pinned to Yahoo HTTPS.')
+  if (
+    configuredBaseUrl
+    && !(
+      process.env.NODE_ENV === 'test'
+      && process.env.QORE_TEST_LIVE_INFERENCE_OVERRIDES === '1'
+    )
+  ) {
+    throw new Error('QORE_LIVE_MARKET_HISTORY_YAHOO_BASE_URL is restricted to the explicit reviewed test-input capability.')
   }
   const indexBasketConfig = JSON.parse(await readFile(indexBasketConfigPath, 'utf8'))
   const rowsBySymbol = new Map(await Promise.all(

@@ -38,7 +38,15 @@ import {
   COMPONENT_ARTIFACT_SCHEMA_VERSION,
   buildComponentSelectedTradesBinding,
 } from './lib/qore-component-artifact.mjs'
-import { validateForecastCalendarTemperatures } from './lib/qore-weather-data-quality.mjs'
+import {
+  FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  validateForecastCalendarTemperatures,
+} from './lib/qore-weather-data-quality.mjs'
+import {
+  SUMMER_FORECAST_TEMPORAL_INPUT_ROLE,
+  summerForecastCalendarsWithDedicatedOverrides,
+  summerForecastTemporalInputsForCoverage,
+} from './lib/qore-summer-forecast-contract.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -56,19 +64,25 @@ const SUMMER_FORECAST_CALENDARS = [
   {
     id: 'gfs',
     label: 'GFS cooling-season day-7 calendar',
+    temporalInputRole: SUMMER_FORECAST_TEMPORAL_INPUT_ROLE,
     files: {
       locationAnomalies:
         'weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
       signalScores: 'research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
+      manifest:
+        'weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json',
     },
   },
   {
     id: 'gefs-mean',
     label: 'GEFS mean cooling-season day-7 calendar',
+    temporalInputRole: SUMMER_FORECAST_TEMPORAL_INPUT_ROLE,
     files: {
       locationAnomalies:
         'weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
       signalScores: 'research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
+      manifest:
+        'weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json',
     },
   },
 ]
@@ -355,21 +369,41 @@ function loadForecastScores() {
   const scores = []
   const inputFiles = [path.relative(REPO_ROOT, MANIFEST_PATH)]
   const temperatureQuality = []
-  const calendars = [...manifest.forecastCalendars, ...SUMMER_FORECAST_CALENDARS]
+  const calendarTemporalInputs = []
+  const calendars = summerForecastCalendarsWithDedicatedOverrides({
+    generalCalendars: manifest.forecastCalendars,
+    dedicatedCalendars: SUMMER_FORECAST_CALENDARS,
+  })
 
   for (const calendar of calendars) {
     const scoresPath = path.join(DATA_ROOT, calendar.files.signalScores)
     const locationsPath = path.join(DATA_ROOT, calendar.files.locationAnomalies)
+    const calendarManifestPath = calendar.files.manifest
+      ? path.join(DATA_ROOT, calendar.files.manifest)
+      : null
     if (!fs.existsSync(scoresPath) || !fs.existsSync(locationsPath)) continue
     inputFiles.push(path.relative(REPO_ROOT, scoresPath), path.relative(REPO_ROOT, locationsPath))
+    if (calendarManifestPath && fs.existsSync(calendarManifestPath)) {
+      inputFiles.push(path.relative(REPO_ROOT, calendarManifestPath))
+    }
     const validated = validateForecastCalendarTemperatures({
       scoreRows: parseCsv(scoresPath),
       locationRows: parseCsv(locationsPath),
       mode: 'quarantine',
       label: `${calendar.id} Summer research calendar`,
       sourceId: calendar.id,
+      scoreLocationAggregateContract: FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
     })
     temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
+    calendarTemporalInputs.push({
+      sourceId: calendar.id,
+      temporalInputRole: calendar.temporalInputRole ?? null,
+      manifest: calendarManifestPath && fs.existsSync(calendarManifestPath)
+        ? JSON.parse(readText(calendarManifestPath))
+        : null,
+      scoreRows: validated.scoreRows,
+      locationRows: validated.locationRows,
+    })
     const breadth = locationBreadthByScore(validated.locationRows)
 
     for (const row of validated.scoreRows) {
@@ -412,7 +446,13 @@ function loadForecastScores() {
     }
   }
 
-  return { manifest, scores, inputFiles, temperatureQuality }
+  return {
+    manifest,
+    scores,
+    inputFiles,
+    temperatureQuality,
+    temporalInputs: summerForecastTemporalInputsForCoverage(calendarTemporalInputs),
+  }
 }
 
 function loadActualWeightedAnomaly() {
@@ -480,6 +520,7 @@ function loadWeatherResolutionData() {
       mode: 'quarantine',
       label: `${calendar.id} Summer weather-resolution calendar`,
       sourceId: calendar.id,
+      scoreLocationAggregateContract: FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
     })
     temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
 
@@ -735,10 +776,7 @@ function createSignalFromIssueRows(rows, candidate, reliabilityWeights) {
   )
   const cold = sideStats(coldRows, 'cold', candidate, reliabilityWeights)
   const warm = sideStats(warmRows, 'warm', candidate, reliabilityWeights)
-  const winner =
-    cold.maxStrength >= warm.maxStrength
-      ? { side: 'cold', direction: -1, thesisKind: 'summer-cold-short', stats: cold, loser: warm }
-      : { side: 'warm', direction: 1, thesisKind: 'summer-heat-long', stats: warm, loser: cold }
+  const winner = { side: 'warm', direction: 1, thesisKind: 'summer-heat-long', stats: warm, loser: cold }
 
   if (!winner.stats.bestRow) return null
   if (winner.stats.groups.length < candidate.minGroups || winner.stats.families.length < candidate.minFamilies) return null
@@ -1891,7 +1929,7 @@ function main() {
     validation: metricsFromCurve(curveForSplit(indexCurve, 'validation'), 0),
     holdout: metricsFromCurve(curveForSplit(indexCurve, 'holdout'), 0),
   }
-  const { scores, inputFiles, temperatureQuality } = loadForecastScores()
+  const { scores, inputFiles, temperatureQuality, temporalInputs } = loadForecastScores()
   const weatherResolutionData = loadWeatherResolutionData()
   const actualByDate = loadActualWeightedAnomaly()
   const reliability = computeSourceReliability(scores, actualByDate)
@@ -1911,6 +1949,7 @@ function main() {
     scores,
     requiredSourceIds: activeSourceSetDefinition.sourceIds,
     marketEndDate: days.at(-1)?.date,
+    temporalInputs,
   })
 
   const activeFamilyBase = {
@@ -2108,6 +2147,12 @@ function main() {
         comparator: {
           candidateId: selected.candidateId,
           selectedContractUnchanged: true,
+          forecastTemporalContractId:
+            Array.isArray(forecastCoverage.sources)
+            && forecastCoverage.sources.length > 0
+            && forecastCoverage.sources.every((source) => source.temporalContractComplete === true)
+              ? forecastCoverage.policy?.temporalContract?.contractId ?? null
+              : null,
         },
         historicalEvaluation: {
           evidenceStatus: SUMMER_SHADOW_CHALLENGER.evaluation.historicalEvidenceStatus,

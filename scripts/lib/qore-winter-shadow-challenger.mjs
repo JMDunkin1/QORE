@@ -35,7 +35,7 @@ export const WINTER_SHADOW_COMPARATOR_COMPONENT_CONTRACT = freezeCopy(
 )
 
 export const WINTER_SHADOW_COMPARATOR_COMPONENT_CONTRACT_DIGEST_SHA256 =
-  '779b88fe3c55b9d5419010892f3c134732cff2f7ff59371b44b92ab174538236'
+  'f8ad809ff55b01b3660fe6e3172653559c8c16e1c7b2559efc69bab41309c456'
 
 const ACTIVE_SIGNAL_SOURCE_IDS = freezeCopy(selectedContracts.winterFollow.sourceIds)
 const ACTIVE_HEATING_DEMAND_SOURCE_IDS = freezeCopy(
@@ -145,7 +145,7 @@ export const WINTER_SHADOW_CHALLENGER = freezeCopy({
 })
 
 export const WINTER_SHADOW_CHALLENGER_DIGEST_SHA256 =
-  '330877b809d2ddbc00286908addcfb48dfc1bbff75d64972d51cd5e1eec97ba8'
+  'f811871336ab6b5b45997f66e683026c055b2afd4d2f24a477da3e48a52ba21b'
 
 function sameStringArray(left, right) {
   return Array.isArray(left)

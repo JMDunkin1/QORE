@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import Papa from 'papaparse'
 import {
@@ -16,6 +17,21 @@ import {
 import {
   SUMMER_FORECAST_LOCATION_UNIVERSE as DIRECT_SUMMER_FORECAST_LOCATION_UNIVERSE,
 } from './lib/qore-summer-location-universe.mjs'
+import {
+  SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+  SUMMER_FORECAST_TEMPORAL_INPUT_ROLE,
+  SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT,
+  SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+  SUMMER_FORECAST_REVIEWED_MODEL_IDS,
+  forecastLocationSampleSetDigestSha256,
+  forecastSampleProvenanceDigestSha256,
+  forecastSampleVectorDigestSha256,
+  forecastValidTimeForTargetOffset,
+  reviewedSummerNormalMeanF,
+  summerForecastCalendarsWithDedicatedOverrides,
+  summerForecastTemporalInputsForCoverage,
+} from './lib/qore-summer-forecast-contract.mjs'
 
 const DAY_MS = 86400000
 
@@ -47,12 +63,170 @@ function scoresFor(sourceIds, issueDates) {
   return sourceIds.flatMap((sourceId) => issueDates.map((issueDate) => completeScore(sourceId, issueDate)))
 }
 
+function temporalInputsFor(sourceIds, temporalInputRole = SUMMER_FORECAST_TEMPORAL_INPUT_ROLE) {
+  return sourceIds.map((sourceId) => {
+    const offsets = [6, 12, 18, 24]
+    const sampleValuesF = [60, 70, 80, 90]
+    const rowIdentity = {
+      issueDate: '2021-05-01',
+      targetDate: '2021-05-08',
+      leadDays: 7,
+      windowId: 'rumor',
+      modelId: SUMMER_FORECAST_REVIEWED_MODEL_IDS[sourceId],
+      forecastTemporalContractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+      sampledValidTimeOffsetsHours: '6|12|18|24',
+      sampledValidHoursUtc: '6|12|18|24',
+    }
+    const samples = offsets.map((offsetHours) => {
+      const sourceUrl = `test-fixture://${sourceId}/2021-05-01/f${168 + offsetHours}`
+      return {
+        offsetHours,
+        validTimeUtc: forecastValidTimeForTargetOffset({
+          targetDate: rowIdentity.targetDate,
+          offsetHours,
+        }),
+        forecastHour: 168 + offsetHours,
+        sourceUrl,
+        indexUrl: '',
+        indexLine: '',
+        sourceIndexPayloadDigestSha256: '',
+        sourcePayloadDigestSha256: crypto.createHash('sha256').update(sourceUrl).digest('hex'),
+      }
+    })
+    const provenanceDigestSha256 = forecastSampleProvenanceDigestSha256({
+      contractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+      issueDate: rowIdentity.issueDate,
+      targetDate: rowIdentity.targetDate,
+      leadDays: rowIdentity.leadDays,
+      modelId: rowIdentity.modelId,
+      samples,
+    })
+    const normalMeanF = reviewedSummerNormalMeanF({
+      locationId: 'new-york',
+      targetDate: rowIdentity.targetDate,
+    })
+    const forecastAnomalyF = 75 - normalMeanF
+    const locationRow = {
+      ...rowIdentity,
+      locationId: 'new-york',
+      weight: 1,
+      forecastMeanF: 75,
+      normalMeanF,
+      forecastAnomalyF,
+      normalSourceContractId: SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.contractId,
+      normalSourceContractDigestSha256:
+        SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+      normalSourcePayloadDigestSha256:
+        SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.payloadDigestSha256ByLocationId['new-york'],
+      sampledForecastValuesF: sampleValuesF.join('|'),
+      forecastSampleProvenanceDigestSha256: provenanceDigestSha256,
+      forecastSampleVectorDigestSha256: forecastSampleVectorDigestSha256({
+        contractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+        issueDate: rowIdentity.issueDate,
+        targetDate: rowIdentity.targetDate,
+        leadDays: rowIdentity.leadDays,
+        modelId: rowIdentity.modelId,
+        locationId: 'new-york',
+        weight: 1,
+        offsets,
+        sampleValuesF,
+        normalMeanF,
+        forecastAnomalyF,
+        normalSourceContractId: SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.contractId,
+        normalSourceContractDigestSha256:
+          SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+        normalSourcePayloadDigestSha256:
+          SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.payloadDigestSha256ByLocationId['new-york'],
+        provenanceDigestSha256,
+      }),
+    }
+    const scoreRow = {
+      ...rowIdentity,
+      weightedAnomalyF: forecastAnomalyF,
+      sampledWeight: 1,
+      locationCount: 1,
+      forecastSampleProvenanceJson: JSON.stringify(samples),
+      forecastSampleProvenanceDigestSha256: provenanceDigestSha256,
+      locationSampleVectorSetDigestSha256: forecastLocationSampleSetDigestSha256({
+        contractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+        issueDate: rowIdentity.issueDate,
+        targetDate: rowIdentity.targetDate,
+        leadDays: rowIdentity.leadDays,
+        modelId: rowIdentity.modelId,
+        locationRows: [locationRow],
+      }),
+    }
+    return {
+      sourceId,
+      temporalInputRole,
+      manifest: {
+        forecastSource: sourceId,
+        runHour: '00',
+        leadDays: [7],
+        validTimeOffsetsHoursFromTargetUtcMidnight: [6, 12, 18, 24],
+        temporalSampling: {
+          ...SUMMER_FORECAST_TEMPORAL_CONTRACT,
+          leadDays: [7],
+        },
+      },
+      scoreRows: [scoreRow],
+      locationRows: [locationRow],
+    }
+  })
+}
+
+function testGeneralCalendarsDoNotPoisonDedicatedTemporalCoverage() {
+  const sourceIds = ['gfs', 'gefs-mean']
+  const generalHoursZeroInputs = temporalInputsFor(sourceIds, null).map((input) => ({
+    ...input,
+    manifest: null,
+    scoreRows: input.scoreRows.map((row) => ({
+      ...row,
+      forecastTemporalContractId: 'legacy-target-utc-midnight-single-snapshot-v1',
+      sampledValidTimeOffsetsHours: '0',
+      sampledValidHoursUtc: '0',
+    })),
+  }))
+  const dedicatedCorrectedInputs = temporalInputsFor(sourceIds)
+  const selectedCalendars = summerForecastCalendarsWithDedicatedOverrides({
+    generalCalendars: [
+      { id: 'gfs', kind: 'general-hours-0' },
+      { id: 'gefs-mean', kind: 'general-hours-0' },
+      { id: 'gem-global', kind: 'general-hours-0' },
+    ],
+    dedicatedCalendars: [
+      { id: 'gfs', kind: 'dedicated-corrected' },
+      { id: 'gefs-mean', kind: 'dedicated-corrected' },
+    ],
+  })
+  assert.deepEqual(selectedCalendars, [
+    { id: 'gem-global', kind: 'general-hours-0' },
+    { id: 'gfs', kind: 'dedicated-corrected' },
+    { id: 'gefs-mean', kind: 'dedicated-corrected' },
+  ])
+  const selectedTemporalInputs = summerForecastTemporalInputsForCoverage([
+    ...generalHoursZeroInputs,
+    ...dedicatedCorrectedInputs,
+  ])
+  assert.equal(selectedTemporalInputs.length, 2)
+  const coverage = summarizeSummerForecastCoverage({
+    scores: scoresFor(sourceIds, calendarDates('2021-05-01', '2021-05-03')),
+    requiredSourceIds: sourceIds,
+    marketEndDate: '2021-05-10',
+    temporalInputs: selectedTemporalInputs,
+  })
+  assert.equal(coverage.complete, true)
+  assert.ok(coverage.sources.every((source) => source.temporalContractComplete))
+  console.log('ok - general hours-0 calendars cannot poison corrected dedicated GFS/GEFS temporal coverage')
+}
+
 function testCompleteCoverageHonorsReviewedInception() {
   const issueDates = calendarDates('2021-05-01', '2021-05-03')
   const coverage = summarizeSummerForecastCoverage({
     scores: scoresFor(['gfs', 'gefs-mean'], issueDates),
     requiredSourceIds: ['gfs', 'gefs-mean'],
     marketEndDate: '2021-05-10',
+    temporalInputs: temporalInputsFor(['gfs', 'gefs-mean']),
   })
 
   assert.equal(coverage.status, 'complete')
@@ -79,6 +253,7 @@ function testMissingAndMalformedInputsFailClosed() {
     requiredSourceIds: ['gfs', 'gefs-mean'],
     marketEndDate: '2026-05-11',
     coverageStartDate: '2026-04-24',
+    temporalInputs: temporalInputsFor(['gfs', 'gefs-mean']),
   })
 
   assert.equal(coverage.status, 'incomplete')
@@ -142,6 +317,7 @@ function testPartialAndWrongLocationBreadthFailClosed() {
     requiredSourceIds: ['gfs', 'gefs-mean'],
     marketEndDate: '2026-05-10',
     coverageStartDate: '2026-05-01',
+    temporalInputs: temporalInputsFor(['gfs', 'gefs-mean']),
   })
 
   assert.equal(coverage.complete, false)
@@ -203,7 +379,7 @@ function testReviewedUniverseMatchesVersionedLocationConfig() {
   console.log('ok - the reviewed Summer location universe matches the versioned weather basket')
 }
 
-function testReviewedUniverseIsSealedInLiveComponentContract() {
+function testReviewedUniverseAndTemporalContractAreSealedInLiveComponentContract() {
   const summerSummary = JSON.parse(readFileSync(
     'data/qore/research/strategy-agent-runs/ngas-summer-alpha/run-summary.json',
     'utf8',
@@ -212,7 +388,7 @@ function testReviewedUniverseIsSealedInLiveComponentContract() {
     'data/qore/research/strategy-agent-runs/ngas-winter-alpha/run-summary.json',
     'utf8',
   ))
-  const canonicalContract = canonicalComponentLiveContractFromSummaries(
+  const legacyCanonicalContract = canonicalComponentLiveContractFromSummaries(
     summerSummary,
     winterSummary,
   )
@@ -223,19 +399,40 @@ function testReviewedUniverseIsSealedInLiveComponentContract() {
     'coverage must re-export the single neutral location-universe constant',
   )
   assert.deepEqual(
-    canonicalContract.summer.implementation.forecastLocationUniverse,
+    legacyCanonicalContract.summer.implementation.forecastLocationUniverse,
     SUMMER_FORECAST_LOCATION_UNIVERSE,
   )
   assert.deepEqual(
     executableLiveComponentContract.summer.implementation.forecastLocationUniverse,
     SUMMER_FORECAST_LOCATION_UNIVERSE,
   )
+  assert.deepEqual(
+    executableLiveComponentContract.summer.implementation.forecastTemporalContract,
+    SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  )
+  assert.notEqual(
+    liveComponentContractDigestSha256(legacyCanonicalContract),
+    executableLiveComponentContractDigestSha256,
+    'the checked hours-0 Summer artifact must remain displayable but cannot match the executable contract',
+  )
+
+  const correctedSummerSummary = structuredClone(summerSummary)
+  correctedSummerSummary.validation.forecastCoverage.promotionEligible = true
+  correctedSummerSummary.validation.forecastCoverage.policy.temporalContract =
+    SUMMER_FORECAST_TEMPORAL_CONTRACT
+  correctedSummerSummary.validation.forecastCoverage.sources.forEach((source) => {
+    source.temporalContractComplete = true
+  })
+  const canonicalContract = canonicalComponentLiveContractFromSummaries(
+    correctedSummerSummary,
+    winterSummary,
+  )
   assert.equal(
     liveComponentContractDigestSha256(canonicalContract),
     executableLiveComponentContractDigestSha256,
   )
 
-  const tamperedSummerSummary = structuredClone(summerSummary)
+  const tamperedSummerSummary = structuredClone(correctedSummerSummary)
   tamperedSummerSummary.validation.forecastCoverage.policy.locationUniverse.locations[0].weight = 0.08
   const tamperedContract = canonicalComponentLiveContractFromSummaries(
     tamperedSummerSummary,
@@ -246,7 +443,7 @@ function testReviewedUniverseIsSealedInLiveComponentContract() {
     executableLiveComponentContractDigestSha256,
     'changing a Summer location weight must invalidate the executable component contract digest',
   )
-  console.log('ok - the exact Summer location universe is sealed into the live component contract')
+  console.log('ok - the exact Summer location and corrected temporal contracts are sealed into the live component digest')
 }
 
 function scoreKey(row) {
@@ -282,22 +479,38 @@ function loadCheckedInCoverageScores(sourceId, scoreFile, locationFile) {
 }
 
 function testCheckedInCalendarsExposeCurrentGap() {
-  const scores = [
-    ...loadCheckedInCoverageScores(
-      'gfs',
-      'data/qore/research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
-      'data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
-    ),
-    ...loadCheckedInCoverageScores(
-      'gefs-mean',
-      'data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
-      'data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
-    ),
+  const legacyCalendars = [
+    {
+      sourceId: 'gfs',
+      scoreFile: 'data/qore/research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
+      locationFile: 'data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
+      manifestFile: 'data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json',
+    },
+    {
+      sourceId: 'gefs-mean',
+      scoreFile: 'data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv',
+      locationFile: 'data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv',
+      manifestFile: 'data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json',
+    },
   ]
+  const scores = [
+    ...legacyCalendars.flatMap((calendar) => loadCheckedInCoverageScores(
+      calendar.sourceId,
+      calendar.scoreFile,
+      calendar.locationFile,
+    )),
+  ]
+  const temporalInputs = legacyCalendars.map((calendar) => ({
+    sourceId: calendar.sourceId,
+    manifest: JSON.parse(readFileSync(calendar.manifestFile, 'utf8')),
+    scoreRows: parseCsv(calendar.scoreFile),
+    locationRows: parseCsv(calendar.locationFile),
+  }))
   const coverage = summarizeSummerForecastCoverage({
     scores,
     requiredSourceIds: ['gfs', 'gefs-mean'],
     marketEndDate: '2026-07-14',
+    temporalInputs,
   })
 
   assert.equal(coverage.status, 'incomplete')
@@ -310,13 +523,23 @@ function testCheckedInCalendarsExposeCurrentGap() {
   assert.equal(coverage.lastMissingIssueDate, '2026-07-07')
   assert.ok(coverage.sources.every((source) => source.missingIssueDateCount === 75))
   assert.ok(coverage.sources.every((source) => source.missingRanges.length === 1))
-  console.log('ok - checked-in GFS/GEFS calendars expose the 2026-04-24 through 2026-07-07 coverage gap')
+  assert.ok(coverage.sources.every((source) => source.temporalContractComplete === false))
+  assert.ok(coverage.sources.every((source) => source.temporalFailureCount > 20))
+  assert.ok(coverage.sources.every((source) => source.temporalFailureSamples.length === 20))
+  assert.ok(coverage.sources.every((source) => /^[a-f0-9]{64}$/.test(
+    source.temporalFailureDigestSha256,
+  )))
+  assert.ok(coverage.sources.every((source) => !Object.hasOwn(source, 'temporalFailures')))
+  assert.ok(coverage.sources.every((source) => source.temporalFailureSamples.some((failure) =>
+    failure.includes('corrected Summer contract'))))
+  console.log('ok - checked-in hours-0 calendars remain auditable but fail temporal promotion and expose the current coverage gap')
 }
 
 testCompleteCoverageHonorsReviewedInception()
+testGeneralCalendarsDoNotPoisonDedicatedTemporalCoverage()
 testMissingAndMalformedInputsFailClosed()
 testPartialAndWrongLocationBreadthFailClosed()
 testNoObservableSeasonFailsClosed()
 testReviewedUniverseMatchesVersionedLocationConfig()
-testReviewedUniverseIsSealedInLiveComponentContract()
+testReviewedUniverseAndTemporalContractAreSealedInLiveComponentContract()
 testCheckedInCalendarsExposeCurrentGap()

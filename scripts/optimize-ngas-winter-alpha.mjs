@@ -35,7 +35,10 @@ import {
   isWinterReversionRow as isReversionRow,
   winterStorageSeasonStartFor,
 } from './lib/qore-winter-target-engine.mjs'
-import { validateForecastCalendarTemperatures } from './lib/qore-weather-data-quality.mjs'
+import {
+  LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  validateForecastCalendarTemperatures,
+} from './lib/qore-weather-data-quality.mjs'
 
 const REPO_ROOT = process.cwd()
 const DATA_ROOT = path.join(REPO_ROOT, 'data/qore')
@@ -779,6 +782,7 @@ function loadWeatherResolutionData() {
       mode: 'quarantine',
       label: `${calendar.id} Winter weather-resolution calendar`,
       sourceId: calendar.id,
+      scoreLocationAggregateContract: LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
     })
     temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
 
@@ -885,6 +889,7 @@ function loadHeatingDemandData() {
       mode: 'quarantine',
       label: `${calendar.id} Winter heating-demand calendar`,
       sourceId: calendar.id,
+      scoreLocationAggregateContract: LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
     })
     temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
 

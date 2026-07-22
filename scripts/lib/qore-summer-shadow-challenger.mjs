@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import { link, mkdir, open, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { executableLiveComponentContract } from './qore-live-contract.mjs'
+import { SUMMER_FORECAST_TEMPORAL_CONTRACT_ID } from './qore-summer-forecast-contract.mjs'
 
 export const SUMMER_SHADOW_CHALLENGER_SCHEMA_VERSION = 1
 export const SUMMER_SHADOW_TARGET_RECORD_SCHEMA_VERSION = 1
@@ -104,6 +105,7 @@ export const SUMMER_SHADOW_CHALLENGER = Object.freeze({
 })
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
+const MAX_APPEND_CLOCK_SKEW_MS = 60 * 1000
 
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize)
@@ -139,6 +141,11 @@ export function summerShadowCompatibilityFailures({ activeComponentContract, emb
   if (!activeComponentContract || typeof activeComponentContract !== 'object') {
     failures.push('The active Summer component contract is missing.')
   } else if (
+    activeComponentContract?.implementation?.forecastTemporalContract?.contractId
+      !== SUMMER_FORECAST_TEMPORAL_CONTRACT_ID
+  ) {
+    failures.push('The active Summer comparator does not use the corrected target-local-day temporal contract; prospective shadow evidence is blocked.')
+  } else if (
     summerShadowValueDigestSha256(activeComponentContract)
       !== SUMMER_SHADOW_COMPARATOR_COMPONENT_CONTRACT_DIGEST_SHA256
   ) {
@@ -161,6 +168,12 @@ export function summerShadowCompatibilityFailures({ activeComponentContract, emb
     || embeddedShadow.comparator?.selectedContractUnchanged !== true
   ) {
     failures.push('The versioned Summer shadow comparator is not the unchanged frozen comparator.')
+  }
+  if (
+    embeddedShadow.comparator?.forecastTemporalContractId
+      !== SUMMER_FORECAST_TEMPORAL_CONTRACT_ID
+  ) {
+    failures.push('The versioned Summer shadow comparator does not bind corrected temporal inputs.')
   }
   if (activeCandidate?.candidateId !== embeddedShadow.comparator?.candidateId) {
     failures.push('The active Summer candidate does not match the versioned shadow comparator.')
@@ -430,10 +443,38 @@ export function validateSummerShadowTargetRecord(record) {
   return true
 }
 
-export async function appendSummerShadowTargetRecord({ stateDir, record }) {
+function appendClock(testNow) {
+  if (testNow === undefined) return new Date()
+  if (
+    process.env.NODE_ENV !== 'test'
+    || process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES !== '1'
+  ) {
+    throw new Error(
+      'The Summer shadow test clock requires the explicit reviewed-artifact test capability.',
+    )
+  }
+  const parsed = new Date(testNow)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== testNow) {
+    throw new Error('The Summer shadow test clock must be a canonical ISO timestamp.')
+  }
+  return parsed
+}
+
+export async function appendSummerShadowTargetRecord({ stateDir, record, testNow }) {
   validateSummerShadowTargetRecord(record)
+  const now = appendClock(testNow)
   const timing = summerShadowRecordTiming(record)
   if (!timing.eligible) return { written: false, reason: timing.reason, filePath: null }
+  const currentClock = newYorkClock(now.toISOString())
+  if (currentClock?.date !== record.targetDate) {
+    return { written: false, reason: 'not-current-target-session-date', filePath: null }
+  }
+  if (currentClock.minuteOfDay >= 9 * 60 + 30) {
+    return { written: false, reason: 'at-or-after-session-open', filePath: null }
+  }
+  if (Math.abs(now.getTime() - Date.parse(record.generatedAt)) > MAX_APPEND_CLOCK_SKEW_MS) {
+    return { written: false, reason: 'generation-time-not-current', filePath: null }
+  }
 
   const resolvedDir = path.resolve(stateDir)
   await mkdir(resolvedDir, { recursive: true, mode: 0o700 })

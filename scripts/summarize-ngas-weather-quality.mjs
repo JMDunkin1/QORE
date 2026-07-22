@@ -2,7 +2,10 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import Papa from 'papaparse'
-import { validateForecastCalendarTemperatures } from './lib/qore-weather-data-quality.mjs'
+import {
+  LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  validateForecastCalendarTemperatures,
+} from './lib/qore-weather-data-quality.mjs'
 
 const repoDir = process.cwd()
 const dataRoot = path.resolve(process.env.QORE_DATA_ROOT ?? path.join(repoDir, 'data', 'qore'))
@@ -56,6 +59,7 @@ for (const calendar of manifest.forecastCalendars ?? []) {
     mode: 'quarantine',
     label: `${calendar.id} weather-quality calendar`,
     sourceId: calendar.id,
+    scoreLocationAggregateContract: LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
   })
   temperatureQuality.push({ sourceId: calendar.id, ...validated.diagnostics })
   for (const row of validated.scoreRows) {

@@ -1,6 +1,6 @@
 {
   "artifactSchemaVersion": 3,
-  "generatedAt": "2026-07-22T04:29:53.834Z",
+  "generatedAt": "2026-07-22T18:55:31.963Z",
   "strategyId": "ngas-summer-alpha",
   "data": {
     "weatherManifest": "data/qore/dataset-manifest.json",
@@ -24,84 +24,6 @@
     "weatherTemperatureQuality": {
       "signalCalendars": [
         {
-          "sourceId": "gfs",
-          "policy": "source-issue-target-lead-atomic",
-          "mode": "quarantine",
-          "boundsF": {
-            "minimum": -150,
-            "maximum": 160
-          },
-          "anomalyToleranceF": 0.01,
-          "inputLocationRowCount": 105732,
-          "acceptedLocationRowCount": 105714,
-          "quarantinedLocationRowCount": 18,
-          "inputScoreRowCount": 5874,
-          "acceptedScoreRowCount": 5873,
-          "quarantinedScoreRowCount": 1,
-          "quarantinedGroupCount": 1,
-          "quarantinedGroups": [
-            {
-              "key": "gfs|2022-11-30|2022-12-10|10",
-              "sourceId": "gfs",
-              "issueDate": "2022-11-30",
-              "targetDate": "2022-12-10",
-              "leadDays": "10",
-              "modelIds": [
-                "ncep-gfs-global-00z-noaa-aws"
-              ],
-              "rowCount": 18,
-              "invalidRowCount": 18,
-              "reasons": [
-                "forecastMeanF-outside-physical-range"
-              ],
-              "sampleLocationIds": [
-                "minneapolis",
-                "chicago",
-                "detroit"
-              ]
-            }
-          ]
-        },
-        {
-          "sourceId": "gefs-mean",
-          "policy": "source-issue-target-lead-atomic",
-          "mode": "quarantine",
-          "boundsF": {
-            "minimum": -150,
-            "maximum": 160
-          },
-          "anomalyToleranceF": 0.01,
-          "inputLocationRowCount": 105876,
-          "acceptedLocationRowCount": 105858,
-          "quarantinedLocationRowCount": 18,
-          "inputScoreRowCount": 5882,
-          "acceptedScoreRowCount": 5881,
-          "quarantinedScoreRowCount": 1,
-          "quarantinedGroupCount": 1,
-          "quarantinedGroups": [
-            {
-              "key": "gefs-mean|2026-02-12|2026-02-13|1",
-              "sourceId": "gefs-mean",
-              "issueDate": "2026-02-12",
-              "targetDate": "2026-02-13",
-              "leadDays": "1",
-              "modelIds": [
-                "ncep-gefs-mean-00z-noaa-aws"
-              ],
-              "rowCount": 18,
-              "invalidRowCount": 18,
-              "reasons": [
-                "forecastMeanF-outside-physical-range"
-              ],
-              "sampleLocationIds": [
-                "atlanta",
-                "boston",
-                "charlotte"
-              ]
-            }
-          ]
-        },
-        {
           "sourceId": "graphcastgfs",
           "policy": "source-issue-target-lead-atomic",
           "mode": "quarantine",
@@ -110,14 +32,160 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 38052,
-          "acceptedLocationRowCount": 38052,
-          "quarantinedLocationRowCount": 0,
+          "acceptedLocationRowCount": 37890,
+          "quarantinedLocationRowCount": 162,
           "inputScoreRowCount": 2114,
-          "acceptedScoreRowCount": 2114,
-          "quarantinedScoreRowCount": 0,
-          "quarantinedGroupCount": 0,
-          "quarantinedGroups": []
+          "acceptedScoreRowCount": 2105,
+          "quarantinedScoreRowCount": 9,
+          "quarantinedGroupCount": 9,
+          "quarantinedGroups": [
+            {
+              "key": "graphcastgfs|2024-11-27|2024-11-30|3",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2024-11-27",
+              "targetDate": "2024-11-30",
+              "leadDays": "3",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2024-12-06|2024-12-09|3",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2024-12-06",
+              "targetDate": "2024-12-09",
+              "leadDays": "3",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2024-12-19|2024-12-20|1",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2024-12-19",
+              "targetDate": "2024-12-20",
+              "leadDays": "1",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2025-01-13|2025-01-14|1",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2025-01-13",
+              "targetDate": "2025-01-14",
+              "leadDays": "1",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2025-02-12|2025-02-20|8",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2025-02-12",
+              "targetDate": "2025-02-20",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2025-02-13|2025-02-15|2",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2025-02-13",
+              "targetDate": "2025-02-15",
+              "leadDays": "2",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2025-02-28|2025-03-01|1",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2025-02-28",
+              "targetDate": "2025-03-01",
+              "leadDays": "1",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2025-03-18|2025-03-26|8",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2025-03-18",
+              "targetDate": "2025-03-26",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "graphcastgfs|2026-01-10|2026-01-18|8",
+              "sourceId": "graphcastgfs",
+              "issueDate": "2026-01-10",
+              "targetDate": "2026-01-18",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gfs-graphcast-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            }
+          ]
         },
         {
           "sourceId": "ecmwf-ifs",
@@ -128,6 +196,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 41238,
           "acceptedLocationRowCount": 41238,
           "quarantinedLocationRowCount": 0,
@@ -146,6 +215,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 3528,
           "acceptedLocationRowCount": 3528,
           "quarantinedLocationRowCount": 0,
@@ -164,6 +234,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 9810,
           "acceptedLocationRowCount": 9810,
           "quarantinedLocationRowCount": 0,
@@ -182,14 +253,128 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 26766,
-          "acceptedLocationRowCount": 26766,
-          "quarantinedLocationRowCount": 0,
+          "acceptedLocationRowCount": 26640,
+          "quarantinedLocationRowCount": 126,
           "inputScoreRowCount": 1487,
-          "acceptedScoreRowCount": 1487,
-          "quarantinedScoreRowCount": 0,
-          "quarantinedGroupCount": 0,
-          "quarantinedGroups": []
+          "acceptedScoreRowCount": 1480,
+          "quarantinedScoreRowCount": 7,
+          "quarantinedGroupCount": 7,
+          "quarantinedGroups": [
+            {
+              "key": "gem-global|2024-02-15|2024-02-17|2",
+              "sourceId": "gem-global",
+              "issueDate": "2024-02-15",
+              "targetDate": "2024-02-17",
+              "leadDays": "2",
+              "modelIds": [
+                "gem-global-open-meteo-previous-runs"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gem-global|2024-11-11|2024-11-13|2",
+              "sourceId": "gem-global",
+              "issueDate": "2024-11-11",
+              "targetDate": "2024-11-13",
+              "leadDays": "2",
+              "modelIds": [
+                "gem-global-open-meteo-previous-runs"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gem-global|2024-12-09|2024-12-16|7",
+              "sourceId": "gem-global",
+              "issueDate": "2024-12-09",
+              "targetDate": "2024-12-16",
+              "leadDays": "7",
+              "modelIds": [
+                "gem-global-open-meteo-previous-runs"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gem-global|2025-03-10|2025-03-13|3",
+              "sourceId": "gem-global",
+              "issueDate": "2025-03-10",
+              "targetDate": "2025-03-13",
+              "leadDays": "3",
+              "modelIds": [
+                "gem-global-open-meteo-previous-runs"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gem-global|2025-03-14|2025-03-16|2",
+              "sourceId": "gem-global",
+              "issueDate": "2025-03-14",
+              "targetDate": "2025-03-16",
+              "leadDays": "2",
+              "modelIds": [
+                "gem-global-open-meteo-previous-runs"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gem-global|2025-03-27|2025-03-29|2",
+              "sourceId": "gem-global",
+              "issueDate": "2025-03-27",
+              "targetDate": "2025-03-29",
+              "leadDays": "2",
+              "modelIds": [
+                "gem-global-open-meteo-previous-runs"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gem-global|2025-11-15|2025-11-17|2",
+              "sourceId": "gem-global",
+              "issueDate": "2025-11-15",
+              "targetDate": "2025-11-17",
+              "leadDays": "2",
+              "modelIds": [
+                "gem-global-open-meteo-previous-runs"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            }
+          ]
         },
         {
           "sourceId": "gfs",
@@ -200,6 +385,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 13644,
           "acceptedLocationRowCount": 13644,
           "quarantinedLocationRowCount": 0,
@@ -218,6 +404,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 13644,
           "acceptedLocationRowCount": 13644,
           "quarantinedLocationRowCount": 0,
@@ -238,6 +425,7 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 105732,
           "acceptedLocationRowCount": 105714,
           "quarantinedLocationRowCount": 18,
@@ -277,14 +465,447 @@
             "maximum": 160
           },
           "anomalyToleranceF": 0.01,
+          "scoreLocationAggregateContractId": "qore-executable-score-location-aggregate-v1",
           "inputLocationRowCount": 105876,
-          "acceptedLocationRowCount": 105858,
-          "quarantinedLocationRowCount": 18,
+          "acceptedLocationRowCount": 105354,
+          "quarantinedLocationRowCount": 522,
           "inputScoreRowCount": 5882,
-          "acceptedScoreRowCount": 5881,
-          "quarantinedScoreRowCount": 1,
-          "quarantinedGroupCount": 1,
+          "acceptedScoreRowCount": 5853,
+          "quarantinedScoreRowCount": 29,
+          "quarantinedGroupCount": 29,
           "quarantinedGroups": [
+            {
+              "key": "gefs-mean|2021-10-26|2021-11-04|9",
+              "sourceId": "gefs-mean",
+              "issueDate": "2021-10-26",
+              "targetDate": "2021-11-04",
+              "leadDays": "9",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2021-11-04|2021-11-07|3",
+              "sourceId": "gefs-mean",
+              "issueDate": "2021-11-04",
+              "targetDate": "2021-11-07",
+              "leadDays": "3",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2021-11-26|2021-12-06|10",
+              "sourceId": "gefs-mean",
+              "issueDate": "2021-11-26",
+              "targetDate": "2021-12-06",
+              "leadDays": "10",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2021-12-19|2021-12-27|8",
+              "sourceId": "gefs-mean",
+              "issueDate": "2021-12-19",
+              "targetDate": "2021-12-27",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-01-08|2022-01-18|10",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-01-08",
+              "targetDate": "2022-01-18",
+              "leadDays": "10",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-02-10|2022-02-18|8",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-02-10",
+              "targetDate": "2022-02-18",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-02-15|2022-02-23|8",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-02-15",
+              "targetDate": "2022-02-23",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-02-23|2022-03-03|8",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-02-23",
+              "targetDate": "2022-03-03",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-03-11|2022-03-13|2",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-03-11",
+              "targetDate": "2022-03-13",
+              "leadDays": "2",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-11-10|2022-11-13|3",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-11-10",
+              "targetDate": "2022-11-13",
+              "leadDays": "3",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-12-07|2022-12-17|10",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-12-07",
+              "targetDate": "2022-12-17",
+              "leadDays": "10",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2022-12-15|2022-12-18|3",
+              "sourceId": "gefs-mean",
+              "issueDate": "2022-12-15",
+              "targetDate": "2022-12-18",
+              "leadDays": "3",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2023-02-27|2023-03-09|10",
+              "sourceId": "gefs-mean",
+              "issueDate": "2023-02-27",
+              "targetDate": "2023-03-09",
+              "leadDays": "10",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2023-11-05|2023-11-06|1",
+              "sourceId": "gefs-mean",
+              "issueDate": "2023-11-05",
+              "targetDate": "2023-11-06",
+              "leadDays": "1",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2023-11-05|2023-11-12|7",
+              "sourceId": "gefs-mean",
+              "issueDate": "2023-11-05",
+              "targetDate": "2023-11-12",
+              "leadDays": "7",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2023-12-06|2023-12-16|10",
+              "sourceId": "gefs-mean",
+              "issueDate": "2023-12-06",
+              "targetDate": "2023-12-16",
+              "leadDays": "10",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2023-12-12|2023-12-22|10",
+              "sourceId": "gefs-mean",
+              "issueDate": "2023-12-12",
+              "targetDate": "2023-12-22",
+              "leadDays": "10",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2024-01-07|2024-01-09|2",
+              "sourceId": "gefs-mean",
+              "issueDate": "2024-01-07",
+              "targetDate": "2024-01-09",
+              "leadDays": "2",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2024-01-09|2024-01-18|9",
+              "sourceId": "gefs-mean",
+              "issueDate": "2024-01-09",
+              "targetDate": "2024-01-18",
+              "leadDays": "9",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2024-01-21|2024-01-23|2",
+              "sourceId": "gefs-mean",
+              "issueDate": "2024-01-21",
+              "targetDate": "2024-01-23",
+              "leadDays": "2",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2024-03-05|2024-03-13|8",
+              "sourceId": "gefs-mean",
+              "issueDate": "2024-03-05",
+              "targetDate": "2024-03-13",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2024-03-14|2024-03-16|2",
+              "sourceId": "gefs-mean",
+              "issueDate": "2024-03-14",
+              "targetDate": "2024-03-16",
+              "leadDays": "2",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2024-03-18|2024-03-19|1",
+              "sourceId": "gefs-mean",
+              "issueDate": "2024-03-18",
+              "targetDate": "2024-03-19",
+              "leadDays": "1",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2025-02-04|2025-02-12|8",
+              "sourceId": "gefs-mean",
+              "issueDate": "2025-02-04",
+              "targetDate": "2025-02-12",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2025-11-24|2025-11-27|3",
+              "sourceId": "gefs-mean",
+              "issueDate": "2025-11-24",
+              "targetDate": "2025-11-27",
+              "leadDays": "3",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2025-12-08|2025-12-11|3",
+              "sourceId": "gefs-mean",
+              "issueDate": "2025-12-08",
+              "targetDate": "2025-12-11",
+              "leadDays": "3",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
+            {
+              "key": "gefs-mean|2025-12-25|2026-01-04|10",
+              "sourceId": "gefs-mean",
+              "issueDate": "2025-12-25",
+              "targetDate": "2026-01-04",
+              "leadDays": "10",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
+            },
             {
               "key": "gefs-mean|2026-02-12|2026-02-13|1",
               "sourceId": "gefs-mean",
@@ -304,6 +925,22 @@
                 "boston",
                 "charlotte"
               ]
+            },
+            {
+              "key": "gefs-mean|2026-03-19|2026-03-27|8",
+              "sourceId": "gefs-mean",
+              "issueDate": "2026-03-19",
+              "targetDate": "2026-03-27",
+              "leadDays": "8",
+              "modelIds": [
+                "ncep-gefs-mean-00z-noaa-aws"
+              ],
+              "rowCount": 18,
+              "invalidRowCount": 0,
+              "reasons": [
+                "score-weightedAnomalyF-mismatch"
+              ],
+              "sampleLocationIds": []
             }
           ]
         }
@@ -316,24 +953,27 @@
     "forecastScoreRows": 1516,
     "inputFiles": [
       "data/qore/dataset-manifest.json",
-      "data/qore/research/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
-      "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
-      "data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
-      "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
       "data/qore/research/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
       "data/qore/weather/gfs-graphcast/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+      "data/qore/weather/gfs-graphcast/graphcastgfs-00z-daily-forecast-calendar-2024-04-26-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
       "data/qore/research/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
       "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+      "data/qore/weather/ecmwf-ifs/ecmwf-ifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
       "data/qore/research/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
       "data/qore/weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+      "data/qore/weather/ecmwf-aifs/ecmwf-aifs-00z-daily-forecast-calendar-2021-01-01-2026-03-31-available-2024-03-14-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
       "data/qore/research/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
       "data/qore/weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+      "data/qore/weather/aigfs/aigfs-openmeteo-single-runs-00z-daily-forecast-calendar-2026-01-07-2026-03-31-requested-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
       "data/qore/research/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-signal-scores.csv",
       "data/qore/weather/gem-global/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-location-anomalies.csv",
+      "data/qore/weather/gem-global/gem-global-open-meteo-previous-runs-daily-forecast-calendar-2021-01-01-2026-03-31-leads-1-2-3-7-8-9-10-hours-0-manifest.json",
       "data/qore/research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv",
       "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv",
+      "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json",
       "data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv",
-      "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv"
+      "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv",
+      "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json"
     ],
     "selectedTradesArtifact": {
       "schemaVersion": 1,
@@ -1171,6 +1811,29 @@
       "prospectiveStart": "2026-07-23",
       "comparatorComponentContract": {
         "strategyId": "ngas-summer-alpha",
+        "activeTargetDatePolicy": {
+          "policyId": "summer-session-or-lead-7-target-season-v1",
+          "sessionMonths": [
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "leadMonthActivation": {
+            "forecastLeadDays": 7,
+            "minimumEntryLagDays": 1,
+            "activationOffsetDays": 6,
+            "targetMonths": [
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          "minimumCalendarDayByMonth": {}
+        },
         "selected": {
           "candidateId": "summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed",
           "architectureId": "summer-weather-follow-and-fade",
@@ -1278,6 +1941,178 @@
               }
             ]
           },
+          "scoreLocationAggregateContract": {
+            "schemaVersion": 1,
+            "contractId": "qore-executable-score-location-aggregate-v1",
+            "locationUniverse": {
+              "contractId": "qore-summer-eastern-conus-location-universe-v1",
+              "expectedLocationCount": 18,
+              "expectedSampledWeight": 1.06,
+              "locations": [
+                {
+                  "locationId": "minneapolis",
+                  "weight": 0.07
+                },
+                {
+                  "locationId": "chicago",
+                  "weight": 0.09
+                },
+                {
+                  "locationId": "detroit",
+                  "weight": 0.06
+                },
+                {
+                  "locationId": "cleveland",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "indianapolis",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "st-louis",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "kansas-city",
+                  "weight": 0.04
+                },
+                {
+                  "locationId": "nashville",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "memphis",
+                  "weight": 0.04
+                },
+                {
+                  "locationId": "atlanta",
+                  "weight": 0.07
+                },
+                {
+                  "locationId": "charlotte",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "raleigh",
+                  "weight": 0.04
+                },
+                {
+                  "locationId": "washington-dc",
+                  "weight": 0.07
+                },
+                {
+                  "locationId": "philadelphia",
+                  "weight": 0.06
+                },
+                {
+                  "locationId": "new-york",
+                  "weight": 0.11
+                },
+                {
+                  "locationId": "boston",
+                  "weight": 0.06
+                },
+                {
+                  "locationId": "dallas",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "houston",
+                  "weight": 0.05
+                }
+              ]
+            },
+            "coldCoverageAnomalyF": -8,
+            "extremeAnomalyF": -14,
+            "aggregatePrecisionDecimals": 3,
+            "locationWeightTolerance": 1e-9,
+            "weightedAnomalyToleranceF": 1e-9
+          },
+          "forecastTemporalContract": {
+            "schemaVersion": 2,
+            "contractId": "summer-target-local-day-four-sample-mean-v1",
+            "forecastIssueRunHourUtc": "00",
+            "requiredLeadDays": 7,
+            "validTimeOffsetsHoursFromTargetUtcMidnight": [
+              6,
+              12,
+              18,
+              24
+            ],
+            "aggregation": "equal-weighted-arithmetic-mean",
+            "targetDateSemantics": "The targetDate remains issueDate plus leadDays. Offset 24 samples the following UTC midnight and is aggregated into that targetDate as the reviewed Eastern/Central US local-day approximation.",
+            "targetDayBasis": "eastern-central-us-local-calendar-day-four-sample-approximation",
+            "comparisonStatistic": "NASA-POWER-daily-T2M-mean",
+            "valueBinding": {
+              "schemaVersion": 1,
+              "sampleValuesField": "sampledForecastValuesF",
+              "sampleValuesEncoding": "pipe-delimited-degrees-F-in-offset-order-decimal-round-trip",
+              "sampleProvenanceField": "forecastSampleProvenanceJson",
+              "sampleProvenanceDigestField": "forecastSampleProvenanceDigestSha256",
+              "locationVectorDigestField": "forecastSampleVectorDigestSha256",
+              "locationSetDigestField": "locationSampleVectorSetDigestSha256",
+              "normalIdentityFields": [
+                "normalSourceContractId",
+                "normalSourceContractDigestSha256",
+                "normalSourcePayloadDigestSha256"
+              ],
+              "normalSourceContract": {
+                "contractId": "nasa-power-merra2-lst-t2m-1991-2020-v1",
+                "apiName": "POWER Daily API",
+                "apiVersion": "v2.9.4",
+                "upstreamSource": "MERRA2",
+                "timeStandard": "LST",
+                "parameter": "T2M",
+                "startDate": "1991-01-01",
+                "endDate": "2020-12-31",
+                "aggregation": "same-calendar-month-day-arithmetic-mean-converted-C-to-F",
+                "retainedPayloadPathTemplate": "data/qore/weather/nasa-power/normals/{locationId}-1991-01-01-2020-12-31.json",
+                "payloadDigestSha256ByLocationId": {
+                  "atlanta": "0810f0fc8a90118b9ee78160ca0a8b07ff765c211e2b358ccb1ad515a5d0f9ec",
+                  "boston": "f1ace71546bd44d70b32c8281ffd0c8146e43e5a70e4519b1dd4724a70c21ff9",
+                  "charlotte": "79c72d67eaeaa2f7a571397b527ce7e643101fe2e59e4662af47f89bbd135589",
+                  "chicago": "371516b28991c393b58e0397b11fec342fa0889673dfd349cf1f4e303f37003b",
+                  "cleveland": "2796510c46879cfd3000abc92f23fe433abda00cb69bef106b5576698224b135",
+                  "dallas": "4b3d8648923891fab65ad6cf3ff64146f4462deaf80c0c2e8ec3d2e4db2348fd",
+                  "detroit": "2e824bb05e63c57f04b5920e50151539d9a7098badf46a90cd42d230a8aac7f2",
+                  "houston": "520c32658c959069798e70f4acf024e687f937dee358507780208922db6781f5",
+                  "indianapolis": "dd17c50dc054452117f2924a591c07694d15f84c11545dbb29523bdc6468854c",
+                  "kansas-city": "69456f00d87cb878a5519ed38c73c0bf241995a5a2f88cb8335a9535dab607f7",
+                  "memphis": "9abe74e9c50ed3b38351c9e2e348c614f51cca718e4238099a0def5f96315125",
+                  "minneapolis": "783c46d0c07a7a7b99ff3fa8f65c66e4773f1bf5d7ae19f7e6b2f17a311584e6",
+                  "nashville": "f8d2cd1ef3b61c6c360f7cf7d685c187da76dc78986e69395a216e88c0aa0689",
+                  "new-york": "da386333e72f33767c006da9febf366ed0b2090168caaf911e4577588b562938",
+                  "philadelphia": "4c0ebfca3239e592cced47e0ba1e1a8d315bbf3892434811fa4766d16d73bb36",
+                  "raleigh": "02d9ee85ef2804f9a482f1c97d460bf5348064ee498b6cb78f3a2f414e825852",
+                  "st-louis": "afe6c6bac4ed1e9812cb767798328eddc6c7d8bf4c34ee024af26a4ac250befc",
+                  "washington-dc": "475680dd2ac2d3ec115de7bbeb6eb37da8dbea2afe51777a34ff802bf1bda11f"
+                }
+              },
+              "normalSourceContractDigestSha256": "18b1670dbbab93e68a3a9bfb67853f7961a7d125095627df20ebec276b322bcf",
+              "reviewedWindowId": "rumor",
+              "reviewedModelIds": {
+                "gfs": "ncep-gfs-global-00z-noaa-aws",
+                "gefs-mean": "ncep-gefs-mean-00z-noaa-aws",
+                "graphcastgfs": "ncep-gfs-graphcast-00z-noaa-aws",
+                "aigfs": "ncep-aigfs-025-00z-openmeteo-single-runs",
+                "ecmwf-ifs": "ecmwf-ifs-00z-openmeteo-single-runs",
+                "ecmwf-aifs": "ecmwf-aifs-025-00z-openmeteo-single-runs",
+                "gem-global": "gem-global-00z-openmeteo-single-runs"
+              },
+              "acquisitionIdentityFields": [
+                "sourceUrl",
+                "indexUrl",
+                "indexLine",
+                "sourceIndexPayloadDigestSha256",
+                "sourcePayloadDigestSha256"
+              ],
+              "aggregateRule": "forecastMeanF-equals-rounded-3dp-arithmetic-mean-of-stored-samples",
+              "digestAlgorithm": "sha256-canonical-json",
+              "acquisitionTrustBoundary": "The builder hashes each fetched GRIB field or Open-Meteo response and binds that digest plus upstream object identity into the persisted score provenance. Relabel-only or accidental value changes fail validation. Raw forecast bytes are not retained and SHA-256 bindings are not signatures, so a malicious process able to fabricate values and recompute every digest remains inside the trusted builder acquisition-attestation boundary."
+            },
+            "summerExecutionEligible": true
+          },
           "storageDeficitHeatMultiplier": 1.25,
           "storageDeficitHeatMaxFraction": 0.4375,
           "storageSeasonalLookbackYears": 5,
@@ -1294,18 +2129,36 @@
             "extremeMaximumReversionFraction": 0.5
           }
         },
+        "targetLattice": {
+          "schemaVersion": 1,
+          "generatorId": "summer-enumerated-target-lattice-v1",
+          "roundingDecimalPlaces": 4,
+          "targetsByWindowAndThesis": {
+            "weather-follow": {
+              "summer-heat-long": [
+                0.35,
+                0.4375
+              ]
+            },
+            "weather-reversion": {
+              "reversion-short": [
+                -0.5,
+                -0.4,
+                -0.2
+              ]
+            }
+          }
+        },
         "positionCaps": {
           "weather-follow": {
-            "summer-heat-long": 0.4375,
-            "summer-cold-short": 0.35
+            "summer-heat-long": 0.4375
           },
           "weather-reversion": {
-            "reversion-long": 0.35,
             "reversion-short": 0.5
           }
         }
       },
-      "comparatorComponentContractDigestSha256": "2c20bf21edcb08ba420db584b96b8c9a4170dbf8576311db9ee0ee9824313a16",
+      "comparatorComponentContractDigestSha256": "a7eaeec9307428a8f9f37179945c7433969cbb6a1b89b7f6c3d37b389c1a6871",
       "parameterDelta": {
         "minRealizedMovePct": 1.5,
         "reversionMoveScaleMode": "linear-ramp",
@@ -1367,10 +2220,11 @@
         "missingObservationPolicy": "missing or late shadow targets remain missing and must not be reconstructed",
         "promotionPolicy": "research review only; this contract cannot authorize paper or live execution"
       },
-      "contractDigestSha256": "58a1c21e12231adfa32e5ea213425d655c18b54a49ede783c247935af8eadc22",
+      "contractDigestSha256": "18863b0873efdbe1cd935982b89de1d0e68773b1449a47d00cf00ed5423a26ac",
       "comparator": {
         "candidateId": "summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed",
-        "selectedContractUnchanged": true
+        "selectedContractUnchanged": true,
+        "forecastTemporalContractId": null
       },
       "historicalEvaluation": {
         "evidenceStatus": "development-contaminated",
@@ -1831,7 +2685,7 @@
       "blockLength": 10
     },
     "forecastCoverage": {
-      "contractId": "summer-active-source-daily-lead-7-location-universe-v1",
+      "contractId": "summer-active-source-daily-lead-7-location-and-temporal-universe-v2",
       "status": "incomplete",
       "complete": false,
       "promotionEligible": false,
@@ -1936,11 +2790,122 @@
             }
           ]
         },
+        "requiresCorrectedTemporalStatistic": true,
+        "temporalContract": {
+          "schemaVersion": 2,
+          "contractId": "summer-target-local-day-four-sample-mean-v1",
+          "forecastIssueRunHourUtc": "00",
+          "requiredLeadDays": 7,
+          "validTimeOffsetsHoursFromTargetUtcMidnight": [
+            6,
+            12,
+            18,
+            24
+          ],
+          "aggregation": "equal-weighted-arithmetic-mean",
+          "targetDateSemantics": "The targetDate remains issueDate plus leadDays. Offset 24 samples the following UTC midnight and is aggregated into that targetDate as the reviewed Eastern/Central US local-day approximation.",
+          "targetDayBasis": "eastern-central-us-local-calendar-day-four-sample-approximation",
+          "comparisonStatistic": "NASA-POWER-daily-T2M-mean",
+          "valueBinding": {
+            "schemaVersion": 1,
+            "sampleValuesField": "sampledForecastValuesF",
+            "sampleValuesEncoding": "pipe-delimited-degrees-F-in-offset-order-decimal-round-trip",
+            "sampleProvenanceField": "forecastSampleProvenanceJson",
+            "sampleProvenanceDigestField": "forecastSampleProvenanceDigestSha256",
+            "locationVectorDigestField": "forecastSampleVectorDigestSha256",
+            "locationSetDigestField": "locationSampleVectorSetDigestSha256",
+            "normalIdentityFields": [
+              "normalSourceContractId",
+              "normalSourceContractDigestSha256",
+              "normalSourcePayloadDigestSha256"
+            ],
+            "normalSourceContract": {
+              "contractId": "nasa-power-merra2-lst-t2m-1991-2020-v1",
+              "apiName": "POWER Daily API",
+              "apiVersion": "v2.9.4",
+              "upstreamSource": "MERRA2",
+              "timeStandard": "LST",
+              "parameter": "T2M",
+              "startDate": "1991-01-01",
+              "endDate": "2020-12-31",
+              "aggregation": "same-calendar-month-day-arithmetic-mean-converted-C-to-F",
+              "retainedPayloadPathTemplate": "data/qore/weather/nasa-power/normals/{locationId}-1991-01-01-2020-12-31.json",
+              "payloadDigestSha256ByLocationId": {
+                "atlanta": "0810f0fc8a90118b9ee78160ca0a8b07ff765c211e2b358ccb1ad515a5d0f9ec",
+                "boston": "f1ace71546bd44d70b32c8281ffd0c8146e43e5a70e4519b1dd4724a70c21ff9",
+                "charlotte": "79c72d67eaeaa2f7a571397b527ce7e643101fe2e59e4662af47f89bbd135589",
+                "chicago": "371516b28991c393b58e0397b11fec342fa0889673dfd349cf1f4e303f37003b",
+                "cleveland": "2796510c46879cfd3000abc92f23fe433abda00cb69bef106b5576698224b135",
+                "dallas": "4b3d8648923891fab65ad6cf3ff64146f4462deaf80c0c2e8ec3d2e4db2348fd",
+                "detroit": "2e824bb05e63c57f04b5920e50151539d9a7098badf46a90cd42d230a8aac7f2",
+                "houston": "520c32658c959069798e70f4acf024e687f937dee358507780208922db6781f5",
+                "indianapolis": "dd17c50dc054452117f2924a591c07694d15f84c11545dbb29523bdc6468854c",
+                "kansas-city": "69456f00d87cb878a5519ed38c73c0bf241995a5a2f88cb8335a9535dab607f7",
+                "memphis": "9abe74e9c50ed3b38351c9e2e348c614f51cca718e4238099a0def5f96315125",
+                "minneapolis": "783c46d0c07a7a7b99ff3fa8f65c66e4773f1bf5d7ae19f7e6b2f17a311584e6",
+                "nashville": "f8d2cd1ef3b61c6c360f7cf7d685c187da76dc78986e69395a216e88c0aa0689",
+                "new-york": "da386333e72f33767c006da9febf366ed0b2090168caaf911e4577588b562938",
+                "philadelphia": "4c0ebfca3239e592cced47e0ba1e1a8d315bbf3892434811fa4766d16d73bb36",
+                "raleigh": "02d9ee85ef2804f9a482f1c97d460bf5348064ee498b6cb78f3a2f414e825852",
+                "st-louis": "afe6c6bac4ed1e9812cb767798328eddc6c7d8bf4c34ee024af26a4ac250befc",
+                "washington-dc": "475680dd2ac2d3ec115de7bbeb6eb37da8dbea2afe51777a34ff802bf1bda11f"
+              }
+            },
+            "normalSourceContractDigestSha256": "18b1670dbbab93e68a3a9bfb67853f7961a7d125095627df20ebec276b322bcf",
+            "reviewedWindowId": "rumor",
+            "reviewedModelIds": {
+              "gfs": "ncep-gfs-global-00z-noaa-aws",
+              "gefs-mean": "ncep-gefs-mean-00z-noaa-aws",
+              "graphcastgfs": "ncep-gfs-graphcast-00z-noaa-aws",
+              "aigfs": "ncep-aigfs-025-00z-openmeteo-single-runs",
+              "ecmwf-ifs": "ecmwf-ifs-00z-openmeteo-single-runs",
+              "ecmwf-aifs": "ecmwf-aifs-025-00z-openmeteo-single-runs",
+              "gem-global": "gem-global-00z-openmeteo-single-runs"
+            },
+            "acquisitionIdentityFields": [
+              "sourceUrl",
+              "indexUrl",
+              "indexLine",
+              "sourceIndexPayloadDigestSha256",
+              "sourcePayloadDigestSha256"
+            ],
+            "aggregateRule": "forecastMeanF-equals-rounded-3dp-arithmetic-mean-of-stored-samples",
+            "digestAlgorithm": "sha256-canonical-json",
+            "acquisitionTrustBoundary": "The builder hashes each fetched GRIB field or Open-Meteo response and binds that digest plus upstream object identity into the persisted score provenance. Relabel-only or accidental value changes fail validation. Raw forecast bytes are not retained and SHA-256 bindings are not signatures, so a malicious process able to fabricate values and recompute every digest remains inside the trusted builder acquisition-attestation boundary."
+          },
+          "summerExecutionEligible": true
+        },
         "marketCutoff": "Require each in-season lead-7 issue date to have its target date on or before the aligned market ledger end; the initial calendar is reviewed as beginning 2021-05-01."
       },
       "sources": [
         {
           "sourceId": "gfs",
+          "temporalContractComplete": false,
+          "temporalInputCount": 1,
+          "temporalFailureCount": 6071,
+          "temporalFailureDigestSha256": "db71d83dbbf715b6a60e8bd6287fbf80c7ee484c52c99ce82a9a43d726f9a9e1",
+          "temporalFailureSamples": [
+            "gfs location rows forecastTemporalContractId is not the corrected Summer contract",
+            "gfs location rows sampledValidHoursUtc does not match sampledValidTimeOffsetsHours",
+            "gfs location rows sampledValidTimeOffsetsHours is not exactly 6|12|18|24",
+            "gfs manifest temporalSampling metadata is missing",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws location sample vector is not bound to the score provenance",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+            "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws location sample vector is not bound to the score provenance",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+            "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed"
+          ],
           "completeIssueDateCount": 758,
           "requiredIssueDateCount": 833,
           "coveragePct": 91,
@@ -1961,6 +2926,32 @@
         },
         {
           "sourceId": "gefs-mean",
+          "temporalContractComplete": false,
+          "temporalInputCount": 1,
+          "temporalFailureCount": 6071,
+          "temporalFailureDigestSha256": "bfd879c1f2cdfef334d13d3f667af2b0cc7bf48096f1ed38bc08f6fa45e37e75",
+          "temporalFailureSamples": [
+            "gefs-mean location rows forecastTemporalContractId is not the corrected Summer contract",
+            "gefs-mean location rows sampledValidHoursUtc does not match sampledValidTimeOffsetsHours",
+            "gefs-mean location rows sampledValidTimeOffsetsHours is not exactly 6|12|18|24",
+            "gefs-mean manifest temporalSampling metadata is missing",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+            "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+            "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed"
+          ],
           "completeIssueDateCount": 758,
           "requiredIssueDateCount": 833,
           "coveragePct": 91,

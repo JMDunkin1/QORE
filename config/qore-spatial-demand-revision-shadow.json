@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "qore-spatial-demand-revision-shadow-v1",
+  "sealedAt": "2026-07-22T18:56:21.000Z",
+  "prospectiveStart": "2026-07-23",
+  "externalAnchor": null,
+  "pristineForwardEvidence": false,
+  "historicalEvidenceStatus": "development-contaminated",
+  "sealStrength": "local-hash-only-no-external-chronology-proof",
+  "registryId": "qore-spatial-demand-revision-research-shadows-v1",
+  "registryDigestSha256": "5dc0f2f4e6ccdc5d281f05d2b083086fd5249020e574f6bb8d3a5ca4f1fc716a",
+  "featureContractDigestSha256": "f60a8168fd0605646bcb69096d1f7aeb9783bcc26fc8427147ed7cddf15c826e",
+  "candidateContractDigestSha256": "a51207684f2dc1bb467b583a0b85943abe6a4d48a2c3fa671197ac4f64a265c9",
+  "outcomePolicyDigestSha256": "2993eae875a93d57ec6f845b5405b53ea1e5437a96e09a6bfe08f0c956265b22",
+  "researchExecutionContractDigestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d",
+  "referenceStrategy": {
+    "strategyId": "ngas-all-year-beta",
+    "strategyContractDigestSha256": "07ae468c936b65c141ae2d52d0088c13e185495bcfe9a9b897892d3b83c99285",
+    "strategyArtifactCoreDigestSha256": "a50a218d741e0c3a0ccd181026a329a7f8e0647f8c38d13252a6a6a06b94c18c"
+  },
+  "implementationFiles": [
+    {
+      "path": "scripts/build-gfs-forecast-calendar.mjs",
+      "digestSha256": "41e2f4be6a3ec4a41a9e6c634c55fef025febe3914f381c9fbab4635b50c243f"
+    },
+    {
+      "path": "scripts/collect-qore-spatial-demand-revision-shadow.mjs",
+      "digestSha256": "c2e5c695fbbb6127a05235701cda493ecfc00af6d5a2eea4f5f09cc4a721fec6"
+    },
+    {
+      "path": "scripts/evaluate-qore-spatial-demand-revision-shadow.mjs",
+      "digestSha256": "4bd8a67a036b340af804aa5f5a702241eb0c60ab200879f9015d467670db4d5b"
+    },
+    {
+      "path": "scripts/lib/qore-live-contract.mjs",
+      "digestSha256": "eee7fe8e32990b9d18a16448596d1fc3cc56c20c9f169b291874a5ec43ea8c72"
+    },
+    {
+      "path": "scripts/lib/qore-live-strategy-artifact.mjs",
+      "digestSha256": "23dfa0a952c191b582ed82bcaf48088f6b99dd64a655de52e0894e6d754eb81f"
+    },
+    {
+      "path": "scripts/lib/qore-research-execution.mjs",
+      "digestSha256": "403474428891a2444e5edd59fc8d9569b4bc629b272c367b311b3b0c281235c7"
+    },
+    {
+      "path": "scripts/lib/qore-spatial-demand-revision-shadow.mjs",
+      "digestSha256": "3d7de7b6f83092a08af6e74abb2d59d2be92b5899d7f201df58ade049512846c"
+    },
+    {
+      "path": "scripts/lib/qore-summer-forecast-contract.mjs",
+      "digestSha256": "4506346b91a8651fe8d14fb8d9e39a980750a22903bff3633856b83095b6c7bb"
+    },
+    {
+      "path": "scripts/lib/qore-summer-location-universe.mjs",
+      "digestSha256": "932a0d19c7de677ef7403969c1f5e1dfa5c1c5c0266d9f88323a8526c7f58185"
+    },
+    {
+      "path": "scripts/lib/qore-summer-shadow-challenger.mjs",
+      "digestSha256": "efb1fba27e6120a630ce2e359d128c1164799a0c0ef6011258e58cc72a271ded"
+    },
+    {
+      "path": "scripts/lib/qore-weather-data-quality.mjs",
+      "digestSha256": "17ce4cba6192534fe49eb10ab4a98cd08a3ed6b972629cb5644f03db7c4b49bd"
+    },
+    {
+      "path": "scripts/local-env.mjs",
+      "digestSha256": "4b4b5fb901a00f71b5473e4967100f04a86d3327030acd8752639adca4436c5c"
+    },
+    {
+      "path": "scripts/settle-qore-spatial-demand-revision-shadow.mjs",
+      "digestSha256": "e10ba5cdfd673d7364f8de8cd10908376312bf01985d697f095a4d10ef49efeb"
+    }
+  ],
+  "immutableInputFiles": [
+    {
+      "path": "config/qore-research-execution.json",
+      "digestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d"
+    },
+    {
+      "path": "config/qore-validation-integrity.json",
+      "digestSha256": "5a5cbbeff103dae8b1c295309d22762587e7cbc0390784c1310883d3752755c1"
+    },
+    {
+      "path": "data/qore/market/index-basket-config.json",
+      "digestSha256": "7119fbd61803add8a7bb2773e0fe28b5cda11ae294b1efed7937c600869553cc"
+    },
+    {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/display-curve.csv",
+      "digestSha256": "5eabb604ec644b333b199b951405981e76cdcbd146296765b250ae9fad4e55c9"
+    },
+    {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json",
+      "digestSha256": "c1542dd264c8e3e342d4a63d5e4973864ac1e4bb0bf4109fd22bb2fdf4d1d7b8"
+    },
+    {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+      "digestSha256": "ff39c0755c4777550113419e32a000e41a625612b30cedefa6103f2f8c2f04ea"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/atlanta-1991-01-01-2020-12-31.json",
+      "digestSha256": "0810f0fc8a90118b9ee78160ca0a8b07ff765c211e2b358ccb1ad515a5d0f9ec"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/boston-1991-01-01-2020-12-31.json",
+      "digestSha256": "f1ace71546bd44d70b32c8281ffd0c8146e43e5a70e4519b1dd4724a70c21ff9"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/charlotte-1991-01-01-2020-12-31.json",
+      "digestSha256": "79c72d67eaeaa2f7a571397b527ce7e643101fe2e59e4662af47f89bbd135589"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/chicago-1991-01-01-2020-12-31.json",
+      "digestSha256": "371516b28991c393b58e0397b11fec342fa0889673dfd349cf1f4e303f37003b"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/cleveland-1991-01-01-2020-12-31.json",
+      "digestSha256": "2796510c46879cfd3000abc92f23fe433abda00cb69bef106b5576698224b135"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/dallas-1991-01-01-2020-12-31.json",
+      "digestSha256": "4b3d8648923891fab65ad6cf3ff64146f4462deaf80c0c2e8ec3d2e4db2348fd"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/detroit-1991-01-01-2020-12-31.json",
+      "digestSha256": "2e824bb05e63c57f04b5920e50151539d9a7098badf46a90cd42d230a8aac7f2"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/houston-1991-01-01-2020-12-31.json",
+      "digestSha256": "520c32658c959069798e70f4acf024e687f937dee358507780208922db6781f5"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/indianapolis-1991-01-01-2020-12-31.json",
+      "digestSha256": "dd17c50dc054452117f2924a591c07694d15f84c11545dbb29523bdc6468854c"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/kansas-city-1991-01-01-2020-12-31.json",
+      "digestSha256": "69456f00d87cb878a5519ed38c73c0bf241995a5a2f88cb8335a9535dab607f7"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/memphis-1991-01-01-2020-12-31.json",
+      "digestSha256": "9abe74e9c50ed3b38351c9e2e348c614f51cca718e4238099a0def5f96315125"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/minneapolis-1991-01-01-2020-12-31.json",
+      "digestSha256": "783c46d0c07a7a7b99ff3fa8f65c66e4773f1bf5d7ae19f7e6b2f17a311584e6"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/nashville-1991-01-01-2020-12-31.json",
+      "digestSha256": "f8d2cd1ef3b61c6c360f7cf7d685c187da76dc78986e69395a216e88c0aa0689"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/new-york-1991-01-01-2020-12-31.json",
+      "digestSha256": "da386333e72f33767c006da9febf366ed0b2090168caaf911e4577588b562938"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/philadelphia-1991-01-01-2020-12-31.json",
+      "digestSha256": "4c0ebfca3239e592cced47e0ba1e1a8d315bbf3892434811fa4766d16d73bb36"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/raleigh-1991-01-01-2020-12-31.json",
+      "digestSha256": "02d9ee85ef2804f9a482f1c97d460bf5348064ee498b6cb78f3a2f414e825852"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/st-louis-1991-01-01-2020-12-31.json",
+      "digestSha256": "afe6c6bac4ed1e9812cb767798328eddc6c7d8bf4c34ee024af26a4ac250befc"
+    },
+    {
+      "path": "data/qore/weather/nasa-power/normals/washington-dc-1991-01-01-2020-12-31.json",
+      "digestSha256": "475680dd2ac2d3ec115de7bbeb6eb37da8dbea2afe51777a34ff802bf1bda11f"
+    }
+  ],
+  "manifestDigestSha256": "222334b155b85d62c75e1efc59cbcb08ef6ab6123af8b788ff94a77a56526f90"
+}

@@ -14,44 +14,91 @@ import {
 } from './lib/qore-live-strategy-artifact.mjs'
 import { inferAllYearTarget } from './lib/qore-live-all-year-inference.mjs'
 
+function expectedFixture(overrides = {}) {
+  return {
+    componentStrategyId: 'ngas-winter-alpha',
+    windowId: 'weather-follow',
+    ...overrides,
+  }
+}
+
+function replayFixture(overrides = {}) {
+  return {
+    componentStrategyId: 'ngas-winter-alpha',
+    windowId: 'weather-follow',
+    ...overrides,
+  }
+}
+
 const passing = assessLiveTargetParity({
   expectedRows: [
-    {
+    expectedFixture({
       entryTradeDate: '2025-01-02',
       ungPosition: '-0.25',
       indexFraction: '0.75',
       thesisKind: 'warm-short',
-    },
-    {
+    }),
+    expectedFixture({
+      componentStrategyId: 'index-fallback',
+      windowId: 'index-fallback',
       entryTradeDate: '2025-01-03',
       ungPosition: '0',
       indexFraction: '1',
       thesisKind: 'index-fallback',
-    },
+    }),
   ],
   forecastRows: [],
   actualWeatherRows: [],
   marketDays: [],
   storageRows: [],
   inferTarget: ({ targetDate }) => targetDate === '2025-01-02'
-    ? { gasPosition: -0.2509, indexFraction: 0.7491, thesisKind: 'warm-short' }
-    : { gasPosition: 0, indexFraction: 1, thesisKind: 'index-fallback' },
+    ? replayFixture({ gasPosition: -0.25, indexFraction: 0.75, thesisKind: 'warm-short' })
+    : replayFixture({
+        componentStrategyId: 'index-fallback',
+        windowId: 'index-fallback',
+        gasPosition: 0,
+        indexFraction: 1,
+        thesisKind: 'index-fallback',
+      }),
 })
 assert.equal(passing.exactTargetParity, true)
 assert.equal(passing.mismatchCount, 0)
 
-const failing = assessLiveTargetParity({
-  expectedRows: [{
+const nearButNotExact = assessLiveTargetParity({
+  expectedRows: [expectedFixture({
     entryTradeDate: '2025-01-02',
-    ungPosition: '0',
-    indexFraction: '1',
-    thesisKind: 'index-fallback',
-  }],
+    ungPosition: '-0.25',
+    indexFraction: '0.75',
+    thesisKind: 'warm-short',
+  })],
   forecastRows: [],
   actualWeatherRows: [],
   marketDays: [],
   storageRows: [],
-  inferTarget: () => ({
+  inferTarget: () => replayFixture({
+    gasPosition: -0.2501,
+    indexFraction: 0.7499,
+    thesisKind: 'warm-short',
+  }),
+})
+assert.equal(nearButNotExact.exactTargetParity, false)
+assert.equal(nearButNotExact.gasPositionMismatchCount, 1)
+assert.equal(nearButNotExact.indexFractionMismatchCount, 1)
+
+const failing = assessLiveTargetParity({
+  expectedRows: [expectedFixture({
+    componentStrategyId: 'index-fallback',
+    windowId: 'index-fallback',
+    entryTradeDate: '2025-01-02',
+    ungPosition: '0',
+    indexFraction: '1',
+    thesisKind: 'index-fallback',
+  })],
+  forecastRows: [],
+  actualWeatherRows: [],
+  marketDays: [],
+  storageRows: [],
+  inferTarget: () => replayFixture({
     gasPosition: -0.2517,
     indexFraction: 0.7483,
     thesisKind: 'reversion-short',
@@ -63,22 +110,103 @@ assert.equal(failing.indexFractionMismatchCount, 1)
 assert.equal(failing.thesisKindMismatchCount, 1)
 
 const allocationFailing = assessLiveTargetParity({
-  expectedRows: [{
+  expectedRows: [expectedFixture({
     entryTradeDate: '2025-01-02',
     ungPosition: '-0.25',
     indexFraction: '0.75',
     thesisKind: 'warm-short',
-  }],
+  })],
   forecastRows: [],
   actualWeatherRows: [],
   marketDays: [],
   storageRows: [],
-  inferTarget: () => ({ gasPosition: -0.25, indexFraction: 0.7, thesisKind: 'warm-short' }),
+  inferTarget: () => replayFixture({
+    gasPosition: -0.25,
+    indexFraction: 0.7,
+    thesisKind: 'warm-short',
+  }),
 })
 assert.equal(allocationFailing.exactTargetParity, false)
 assert.equal(allocationFailing.gasPositionMismatchCount, 0)
 assert.equal(allocationFailing.indexFractionMismatchCount, 1)
 assert.equal(allocationFailing.thesisKindMismatchCount, 0)
+
+for (const [label, expectedRows, inferTarget, rawField] of [
+  [
+    'expected',
+    [expectedFixture({
+      entryTradeDate: '2025-01-02',
+      ungPosition: '-0.250001',
+      indexFraction: '0.750001',
+      thesisKind: 'warm-short',
+    })],
+    () => replayFixture({
+      gasPosition: -0.25,
+      indexFraction: 0.75,
+      thesisKind: 'warm-short',
+    }),
+    'expectedRawGasPosition',
+  ],
+  [
+    'replay',
+    [expectedFixture({
+      entryTradeDate: '2025-01-02',
+      ungPosition: '-0.25',
+      indexFraction: '0.75',
+      thesisKind: 'warm-short',
+    })],
+    () => replayFixture({
+      gasPosition: -0.250001,
+      indexFraction: 0.750001,
+      thesisKind: 'warm-short',
+    }),
+    'replayRawGasPosition',
+  ],
+]) {
+  const nonCanonical = assessLiveTargetParity({
+    expectedRows,
+    forecastRows: [],
+    actualWeatherRows: [],
+    marketDays: [],
+    storageRows: [],
+    inferTarget,
+  })
+  assert.equal(nonCanonical.exactTargetParity, false, `${label} raw precision must fail`)
+  assert.equal(nonCanonical.gasPositionMismatchCount, 1)
+  assert.equal(nonCanonical.indexFractionMismatchCount, 1)
+  assert.equal(nonCanonical.mismatches[0][rawField], -0.250001)
+  assert.equal(nonCanonical.mismatches[0].gasPositionDifference, 0)
+  assert.equal(nonCanonical.mismatches[0].indexFractionDifference, 0)
+}
+
+const identityFailing = assessLiveTargetParity({
+  expectedRows: [expectedFixture({
+    entryTradeDate: '2025-01-02',
+    ungPosition: '-0.25',
+    indexFraction: '0.75',
+    thesisKind: 'warm-short',
+  })],
+  forecastRows: [],
+  actualWeatherRows: [],
+  marketDays: [],
+  storageRows: [],
+  inferTarget: () => replayFixture({
+    componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-reversion',
+    gasPosition: -0.25,
+    indexFraction: 0.75,
+    thesisKind: 'warm-short',
+  }),
+})
+assert.equal(identityFailing.exactTargetParity, false)
+assert.equal(identityFailing.gasPositionMismatchCount, 0)
+assert.equal(identityFailing.indexFractionMismatchCount, 0)
+assert.equal(identityFailing.thesisKindMismatchCount, 0)
+assert.equal(identityFailing.componentStrategyIdMismatchCount, 1)
+assert.equal(identityFailing.windowIdMismatchCount, 1)
+assert.notEqual(identityFailing.comparisonDigestSha256, passing.comparisonDigestSha256)
+assert.ok(LIVE_TARGET_PARITY_POLICY.comparisonFields.includes('componentStrategyId'))
+assert.ok(LIVE_TARGET_PARITY_POLICY.comparisonFields.includes('windowId'))
 
 const injectedStorageReleaseCalendar = {
   calendarId: 'parity-injected-calendar',
@@ -114,12 +242,14 @@ assert.equal(
 
 let forwardedStorageReleaseCalendar = null
 assessLiveTargetParity({
-  expectedRows: [{
+  expectedRows: [expectedFixture({
+    componentStrategyId: 'index-fallback',
+    windowId: 'index-fallback',
     entryTradeDate: '2025-01-06',
     ungPosition: '0',
     indexFraction: '1',
     thesisKind: 'index-fallback',
-  }],
+  })],
   forecastRows: [],
   actualWeatherRows: [],
   marketDays: [],
@@ -127,7 +257,13 @@ assessLiveTargetParity({
   storageReleaseCalendar: injectedStorageReleaseCalendar,
   inferTarget: (inputs) => {
     forwardedStorageReleaseCalendar = inputs.storageReleaseCalendar
-    return { gasPosition: 0, indexFraction: 1, thesisKind: 'index-fallback' }
+    return replayFixture({
+      componentStrategyId: 'index-fallback',
+      windowId: 'index-fallback',
+      gasPosition: 0,
+      indexFraction: 1,
+      thesisKind: 'index-fallback',
+    })
   },
 })
 assert.equal(
@@ -157,14 +293,23 @@ const versioned = evaluateVersionedLiveTargetParity(process.cwd(), {
   captureWinterTargetDates: formerWinterMismatchDates,
 })
 assert.equal(versioned.schemaVersion, LIVE_TARGET_PARITY_POLICY.schemaVersion)
-assert.equal(versioned.status, 'pass')
-assert.equal(versioned.exactTargetParity, true)
+assert.equal(versioned.status, 'fail')
+assert.equal(versioned.exactTargetParity, false)
+assert.equal(versioned.inputContractValid, false)
+assert.ok(versioned.inputContractFailureCount > versioned.inputContractFailureSamples.length)
+assert.equal(versioned.inputContractFailureSamples.length, 20)
+assert.match(versioned.inputContractFailureDigestSha256, /^[a-f0-9]{64}$/)
+assert.equal(Object.hasOwn(versioned, 'inputContractFailures'), false)
+assert.ok(versioned.inputContractFailureSamples.some((failure) =>
+  failure.includes('corrected Summer contract')))
 assert.equal(versioned.comparedRowCount, 1947)
 assert.equal(versioned.matchedRowCount, 1947)
 assert.equal(versioned.mismatchCount, 0)
 assert.equal(versioned.gasPositionMismatchCount, 0)
 assert.equal(versioned.indexFractionMismatchCount, 0)
 assert.equal(versioned.thesisKindMismatchCount, 0)
+assert.equal(versioned.componentStrategyIdMismatchCount, 0)
+assert.equal(versioned.windowIdMismatchCount, 0)
 assert.deepEqual(versioned.productionForecastSourceIds.summer, ['gfs', 'gefs-mean'])
 assert.deepEqual(versioned.productionForecastSourceIds.winter, [
   'gfs',
@@ -175,22 +320,40 @@ assert.deepEqual(versioned.productionForecastSourceIds.winter, [
   'ecmwf-aifs',
   'gem-global',
 ])
-assert.equal(versioned.components.summer.status, 'pass')
-assert.equal(versioned.components.summer.exactTargetParity, true)
+assert.equal(versioned.components.summer.status, 'fail')
+assert.equal(versioned.components.summer.exactTargetParity, false)
+assert.equal(versioned.components.summer.targetReplayExact, true)
+assert.equal(versioned.components.summer.inputContractValid, false)
+assert.ok(versioned.components.summer.inputContractFailureCount > 20)
+assert.equal(versioned.components.summer.inputContractFailureSamples.length, 20)
+assert.equal(Object.hasOwn(versioned.components.summer, 'inputContractFailures'), false)
+assert.ok(versioned.components.summer.temporalInputs.every((input) =>
+  input.failureSamples.length <= 20
+  && input.failureSamples.length < input.failureCount
+  && /^[a-f0-9]{64}$/.test(input.failureDigestSha256)
+  && !Object.hasOwn(input, 'failures')))
 assert.equal(versioned.components.summer.comparedRowCount, 585)
 assert.equal(versioned.components.summer.matchedRowCount, 585)
 assert.equal(versioned.components.summer.mismatchCount, 0)
+assert.equal(versioned.components.summer.componentStrategyIdMismatchCount, 0)
+assert.equal(versioned.components.summer.windowIdMismatchCount, 0)
 assert.equal(versioned.components.summer.forecastRowCount, 1516)
 assert.deepEqual(versioned.components.summer.productionForecastSourceIds, ['gfs', 'gefs-mean'])
 assert.match(
   versioned.components.summer.inputFiles.forecastCalendars.join(';'),
   /2021-05-01-2025-09-30-leads-7-hours-0/,
 )
+assert.equal(
+  versioned.components.summer.inputFiles.forecastCalendars.filter((file) => file.endsWith('-manifest.json')).length,
+  2,
+)
 assert.equal(versioned.components.winter.status, 'pass')
 assert.equal(versioned.components.winter.exactTargetParity, true)
 assert.equal(versioned.components.winter.comparedRowCount, 1362)
 assert.equal(versioned.components.winter.matchedRowCount, 1362)
 assert.equal(versioned.components.winter.mismatchCount, 0)
+assert.equal(versioned.components.winter.componentStrategyIdMismatchCount, 0)
+assert.equal(versioned.components.winter.windowIdMismatchCount, 0)
 assert.deepEqual(
   versioned.components.winter.capturedComparisons.map((row) => row.targetDate),
   formerWinterMismatchDates,
@@ -311,5 +474,5 @@ for (const [field, mutate, expectedFailure] of [
 }
 
 console.log(
-  `ok - Summer parity passes ${versioned.components.summer.comparedRowCount} rows; Winter parity passes ${versioned.components.winter.comparedRowCount} rows with ${versioned.components.winter.mismatchCount} mismatches`,
+  `ok - legacy Summer targets still replay ${versioned.components.summer.matchedRowCount} rows but fail the temporal input contract; Winter parity passes ${versioned.components.winter.comparedRowCount} rows`,
 )

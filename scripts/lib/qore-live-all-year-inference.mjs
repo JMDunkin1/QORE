@@ -4,6 +4,7 @@ import {
 } from './qore-signal-availability.mjs'
 import { eiaStorageReleaseAt } from './eia-release-time.mjs'
 import {
+  executableLiveComponentActiveForDate,
   executableLiveComponentContract,
   liveAllYearImplementation,
   selectedContracts,
@@ -18,7 +19,10 @@ import {
   evaluateWinterTargetDecision,
   winterStorageSeasonStartFor,
 } from './qore-winter-target-engine.mjs'
-import { validateForecastCalendarTemperatures } from './qore-weather-data-quality.mjs'
+import {
+  FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  validateForecastCalendarTemperatures,
+} from './qore-weather-data-quality.mjs'
 
 export { selectedContracts }
 
@@ -54,6 +58,9 @@ export function enrichForecastRows(scoreRows, locationRows, season, options = {}
     locationRows,
     mode: options.temperatureQualityMode ?? 'reject',
     label: options.temperatureQualityLabel ?? `${season} forecast inputs`,
+    scoreLocationAggregateContract: Object.hasOwn(options, 'scoreLocationAggregateContract')
+      ? options.scoreLocationAggregateContract
+      : FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
   })
   const locationsByKey = new Map()
   for (const row of validated.locationRows) {
@@ -122,9 +129,11 @@ export function createSignal(rows, candidate, season) {
   const scoped = rows.filter((row) => allowed.has(row.sourceId))
   const cold = sideStats(scoped.filter((row) => row.weightedAnomalyF <= -candidate.anomalyThreshold && row.coldCoveragePct >= candidate.coverageThreshold), 'cold', candidate)
   const warm = sideStats(scoped.filter((row) => row.weightedAnomalyF >= candidate.anomalyThreshold && row.warmCoveragePct >= candidate.coverageThreshold), 'warm', candidate)
-  const winner = cold.maxStrength >= warm.maxStrength
-    ? { direction: season === 'summer' ? -1 : 1, thesisKind: season === 'summer' ? 'summer-cold-short' : 'cold-long', stats: cold, loser: warm }
-    : { direction: season === 'summer' ? 1 : -1, thesisKind: season === 'summer' ? 'summer-heat-long' : 'warm-short', stats: warm, loser: cold }
+  const winner = season === 'summer'
+    ? { direction: 1, thesisKind: 'summer-heat-long', stats: warm, loser: cold }
+    : cold.maxStrength >= warm.maxStrength
+      ? { direction: 1, thesisKind: 'cold-long', stats: cold, loser: warm }
+      : { direction: -1, thesisKind: 'warm-short', stats: warm, loser: cold }
   if (!winner.stats.bestRow || winner.stats.groups.length < candidate.minGroups || winner.stats.families.length < candidate.minFamilies) return null
   if (winner.stats.maxStrength <= winner.loser.maxStrength * 1.15) return null
   const margin = Math.max(0, winner.stats.maxStrength - winner.loser.maxStrength)
@@ -343,7 +352,14 @@ function winterWeatherResolutionContext(forecastRows, actualWeatherRows, fadeRow
   const weight = closeRows.reduce((sum, row) => sum + Math.max(0.0001, numberFrom(row.sampledWeight, 1)), 0)
   const resolutionAnomalyF = actual
     ? numberFrom(actual.weightedAnomalyF)
-    : closeRows.reduce((sum, row) => sum + row.weightedAnomalyF * Math.max(0.0001, numberFrom(row.sampledWeight, 1)), 0) / weight
+    : round(
+        closeRows.reduce(
+          (sum, row) => sum
+            + row.weightedAnomalyF * Math.max(0.0001, numberFrom(row.sampledWeight, 1)),
+          0,
+        ) / weight,
+        3,
+      )
   const shiftF = resolutionAnomalyF - fadeRow.weightedAnomalyF
   const weatherGasDirection = shiftF < 0 ? 1 : shiftF > 0 ? -1 : 0
   const sameDirectionShift = weatherGasDirection !== 0 && weatherGasDirection === Math.sign(fadePosition)
@@ -471,15 +487,17 @@ export function inferAllYearTarget({
   storageReleaseCalendar = null,
   targetDate,
 }) {
-  const month = Number(targetDate.slice(5, 7))
+  const summerActive = executableLiveComponentActiveForDate({ season: 'summer', targetDate })
+  const winterActive = executableLiveComponentActiveForDate({ season: 'winter', targetDate })
   const prepared = preparedSchedules(forecastRows, marketDays, storageRows, storageReleaseCalendar)
   const { days } = prepared
   const summer = prepared.summer.get(targetDate) ?? null
   const follow = prepared.follow.get(targetDate) ?? null
   const fade = prepared.fade.get(targetDate) ?? null
-  let component = 'index-fallback'; let position = 0; let selected = null; const diagnostics = {}
+  let component = 'index-fallback'; let position = 0; let selected = null
+  let windowId = 'index-fallback'; const diagnostics = {}
   const targetDay = days.find((day) => day.date === targetDate)
-  if (targetDay && month >= 5 && month <= 9) {
+  if (targetDay && summerActive) {
     diagnostics.storage = {
       storageDate: targetDay.storageDate,
       storageReleaseAt: targetDay.storageReleaseAt,
@@ -487,9 +505,10 @@ export function inferAllYearTarget({
       releaseCalendarStatus: targetDay.releaseCalendarStatus,
     }
   }
-  if (summer) {
+  if (summerActive && summer) {
     component = 'ngas-summer-alpha'; position = summer.position; selected = summer
-  } else if ([11, 12, 1, 2, 3].includes(month)) {
+    windowId = summer.windowId
+  } else if (winterActive) {
     const storage = winterStorageContext(prepared.releasedStorageRows, targetDate)
     const vol = volatilityDirection(days, targetDate)
     diagnostics.rawRows = {
@@ -530,14 +549,22 @@ export function inferAllYearTarget({
     if (position) {
       component = 'ngas-winter-alpha'
       selected = blend.dominantRow
+      windowId = blend.followRow && blend.reversionRow
+        ? 'winter-alpha-blend'
+        : blend.followRow
+          ? 'weather-follow'
+          : 'weather-reversion'
     }
   }
+  const executedPosition = round(position)
   return {
     strategyId: 'ngas-all-year-beta', componentStrategyId: component, targetDate,
-    direction: position > 0 ? 'long' : position < 0 ? 'short' : 'flat', gasPosition: round(position),
-    indexFraction: round(Math.max(0, 1 - Math.abs(position))), cashFraction: 0,
+    direction: executedPosition > 0 ? 'long' : executedPosition < 0 ? 'short' : 'flat',
+    gasPosition: executedPosition,
+    indexFraction: round(Math.max(0, 1 - Math.abs(executedPosition))),
+    cashFraction: 0,
     signalDate: selected?.issueDate ?? targetDate, confidence: selected?.confidence ?? 0,
-    windowId: selected?.windowId ?? 'index-fallback', thesisKind: selected?.thesisKind ?? 'index-fallback',
+    windowId, thesisKind: selected?.thesisKind ?? 'index-fallback',
     sourceIds: selected?.sourceIds ?? [], weightedAnomalyF: selected?.weightedAnomalyF ?? 0,
     diagnostics,
   }

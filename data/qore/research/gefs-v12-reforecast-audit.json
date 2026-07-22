@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "auditId": "qore-gefs-v12-fixed-model-reforecast-audit-v1",
+  "generatedAt": "2026-07-22T18:27:45.662Z",
+  "strategyId": "ngas-all-year-beta",
+  "status": "validation-rejected-holdout-not-evaluated",
+  "researchOnly": true,
+  "productionPromotionEligible": false,
+  "source": {
+    "provider": "NOAA Physical Sciences Laboratory",
+    "archive": "GEFSv12 fixed-model retrospective forecast",
+    "memberSet": [
+      "c00"
+    ],
+    "caveat": "This is a fixed-model retrospective forecast, not the forecast product that was available to an operator on each historical issue date."
+  },
+  "dataset": {
+    "issueMemberRecords": 3865,
+    "startIssueDate": "2007-04-18",
+    "endIssueDate": "2019-12-24",
+    "forecastHours": [
+      174,
+      180,
+      186,
+      192
+    ],
+    "locationCount": 18,
+    "contractDigestSha256": "c9e42b6c5d78b418260d67b9ec18c4bd97d66166d7456121efe2ca1a1699d76a",
+    "recordsDigestSha256": "8a26357ea873b3239452909f863f46a54f360e2a89b76511522b00a6372d2f29",
+    "manifestDigestSha256": "55cb701dc3ce71dc9e15b0cbd3a8a7e129cc02c8c9a5657b00005940efc59a36",
+    "shardCount": 13,
+    "failedRecords": 0,
+    "rawGribRetained": false
+  },
+  "experiment": {
+    "instrument": "UNG",
+    "comparison": "cash",
+    "execution": "next trading-session adjusted open",
+    "positionFraction": 0.35,
+    "oneWayCostBps": 3.2,
+    "candidateFamilyId": "gefs-v12-physical-demand-follow-12-cell-v1",
+    "candidateCount": 12,
+    "anomalyThresholdsF": [
+      3,
+      5,
+      7
+    ],
+    "breadthThresholds": [
+      0.25,
+      0.5
+    ],
+    "holdSessions": [
+      1,
+      3
+    ],
+    "directionRule": "summer hot anomaly long; winter cold anomaly long; otherwise cash",
+    "trainEnd": "2014-12-31",
+    "validationStart": "2015-01-01",
+    "validationEnd": "2016-12-31",
+    "hiddenHoldoutStart": "2017-01-01",
+    "hiddenHoldoutEnd": "2019-12-31"
+  },
+  "familyDiagnostics": {
+    "allCandidatesNegativeTrain": true,
+    "trainReturnRangePct": [
+      -44.4533,
+      -3.2773
+    ],
+    "positiveAggregateValidationCandidates": 6,
+    "positiveBothValidationYearsCandidates": 2
+  },
+  "selectedCandidate": {
+    "candidateId": "a7-b0p5-h1",
+    "anomalyThresholdF": 7,
+    "breadthThreshold": 0.5,
+    "holdSessions": 1,
+    "positionFraction": 0.35,
+    "train": {
+      "sessionCount": 1941,
+      "activeSessions": 218,
+      "entryCount": 126,
+      "totalReturnPct": -3.2773,
+      "cagrPct": -0.4317,
+      "sharpe": -0.0524,
+      "sortino": -0.0725,
+      "maxDrawdownPct": -12.9263,
+      "tradingCostPct": 2.8264
+    },
+    "validation": {
+      "sessionCount": 504,
+      "activeSessions": 53,
+      "entryCount": 25,
+      "totalReturnPct": 3.0136,
+      "cagrPct": 1.4956,
+      "sharpe": 0.3749,
+      "sortino": 0.5695,
+      "maxDrawdownPct": -4.4538,
+      "tradingCostPct": 0.5767
+    },
+    "validationByYear": {
+      "2015": {
+        "totalReturnPct": 6.935,
+        "sharpe": 1.4879
+      },
+      "2016": {
+        "totalReturnPct": -3.6671,
+        "sharpe": -0.9765
+      }
+    }
+  },
+  "validationGate": {
+    "requiredFamilyAdjustedPValueMax": 0.2,
+    "observedFamilyAdjustedPValue": 0.683658,
+    "requiredPositiveEachValidationYear": true,
+    "validationYearPositive": {
+      "2015": true,
+      "2016": false
+    },
+    "passed": false
+  },
+  "selectionLock": {
+    "selectedOn": "train-only",
+    "hiddenHoldoutStatus": "not-evaluated",
+    "lockDigestSha256": "720110d701ca92a4c61f5b42d1b911f5874cb9da05b195b68a640e8c0745b094",
+    "selectionReportDigestSha256": "7cc9ae20acb8509c21b893fee677811f5fff5f9450cd1bc41a304fb77f7f0f45"
+  },
+  "implementationDigests": {
+    "contractLibrarySha256": "68ccf100d52aa7926198d3451408cb320c42f2bf2979d5438419401d385172aa",
+    "collectorSha256": "ea4cc04915c0fa4545e392bd20fabae11c5c2d5493cbee1d6826023103b9abdf",
+    "mergerSha256": "06bfc261f357835d782c803a5a158cb5c17809870c9bb6ff8d8061beb5c25ba1",
+    "evaluatorSha256": "bc9d3362c2d9ca82dcdad7bec8564c06e3b41c43e57c2364125fd6e4457e4ace",
+    "testSha256": "c7f51b167a89ab70d2b94235c8f0faaa60952083b89933c8ed2d580eed5f1cad"
+  },
+  "decision": "Reject the simple physical-demand-follow family. Do not reveal the 2017-2019 holdout, change ngas-all-year-beta, or enable paper/live routing."
+}

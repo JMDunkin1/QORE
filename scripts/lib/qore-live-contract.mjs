@@ -1,5 +1,7 @@
 import crypto from 'node:crypto'
 import { SUMMER_FORECAST_LOCATION_UNIVERSE } from './qore-summer-location-universe.mjs'
+import { SUMMER_FORECAST_TEMPORAL_CONTRACT } from './qore-summer-forecast-contract.mjs'
+import { FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT } from './qore-weather-data-quality.mjs'
 import {
   WINTER_GRADED_SHIFT_PARAMETERS,
   WINTER_HEATING_DEMAND_BASE_F,
@@ -7,8 +9,49 @@ import {
   WINTER_PRODUCTION_HEATING_DEMAND_SOURCE_IDS,
   WINTER_PRODUCTION_SIGNAL_SOURCE_IDS,
 } from './qore-winter-target-engine.mjs'
+import {
+  gasPositionTargetsFromLiveLattice,
+  summerLiveTargetLattice,
+  winterLiveTargetLattice,
+} from './qore-live-target-lattice.mjs'
 
-export const LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION = 2
+export { LIVE_TARGET_LATTICE_SCHEMA_VERSION } from './qore-live-target-lattice.mjs'
+
+export const LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION = 5
+
+const SUMMER_ACTIVE_TARGET_DATE_POLICY = Object.freeze({
+  policyId: 'summer-session-or-lead-7-target-season-v1',
+  sessionMonths: Object.freeze([5, 6, 7, 8, 9]),
+  leadMonthActivation: Object.freeze({
+    forecastLeadDays: 7,
+    minimumEntryLagDays: 1,
+    activationOffsetDays: 6,
+    targetMonths: Object.freeze([5, 6, 7, 8, 9]),
+  }),
+  minimumCalendarDayByMonth: Object.freeze({}),
+})
+const WINTER_ACTIVE_TARGET_DATE_POLICY = Object.freeze({
+  policyId: 'winter-session-months-v1',
+  sessionMonths: Object.freeze([11, 12, 1, 2, 3]),
+  leadMonthActivation: null,
+  minimumCalendarDayByMonth: Object.freeze({ 11: 2 }),
+})
+
+function projectedActiveTargetDatePolicy(policy) {
+  return {
+    policyId: policy.policyId,
+    sessionMonths: [...policy.sessionMonths],
+    leadMonthActivation: policy.leadMonthActivation
+      ? {
+          forecastLeadDays: policy.leadMonthActivation.forecastLeadDays,
+          minimumEntryLagDays: policy.leadMonthActivation.minimumEntryLagDays,
+          activationOffsetDays: policy.leadMonthActivation.activationOffsetDays,
+          targetMonths: [...policy.leadMonthActivation.targetMonths],
+        }
+      : null,
+    minimumCalendarDayByMonth: { ...policy.minimumCalendarDayByMonth },
+  }
+}
 
 const SUMMER = {
   candidateId: 'summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed',
@@ -67,6 +110,8 @@ const WINTER_FADE = {
 
 const SUMMER_IMPLEMENTATION = {
   forecastLocationUniverse: SUMMER_FORECAST_LOCATION_UNIVERSE,
+  scoreLocationAggregateContract: FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  forecastTemporalContract: SUMMER_FORECAST_TEMPORAL_CONTRACT,
   storageDeficitHeatMultiplier: 1.25,
   storageDeficitHeatMaxFraction: 0.4375,
   storageSeasonalLookbackYears: 5,
@@ -125,6 +170,8 @@ const WINTER_SELECTED = {
 }
 
 const WINTER_IMPLEMENTATION = {
+  forecastLocationUniverse: SUMMER_FORECAST_LOCATION_UNIVERSE,
+  scoreLocationAggregateContract: FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
   weatherFollow: WINTER_FOLLOW,
   weatherReversion: WINTER_FADE,
   sourceReliability: { gfs: 0.6092, 'gefs-mean': 1.167 },
@@ -245,10 +292,8 @@ function summerPositionCaps(selected, implementation) {
   return {
     'weather-follow': {
       'summer-heat-long': heatFollowFraction,
-      'summer-cold-short': ordinaryFollowFraction,
     },
     'weather-reversion': {
-      'reversion-long': selected.reversionFraction,
       'reversion-short': heatReversionFraction,
     },
   }
@@ -264,6 +309,10 @@ function winterPositionCaps(selected) {
       'cold-long': overlayFraction,
       'warm-short': overlayFraction,
     },
+    'winter-alpha-blend': {
+      'cold-long': overlayFraction,
+      'warm-short': overlayFraction,
+    },
     'weather-reversion': {
       'reversion-long': overlayFraction,
       'reversion-short': overlayFraction,
@@ -274,10 +323,18 @@ function winterPositionCaps(selected) {
 function canonicalSummerFromSummary(summary) {
   const selected = projectSelected(summary?.selected, SUMMER_SELECTED_FIELDS)
   const candidate = summary?.candidates?.find((row) => row?.candidateId === selected.candidateId)
+  const forecastCoverage = summary?.validation?.forecastCoverage
+  const correctedTemporalInputs = forecastCoverage?.promotionEligible === true
+    && Array.isArray(forecastCoverage?.sources)
+    && forecastCoverage.sources.length > 0
+    && forecastCoverage.sources.every((source) => source?.temporalContractComplete === true)
   const implementation = {
     ...SUMMER_IMPLEMENTATION,
     forecastLocationUniverse:
       summary?.validation?.forecastCoverage?.policy?.locationUniverse ?? null,
+    forecastTemporalContract: correctedTemporalInputs
+      ? forecastCoverage?.policy?.temporalContract ?? null
+      : null,
     storageDeficitHeatMultiplier: candidate?.storageDeficitHeatMultiplier ?? null,
     storageDeficitHeatMaxFraction: candidate?.storageDeficitHeatMaxFraction ?? null,
     storageSeasonalLookbackYears: candidate?.storageSeasonalLookbackYears ?? null,
@@ -285,30 +342,36 @@ function canonicalSummerFromSummary(summary) {
   }
   return {
     strategyId: summary?.strategyId ?? null,
+    activeTargetDatePolicy: projectedActiveTargetDatePolicy(SUMMER_ACTIVE_TARGET_DATE_POLICY),
     selected,
     implementation,
+    targetLattice: summerLiveTargetLattice(selected, implementation),
     positionCaps: summerPositionCaps(selected, implementation),
   }
 }
 
-function canonicalWinterFromSummary(summary) {
-  const selected = {
-    ...projectSelected(summary?.selected, WINTER_SELECTED_FIELDS),
-    holdPeriodPolicy: projectPolicy(summary?.selected?.holdPeriodPolicy, [
+function projectedWinterSelected(selected) {
+  return {
+    ...projectSelected(selected, WINTER_SELECTED_FIELDS),
+    holdPeriodPolicy: projectPolicy(selected?.holdPeriodPolicy, [
       'id',
       'kind',
       'followHoldDays',
       'reversionHoldDays',
     ]),
-    weatherResolutionPolicy: projectPolicy(summary?.selected?.weatherResolutionPolicy, ['id', 'kind']),
-    coldFollowStoragePolicy: projectPolicy(summary?.selected?.coldFollowStoragePolicy, [
+    weatherResolutionPolicy: projectPolicy(selected?.weatherResolutionPolicy, ['id', 'kind']),
+    coldFollowStoragePolicy: projectPolicy(selected?.coldFollowStoragePolicy, [
       'id',
       'kind',
       'minSeasonDrawdownBcf',
     ]),
-    followFreshnessPolicy: projectPolicy(summary?.selected?.followFreshnessPolicy, ['id', 'kind', 'lookbackDays']),
-    heatingDemandPolicy: projectPolicy(summary?.selected?.heatingDemandPolicy, ['id', 'kind', 'minDemandAnomalyF']),
+    followFreshnessPolicy: projectPolicy(selected?.followFreshnessPolicy, ['id', 'kind', 'lookbackDays']),
+    heatingDemandPolicy: projectPolicy(selected?.heatingDemandPolicy, ['id', 'kind', 'minDemandAnomalyF']),
   }
+}
+
+function canonicalWinterFromSummary(summary) {
+  const selected = projectedWinterSelected(summary?.selected)
   const projectInput = (input) => ({
     strategyId: input?.strategyId ?? null,
     candidateId: input?.candidateId ?? null,
@@ -316,6 +379,7 @@ function canonicalWinterFromSummary(summary) {
   const implementation = WINTER_IMPLEMENTATION
   return {
     strategyId: summary?.strategyId ?? null,
+    activeTargetDatePolicy: projectedActiveTargetDatePolicy(WINTER_ACTIVE_TARGET_DATE_POLICY),
     inputs: {
       weatherReversion: projectInput(summary?.inputs?.weatherReversion),
       weatherFollow: projectInput(summary?.inputs?.weatherFollow),
@@ -323,6 +387,7 @@ function canonicalWinterFromSummary(summary) {
     },
     selected,
     implementation,
+    targetLattice: winterLiveTargetLattice(selected, implementation),
     positionCaps: winterPositionCaps(selected),
   }
 }
@@ -339,8 +404,13 @@ export const executableLiveComponentContract = {
   schemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
   summer: {
     strategyId: 'ngas-summer-alpha',
+    activeTargetDatePolicy: projectedActiveTargetDatePolicy(SUMMER_ACTIVE_TARGET_DATE_POLICY),
     selected: projectSelected(SUMMER, SUMMER_SELECTED_FIELDS),
     implementation: SUMMER_IMPLEMENTATION,
+    targetLattice: summerLiveTargetLattice(
+      projectSelected(SUMMER, SUMMER_SELECTED_FIELDS),
+      SUMMER_IMPLEMENTATION,
+    ),
     positionCaps: summerPositionCaps(
       projectSelected(SUMMER, SUMMER_SELECTED_FIELDS),
       SUMMER_IMPLEMENTATION,
@@ -348,6 +418,7 @@ export const executableLiveComponentContract = {
   },
   winter: {
     strategyId: 'ngas-winter-alpha',
+    activeTargetDatePolicy: projectedActiveTargetDatePolicy(WINTER_ACTIVE_TARGET_DATE_POLICY),
     inputs: {
       weatherReversion: {
         strategyId: 'winter-alpha-weather-reversion',
@@ -362,17 +433,51 @@ export const executableLiveComponentContract = {
         candidateId: WINTER_IMPLEMENTATION.volatilityConfirmation.candidateId,
       },
     },
-    selected: {
-      ...projectSelected(WINTER_SELECTED, WINTER_SELECTED_FIELDS),
-      holdPeriodPolicy: WINTER_SELECTED.holdPeriodPolicy,
-      weatherResolutionPolicy: WINTER_SELECTED.weatherResolutionPolicy,
-      coldFollowStoragePolicy: WINTER_SELECTED.coldFollowStoragePolicy,
-      followFreshnessPolicy: WINTER_SELECTED.followFreshnessPolicy,
-      heatingDemandPolicy: WINTER_SELECTED.heatingDemandPolicy,
-    },
+    selected: projectedWinterSelected(WINTER_SELECTED),
     implementation: WINTER_IMPLEMENTATION,
+    targetLattice: winterLiveTargetLattice(
+      projectedWinterSelected(WINTER_SELECTED),
+      WINTER_IMPLEMENTATION,
+    ),
     positionCaps: winterPositionCaps(projectSelected(WINTER_SELECTED, WINTER_SELECTED_FIELDS)),
   },
+}
+
+function validTargetDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) return false
+  const parsed = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+export function executableLiveComponentActiveForDate({ season, targetDate }) {
+  const component = executableLiveComponentContract[season]
+  if (!component || !validTargetDate(targetDate)) return false
+  const policy = component.activeTargetDatePolicy
+  const month = Number(targetDate.slice(5, 7))
+  const day = Number(targetDate.slice(8, 10))
+  if (policy.sessionMonths.includes(month)) {
+    return day >= Number(policy.minimumCalendarDayByMonth?.[month] ?? 1)
+  }
+  if (!policy.leadMonthActivation) return false
+  const leadDate = new Date(
+    Date.parse(`${targetDate}T00:00:00Z`)
+      + policy.leadMonthActivation.activationOffsetDays * 86400000,
+  ).toISOString().slice(0, 10)
+  return policy.leadMonthActivation.targetMonths.includes(Number(leadDate.slice(5, 7)))
+}
+
+export function executableLiveGasPositionTargetsForTarget({
+  season,
+  componentStrategyId,
+  windowId,
+  thesisKind,
+}) {
+  if (componentStrategyId === 'index-fallback') {
+    return windowId === 'index-fallback' && thesisKind === 'index-fallback' ? [0] : []
+  }
+  const component = executableLiveComponentContract[season]
+  if (!component || component.strategyId !== componentStrategyId) return []
+  return gasPositionTargetsFromLiveLattice(component.targetLattice, windowId, thesisKind)
 }
 
 export const executableLiveGasPositionCaps = Object.freeze({

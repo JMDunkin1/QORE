@@ -1,4 +1,9 @@
 import { SUMMER_FORECAST_LOCATION_UNIVERSE } from './qore-summer-location-universe.mjs'
+import {
+  SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  compactSummerForecastFailures,
+  summarizeSummerForecastTemporalInputs,
+} from './qore-summer-forecast-contract.mjs'
 
 export { SUMMER_FORECAST_LOCATION_UNIVERSE } from './qore-summer-location-universe.mjs'
 
@@ -159,6 +164,7 @@ export function summarizeSummerForecastCoverage({
   requiredSourceIds,
   marketEndDate,
   coverageStartDate = DEFAULT_COVERAGE_START_DATE,
+  temporalInputs = [],
 }) {
   assertIsoDate(coverageStartDate, 'coverageStartDate')
   assertIsoDate(marketEndDate, 'marketEndDate')
@@ -176,6 +182,15 @@ export function summarizeSummerForecastCoverage({
   const expectedIssueDateSet = new Set(expectedIssueDates)
   const completeIssuesBySource = new Map(sourceIds.map((sourceId) => [sourceId, new Set()]))
   const locationBreadthFailuresBySource = new Map(sourceIds.map((sourceId) => [sourceId, new Set()]))
+  const temporalSummariesBySource = new Map(sourceIds.map((sourceId) => [sourceId, []]))
+  for (const input of Array.isArray(temporalInputs) ? temporalInputs : []) {
+    if (!temporalSummariesBySource.has(input?.sourceId)) continue
+    temporalSummariesBySource.get(input.sourceId).push(summarizeSummerForecastTemporalInputs(input))
+  }
+  const temporalCompleteBySource = new Map(sourceIds.map((sourceId) => {
+    const summaries = temporalSummariesBySource.get(sourceId)
+    return [sourceId, summaries.length > 0 && summaries.every((summary) => summary.complete)]
+  }))
 
   for (const score of scores) {
     const completeIssues = completeIssuesBySource.get(score.sourceId)
@@ -202,8 +217,16 @@ export function summarizeSummerForecastCoverage({
     const locationBreadthFailureIssueDates = missingIssueDates.filter((date) =>
       locationBreadthFailuresBySource.get(sourceId).has(date),
     )
+    const temporalFailureDiagnostics = compactSummerForecastFailures(
+      temporalSummariesBySource.get(sourceId).flatMap((summary) => summary.failures),
+    )
     return {
       sourceId,
+      temporalContractComplete: temporalCompleteBySource.get(sourceId),
+      temporalInputCount: temporalSummariesBySource.get(sourceId).length,
+      temporalFailureCount: temporalFailureDiagnostics.failureCount,
+      temporalFailureDigestSha256: temporalFailureDiagnostics.failureDigestSha256,
+      temporalFailureSamples: temporalFailureDiagnostics.failureSamples,
       completeIssueDateCount: completeIssues.size,
       requiredIssueDateCount: expectedIssueDates.length,
       coveragePct: expectedIssueDates.length ? round((completeIssues.size / expectedIssueDates.length) * 100) : 0,
@@ -218,10 +241,13 @@ export function summarizeSummerForecastCoverage({
   const missingUniqueIssueDates = expectedIssueDates.filter((date) =>
     sources.some((source) => !completeIssuesBySource.get(source.sourceId).has(date)),
   )
-  const complete = expectedIssueDates.length > 0 && sources.every((source) => source.missingIssueDateCount === 0)
+  const complete = expectedIssueDates.length > 0 && sources.every((source) => (
+    source.temporalContractComplete
+    && source.missingIssueDateCount === 0
+  ))
 
   return {
-    contractId: 'summer-active-source-daily-lead-7-location-universe-v1',
+    contractId: 'summer-active-source-daily-lead-7-location-and-temporal-universe-v2',
     status: expectedIssueDates.length === 0 ? 'not-observable' : complete ? 'complete' : 'incomplete',
     complete,
     promotionEligible: complete,
@@ -245,6 +271,8 @@ export function summarizeSummerForecastCoverage({
       targetSeasonEndMonthDay: TARGET_SEASON_END_MONTH_DAY,
       requiresMatchingLocationBreadth: true,
       locationUniverse: SUMMER_FORECAST_LOCATION_UNIVERSE,
+      requiresCorrectedTemporalStatistic: true,
+      temporalContract: SUMMER_FORECAST_TEMPORAL_CONTRACT,
       marketCutoff:
         'Require each in-season lead-7 issue date to have its target date on or before the aligned market ledger end; the initial calendar is reviewed as beginning 2021-05-01.',
     },

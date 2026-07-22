@@ -9,20 +9,50 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { loadReviewedBrokerExecutionProfile } from './lib/qore-broker-execution-profile.mjs'
 import { createSignal, enrichForecastRows, inferAllYearTarget, selectedContracts } from './lib/qore-live-all-year-inference.mjs'
-import { liveComponentContractDigestSha256 } from './lib/qore-live-contract.mjs'
+import {
+  LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+  executableLiveComponentContract,
+  executableLiveComponentContractDigestSha256,
+  liveComponentContractDigestSha256,
+} from './lib/qore-live-contract.mjs'
+import {
+  liveGasPositionContractBlocks,
+  liveInferenceSeasonForDate,
+} from './lib/qore-live-inference-provenance.mjs'
 import { ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION } from './lib/qore-live-strategy-artifact.mjs'
+import { DEFAULT_FORWARD_OUTCOME_POLICY } from './lib/qore-validation-evidence.mjs'
 import { writeValidationEvidenceTestFixtures } from './lib/qore-validation-evidence-test-fixture.mjs'
+import { LIVE_TARGET_PARITY_POLICY } from './lib/qore-live-target-parity.mjs'
+import {
+  SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+  SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT,
+  SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+  compactSummerForecastFailures,
+  forecastLocationSampleSetDigestSha256,
+  forecastSampleProvenanceDigestSha256,
+  forecastSampleVectorDigestSha256,
+  forecastValidTimeForTargetOffset,
+} from './lib/qore-summer-forecast-contract.mjs'
 import {
   ALL_YEAR_SELECTION_CONTRACT,
+  VALIDATION_CANDIDATE_REGISTRY_ID,
+  VALIDATION_CANDIDATE_REGISTRY_SCHEMA_VERSION,
+  VALIDATION_CANDIDATE_SELECTION_POLICY,
   VALIDATION_INTEGRITY_MANIFEST_ID,
   VALIDATION_INTEGRITY_SCHEMA_VERSION,
   allYearStrategyArtifactCoreDigestSha256,
   allYearStrategyContractDigestSha256,
   loadValidationIntegrityManifest,
+  reviewedForwardValidationImplementation,
+  validationCandidateRegistryDigestSha256,
+  validationPreregistrationDigestSha256,
 } from './lib/qore-validation-integrity.mjs'
+import { LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT } from './lib/qore-weather-data-quality.mjs'
 
 process.env.NODE_ENV = 'test'
 process.env.QORE_TEST_REVIEWED_ARTIFACT_OVERRIDES = '1'
+process.env.QORE_TEST_LIVE_INFERENCE_OVERRIDES = '1'
 
 const root = process.cwd()
 const dataRoot = path.join(root, 'data', 'qore')
@@ -31,16 +61,64 @@ const validationFixtureDir = await mkdtemp(path.join(tmpdir(), 'qore-validation-
 const validationFixturePath = path.join(validationFixtureDir, 'pristine-validation-integrity.json')
 
 function promotionEligibleLiveTargetParity(parity) {
+  const emptyDiagnostics = compactSummerForecastFailures([])
+  const components = Object.fromEntries(Object.entries(parity.components).map(([key, component]) => {
+    const { inputContractFailures: ignoredFailures, ...componentBase } = component
+    void ignoredFailures
+    return [key, {
+      ...componentBase,
+      status: 'pass',
+      matchedRowCount: component.comparedRowCount,
+      mismatchCount: 0,
+      gasPositionMismatchCount: 0,
+      indexFractionMismatchCount: 0,
+      thesisKindMismatchCount: 0,
+      componentStrategyIdMismatchCount: 0,
+      windowIdMismatchCount: 0,
+      inputContractValid: true,
+      inputContractFailureCount: emptyDiagnostics.failureCount,
+      inputContractFailureDigestSha256: emptyDiagnostics.failureDigestSha256,
+      inputContractFailureSamples: emptyDiagnostics.failureSamples,
+      exactTargetParity: true,
+      ...(key === 'summer' ? { targetReplayExact: true } : {}),
+      mismatches: [],
+      ...(Array.isArray(component.temporalInputs)
+        ? {
+            temporalInputs: component.temporalInputs.map((input) => {
+              const { failures: ignoredTemporalFailures, ...metadata } = input
+              void ignoredTemporalFailures
+              return {
+                ...metadata,
+                complete: true,
+                promotionEligible: true,
+                ...emptyDiagnostics,
+              }
+            }),
+          }
+        : {}),
+    }]
+  }))
+  const { inputContractFailures: ignoredFailures, ...parityBase } = parity
+  void ignoredFailures
   return {
-    ...parity,
+    ...parityBase,
+    ...LIVE_TARGET_PARITY_POLICY,
     status: 'pass',
     matchedRowCount: parity.comparedRowCount,
     mismatchCount: 0,
     gasPositionMismatchCount: 0,
+    indexFractionMismatchCount: 0,
     thesisKindMismatchCount: 0,
+    componentStrategyIdMismatchCount: 0,
+    windowIdMismatchCount: 0,
+    inputContractValid: true,
+    inputContractFailureCount: emptyDiagnostics.failureCount,
+    inputContractFailureDigestSha256: emptyDiagnostics.failureDigestSha256,
+    inputContractFailureSamples: emptyDiagnostics.failureSamples,
     exactTargetParity: true,
     comparisonDigestSha256: 'd'.repeat(64),
     mismatches: [],
+    components,
   }
 }
 
@@ -53,49 +131,60 @@ const validationStrategySource = JSON.parse(await readFile(
   'utf8',
 ))
 validationStrategySource.contract.allYearSelection = ALL_YEAR_SELECTION_CONTRACT
+validationStrategySource.contract.liveInference = {
+  componentContractSchemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+  componentContract: structuredClone(executableLiveComponentContract),
+  componentContractDigestSha256: executableLiveComponentContractDigestSha256,
+  executableContractDigestSha256: executableLiveComponentContractDigestSha256,
+}
+validationStrategySource.contract.liveTargetParity = LIVE_TARGET_PARITY_POLICY
 validationStrategySource.validation.liveTargetParity = promotionEligibleLiveTargetParity(
   validationStrategySource.validation.liveTargetParity,
 )
 validationStrategySource.validation.promotionGates = promotionEligibleGates(
   validationStrategySource.validation.promotionGates,
 )
+validationStrategySource.validation.promotionGates.summerTemporalContract = true
 const sealedStrategyContractDigestSha256 = allYearStrategyContractDigestSha256(validationStrategySource)
 const sealedStrategyArtifactDigestSha256 = allYearStrategyArtifactCoreDigestSha256(validationStrategySource)
 const sealedBrokerExecutionProfileDigestSha256 = loadReviewedBrokerExecutionProfile(root).profileDigestSha256
 const paperAccountPseudonymSha256 = 'b'.repeat(64)
-const validationEvidenceFixtures = await writeValidationEvidenceTestFixtures({
-  repoDir: root,
-  manifestPath: validationFixturePath,
-  strategyContractDigestSha256: sealedStrategyContractDigestSha256,
-  strategyArtifactCoreDigestSha256: sealedStrategyArtifactDigestSha256,
-  brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
-  accountPseudonymSha256: paperAccountPseudonymSha256,
-})
-await writeFile(validationFixturePath, `${JSON.stringify({
+const validationManifest = {
   schemaVersion: VALIDATION_INTEGRITY_SCHEMA_VERSION,
   manifestId: VALIDATION_INTEGRITY_MANIFEST_ID,
   strategyId: 'ngas-all-year-beta',
+  sealedAt: '2019-12-31T12:00:00.000Z',
   reviewedAt: '2025-10-02T00:00:00.000Z',
   sealedStrategyContractDigestSha256,
   sealedStrategyArtifactDigestSha256,
   sealedBrokerExecutionProfileDigestSha256,
   historicalEvidence: {
     status: 'development-contaminated',
-    evidenceStart: '2020-01-01',
-    developmentBegan: '2022-06-11',
-    observedThrough: '2022-12-15',
-    prospectiveStart: '2023-01-01',
+    evidenceStart: '2017-01-01',
+    developmentBegan: '2019-06-11',
+    observedThrough: '2019-12-15',
+    prospectiveStart: '2020-01-03',
     pristineForwardEvidence: true,
   },
+  forwardOutcomePolicy: structuredClone(DEFAULT_FORWARD_OUTCOME_POLICY),
+  forwardValidationImplementation: reviewedForwardValidationImplementation(root),
   minimumForwardEvidence: {
     independentEpisodes: 60,
     completeSummerSeasons: 2,
     completeWinterSeasons: 2,
   },
   observedForwardEvidence: {
-    ...validationEvidenceFixtures.forwardSummary,
-    evidenceArtifactDigestSha256: validationEvidenceFixtures.forwardEvidenceArtifactDigestSha256,
-    reviewedAt: '2025-10-01T00:00:00.000Z',
+    independentEpisodes: 0,
+    completeSummerSeasons: 0,
+    completeWinterSeasons: 0,
+    observedThrough: null,
+    strategyContractDigestSha256: null,
+    strategyArtifactDigestSha256: null,
+    outcomePolicyDigestSha256: null,
+    preregistrationDigestSha256: null,
+    sealedAt: null,
+    evidenceArtifactDigestSha256: null,
+    reviewedAt: null,
   },
   minimumPaperExecutionEvidence: {
     tradingSessions: 60,
@@ -103,16 +192,49 @@ await writeFile(validationFixturePath, `${JSON.stringify({
     ungFilledOrders: 4,
     ungLongFilledOrders: 2,
     ungShortFilledOrders: 2,
+    minimumFilledOrderRatio: 0.8,
     maximumMedianAbsoluteSlippageBps: 25,
     maximumP95AbsoluteSlippageBps: 50,
   },
-  paperExecutionEvidence: {
+}
+validationManifest.candidateRegistry = {
+  schemaVersion: VALIDATION_CANDIDATE_REGISTRY_SCHEMA_VERSION,
+  registryId: VALIDATION_CANDIDATE_REGISTRY_ID,
+  familySize: 1,
+  selectionPolicy: VALIDATION_CANDIDATE_SELECTION_POLICY,
+  candidates: [{
+    candidateId: validationManifest.strategyId,
+    strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+    strategyArtifactCoreDigestSha256: sealedStrategyArtifactDigestSha256,
+  }],
+  registryDigestSha256: null,
+}
+validationManifest.candidateRegistry.registryDigestSha256 =
+  validationCandidateRegistryDigestSha256(validationManifest.candidateRegistry)
+validationManifest.preregistrationDigestSha256 =
+  validationPreregistrationDigestSha256(validationManifest)
+const validationEvidenceFixtures = await writeValidationEvidenceTestFixtures({
+  repoDir: root,
+  manifestPath: validationFixturePath,
+  strategyContractDigestSha256: sealedStrategyContractDigestSha256,
+  strategyArtifactCoreDigestSha256: sealedStrategyArtifactDigestSha256,
+  brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
+  accountPseudonymSha256: paperAccountPseudonymSha256,
+  preregistrationDigestSha256: validationManifest.preregistrationDigestSha256,
+  sealedAt: validationManifest.sealedAt,
+})
+validationManifest.observedForwardEvidence = {
+  ...validationEvidenceFixtures.forwardSummary,
+  evidenceArtifactDigestSha256: validationEvidenceFixtures.forwardEvidenceArtifactDigestSha256,
+  reviewedAt: '2025-10-01T04:30:00.000Z',
+}
+validationManifest.paperExecutionEvidence = {
     status: 'reviewed',
     ...validationEvidenceFixtures.paperSummary,
     evidenceArtifactDigestSha256: validationEvidenceFixtures.paperEvidenceArtifactDigestSha256,
     reviewedAt: '2025-10-01T01:00:00.000Z',
-  },
-  approvals: {
+}
+validationManifest.approvals = {
     paper: {
       status: 'approved',
       approvalId: 'test-paper-approval',
@@ -127,8 +249,8 @@ await writeFile(validationFixturePath, `${JSON.stringify({
       strategyContractDigestSha256: sealedStrategyContractDigestSha256,
       brokerExecutionProfileDigestSha256: sealedBrokerExecutionProfileDigestSha256,
     },
-  },
-}, null, 2)}\n`)
+}
+await writeFile(validationFixturePath, `${JSON.stringify(validationManifest, null, 2)}\n`)
 process.env.QORE_VALIDATION_INTEGRITY_FILE = validationFixturePath
 const pristineValidationIntegrity = loadValidationIntegrityManifest(root)
 
@@ -165,7 +287,17 @@ async function writeStrategyArtifactFixture(filePath, { eligible }) {
   const fixture = {
     ...source,
     artifactSchemaVersion: ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION,
-    contract: { ...source.contract, allYearSelection: ALL_YEAR_SELECTION_CONTRACT },
+    contract: {
+      ...source.contract,
+      allYearSelection: ALL_YEAR_SELECTION_CONTRACT,
+      liveInference: {
+        componentContractSchemaVersion: LIVE_COMPONENT_CONTRACT_SCHEMA_VERSION,
+        componentContract: structuredClone(executableLiveComponentContract),
+        componentContractDigestSha256: executableLiveComponentContractDigestSha256,
+        executableContractDigestSha256: executableLiveComponentContractDigestSha256,
+      },
+      liveTargetParity: LIVE_TARGET_PARITY_POLICY,
+    },
     status: eligible ? 'research-baseline' : 'needs-validation',
     search: {
       ...source.search,
@@ -189,6 +321,7 @@ async function writeStrategyArtifactFixture(filePath, { eligible }) {
         paperApproval: eligible,
         paperExecutionEvidence: eligible,
         liveApproval: eligible,
+        summerTemporalContract: eligible,
       },
     },
     candidates: source.candidates.map((candidate, index) => ({ ...candidate, eligible: eligible && index === 0 })),
@@ -207,6 +340,43 @@ function runNode(args, env) {
     child.stderr.on('data', (chunk) => { stderr += chunk })
     child.on('close', (code) => resolve({ code, stdout, stderr }))
   })
+}
+
+async function productionInputOverridesFailClosed() {
+  for (const [name, value] of [
+    ['QORE_LIVE_INFERENCE_GAS_MARKET_FILE', path.join(validationFixtureDir, 'unreviewed-input.csv')],
+    ['QORE_LIVE_INFERENCE_INDEX_MARKET_FILE', path.join(validationFixtureDir, 'unreviewed-input.csv')],
+    ['QORE_LIVE_INFERENCE_STORAGE_FILE', path.join(validationFixtureDir, 'unreviewed-input.csv')],
+    ['QORE_LIVE_ACTUAL_WEATHER_FILE', path.join(validationFixtureDir, 'unreviewed-input.csv')],
+    ['QORE_GFS_OBJECT_BASE', 'http://127.0.0.1:1/fixture'],
+    ['QORE_LIVE_MARKET_HISTORY_YAHOO_BASE_URL', 'http://127.0.0.1:1/chart'],
+    ['QORE_OPEN_METEO_SINGLE_RUNS_BASE_URL', 'http://127.0.0.1:1/v1/forecast'],
+    ['QORE_LIVE_INFERENCE_SKIP_FETCH', '1'],
+    ['QORE_LIVE_INFERENCE_SKIP_MARKET_REFRESH', '1'],
+    ['QORE_LIVE_INFERENCE_LOOKBACK_DAYS', '30'],
+    ['QORE_LIVE_INFERENCE_MAX_MARKET_AGE_DAYS', '10'],
+  ]) {
+    const result = await runNode(['scripts/qore-live-strategy-inference.mjs'], {
+      NODE_ENV: 'production',
+      QORE_TEST_LIVE_INFERENCE_OVERRIDES: '0',
+      [name]: value,
+    })
+    assert.equal(result.code, 1, `${name} unexpectedly reached production inference`)
+    assert.match(result.stderr, new RegExp(`${name} is restricted to the explicit reviewed test-input capability`))
+  }
+  const disabledFlag = await runNode(['scripts/qore-live-strategy-inference.mjs'], {
+    NODE_ENV: 'production',
+    QORE_TEST_LIVE_INFERENCE_OVERRIDES: '0',
+    QORE_LIVE_INFERENCE_SKIP_FETCH: '0',
+    QORE_LIVE_INFERENCE_DATE: 'not-a-date',
+  })
+  assert.equal(disabledFlag.code, 1)
+  assert.doesNotMatch(
+    disabledFlag.stderr,
+    /QORE_LIVE_INFERENCE_SKIP_FETCH is restricted to the explicit reviewed test-input capability/,
+    'an explicitly disabled boolean test flag must not be treated as an active override',
+  )
+  console.log('ok - production inference rejects test-only market, storage, and weather input overrides')
 }
 
 async function startYahooDailyFixture(targetDate) {
@@ -311,12 +481,217 @@ async function rewriteCsvRows(filePath, transform) {
   await writeFile(filePath, `${header}\n${rewritten.join('\n')}${rewritten.length ? '\n' : ''}`)
 }
 
+async function addSummerTemporalMetadata(filePath) {
+  const [header, ...lines] = (await readFile(filePath, 'utf8')).trim().split(/\r?\n/)
+  const headers = parseLine(header)
+  const temporalHeaders = [
+    'forecastTemporalContractId',
+    'sampledValidTimeOffsetsHours',
+  ]
+  for (const temporalHeader of temporalHeaders) {
+    if (!headers.includes(temporalHeader)) headers.push(temporalHeader)
+  }
+  const legacyHoursIndex = headers.indexOf('sampledValidHoursUtc')
+  const contractIndex = headers.indexOf('forecastTemporalContractId')
+  const offsetsIndex = headers.indexOf('sampledValidTimeOffsetsHours')
+  const rewritten = lines.map((line) => {
+    const values = parseLine(line)
+    while (values.length < headers.length) values.push('')
+    values[legacyHoursIndex] = '6|12|18|24'
+    values[contractIndex] = SUMMER_FORECAST_TEMPORAL_CONTRACT_ID
+    values[offsetsIndex] = '6|12|18|24'
+    return values.map(serializeCsvValue).join(',')
+  })
+  await writeFile(filePath, `${headers.join(',')}\n${rewritten.join('\n')}${rewritten.length ? '\n' : ''}`)
+}
+
+function forecastBindingGroupKey(row) {
+  return [row.issueDate, row.targetDate, row.leadDays, row.windowId, row.modelId].join('|')
+}
+
+async function readCsvDocument(filePath) {
+  const [header, ...lines] = (await readFile(filePath, 'utf8')).trim().split(/\r?\n/)
+  const headers = parseLine(header)
+  const rows = lines.map((line) => {
+    const values = parseLine(line)
+    return Object.fromEntries(headers.map((column, index) => [column, values[index] ?? '']))
+  })
+  return { headers, rows }
+}
+
+async function writeCsvDocument(filePath, headers, rows) {
+  const body = rows.map((row) => headers.map((header) => serializeCsvValue(row[header])).join(','))
+  await writeFile(filePath, `${headers.join(',')}\n${body.join('\n')}${body.length ? '\n' : ''}`)
+}
+
+async function addSummerTemporalValueBinding(scorePath, locationPath, sourceId) {
+  const scoreDocument = await readCsvDocument(scorePath)
+  const locationDocument = await readCsvDocument(locationPath)
+  const offsets = [6, 12, 18, 24]
+  const offsetText = offsets.join('|')
+  const locationHeaders = [
+    'forecastTemporalContractId',
+    'sampledValidTimeOffsetsHours',
+    'sampledValidHoursUtc',
+    'sampledForecastValuesF',
+    'normalSourceContractId',
+    'normalSourceContractDigestSha256',
+    'normalSourcePayloadDigestSha256',
+    'forecastSampleProvenanceDigestSha256',
+    'forecastSampleVectorDigestSha256',
+  ]
+  const scoreHeaders = [
+    'forecastTemporalContractId',
+    'sampledValidTimeOffsetsHours',
+    'sampledValidHoursUtc',
+    'forecastSampleProvenanceJson',
+    'forecastSampleProvenanceDigestSha256',
+    'locationSampleVectorSetDigestSha256',
+  ]
+  for (const header of locationHeaders) {
+    if (!locationDocument.headers.includes(header)) locationDocument.headers.push(header)
+  }
+  for (const header of scoreHeaders) {
+    if (!scoreDocument.headers.includes(header)) scoreDocument.headers.push(header)
+  }
+
+  const locationsByGroup = new Map()
+  for (const location of locationDocument.rows) {
+    const key = forecastBindingGroupKey(location)
+    locationsByGroup.set(key, [...(locationsByGroup.get(key) ?? []), location])
+  }
+  for (const score of scoreDocument.rows) {
+    const samples = offsets.map((offsetHours) => {
+      const sourceUrl = `test-fixture://${sourceId}/${score.issueDate}/f${Number(score.leadDays) * 24 + offsetHours}`
+      return {
+        offsetHours,
+        validTimeUtc: forecastValidTimeForTargetOffset({ targetDate: score.targetDate, offsetHours }),
+        forecastHour: Number(score.leadDays) * 24 + offsetHours,
+        sourceUrl,
+        indexUrl: '',
+        indexLine: '',
+        sourceIndexPayloadDigestSha256: '',
+        sourcePayloadDigestSha256: crypto.createHash('sha256').update(sourceUrl).digest('hex'),
+      }
+    })
+    const provenanceDigestSha256 = forecastSampleProvenanceDigestSha256({
+      contractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+      issueDate: score.issueDate,
+      targetDate: score.targetDate,
+      leadDays: score.leadDays,
+      modelId: score.modelId,
+      samples,
+    })
+    const locations = locationsByGroup.get(forecastBindingGroupKey(score)) ?? []
+    for (const location of locations) {
+      const sampleValuesF = offsets.map(() => Number(location.forecastMeanF))
+      const normalSourcePayloadDigestSha256 =
+        SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.payloadDigestSha256ByLocationId[
+          location.locationId
+        ]
+      Object.assign(location, {
+        forecastTemporalContractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+        sampledValidTimeOffsetsHours: offsetText,
+        sampledValidHoursUtc: offsetText,
+        sampledForecastValuesF: sampleValuesF.join('|'),
+        normalSourceContractId: SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.contractId,
+        normalSourceContractDigestSha256:
+          SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+        normalSourcePayloadDigestSha256,
+        forecastSampleProvenanceDigestSha256: provenanceDigestSha256,
+        forecastSampleVectorDigestSha256: forecastSampleVectorDigestSha256({
+          contractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+          issueDate: location.issueDate,
+          targetDate: location.targetDate,
+          leadDays: location.leadDays,
+          modelId: location.modelId,
+          locationId: location.locationId,
+          weight: location.weight,
+          offsets,
+          sampleValuesF,
+          normalMeanF: location.normalMeanF,
+          forecastAnomalyF: location.forecastAnomalyF,
+          normalSourceContractId: SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT.contractId,
+          normalSourceContractDigestSha256:
+            SUMMER_FORECAST_NORMAL_SOURCE_CONTRACT_DIGEST_SHA256,
+          normalSourcePayloadDigestSha256,
+          provenanceDigestSha256,
+        }),
+      })
+    }
+    Object.assign(score, {
+      forecastTemporalContractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+      sampledValidTimeOffsetsHours: offsetText,
+      sampledValidHoursUtc: offsetText,
+      forecastSampleProvenanceJson: JSON.stringify(samples),
+      forecastSampleProvenanceDigestSha256: provenanceDigestSha256,
+      locationSampleVectorSetDigestSha256: forecastLocationSampleSetDigestSha256({
+        contractId: SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+        issueDate: score.issueDate,
+        targetDate: score.targetDate,
+        leadDays: score.leadDays,
+        modelId: score.modelId,
+        locationRows: locations,
+      }),
+    })
+  }
+  await writeCsvDocument(locationPath, locationDocument.headers, locationDocument.rows)
+  await writeCsvDocument(scorePath, scoreDocument.headers, scoreDocument.rows)
+}
+
 async function replaceLocationId(filePath, fromLocationId, toLocationId) {
   await rewriteCsvRows(filePath, (values, headers) => {
     const locationIndex = headers.indexOf('locationId')
     if (values[locationIndex] === fromLocationId) values[locationIndex] = toLocationId
     return values
   })
+}
+
+function syntheticSummerRows({ anomalyF, targetDate }) {
+  const warm = anomalyF > 0
+  return ['gfs', 'gefs-mean'].map((sourceId) => ({
+    sourceId,
+    sourceGroup: 'ncep',
+    sourceFamily: sourceId === 'gefs-mean' ? 'gefs' : 'gfs',
+    issueDate: '2026-07-01',
+    targetDate,
+    leadDays: 7,
+    weightedAnomalyF: anomalyF,
+    coldCoveragePct: warm ? 0 : 1,
+    coldExtremeCount: warm ? 0 : 5,
+    warmCoveragePct: warm ? 1 : 0,
+    warmExtremeCount: warm ? 5 : 0,
+    coolingDemandAnomalyF: warm ? anomalyF : 0,
+    heatingDemandAnomalyF: warm ? 0 : -anomalyF,
+    sampledWeight: 1,
+  }))
+}
+
+function summerDirectionalContract() {
+  const coldOnly = createSignal(
+    syntheticSummerRows({ anomalyF: -20, targetDate: '2026-07-08' }),
+    selectedContracts.summer,
+    'summer',
+  )
+  assert.equal(coldOnly, null, 'Cold-only Summer consensus must remain a diagnostic and cannot authorize a short')
+
+  const heat = createSignal(
+    syntheticSummerRows({ anomalyF: 20, targetDate: '2026-07-08' }),
+    selectedContracts.summer,
+    'summer',
+  )
+  assert.equal(heat?.thesisKind, 'summer-heat-long')
+  assert.equal(heat?.direction, 1)
+
+  const coldDominant = createSignal(
+    [
+      ...syntheticSummerRows({ anomalyF: -20, targetDate: '2026-07-08' }),
+      ...syntheticSummerRows({ anomalyF: 6, targetDate: '2026-07-09' }),
+    ],
+    selectedContracts.summer,
+    'summer',
+  )
+  assert.equal(coldDominant, null, 'Cold-dominant Summer consensus must veto a weaker heat setup')
 }
 
 async function reweightLocationAndScore(locationPath, scorePath, locationId, weightDelta) {
@@ -349,6 +724,9 @@ async function summerParity() {
   })
   const signals = new Map([...group(forecasts).entries()].map(([date, rows]) => [date, createSignal(rows, selectedContracts.summer, 'summer')]))
   const selected = await csv(path.join(dataRoot, 'research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv'))
+  assert.equal([...signals.values()].filter((signal) => signal?.thesisKind === 'summer-cold-short').length, 0)
+  assert.equal(selected.filter((row) => row.thesisKind === 'summer-cold-short').length, 0)
+  assert.equal(selected.filter((row) => row.thesisKind === 'reversion-long').length, 0)
   const expected = [...new Map(selected.filter((row) => row.windowId === 'weather-follow').map((row) => [row.issueDate, row])).values()]
   assert.ok(expected.length > 30)
   for (const row of expected) {
@@ -371,6 +749,7 @@ async function winterParity() {
   const forecasts = enrichForecastRows(scores, locations, 'winter', {
     temperatureQualityMode: 'quarantine',
     temperatureQualityLabel: 'Versioned Winter inference test inputs',
+    scoreLocationAggregateContract: LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
   })
   const eligible = forecasts.filter((row) => row.windowId === 'rumor' && row.leadDays >= 7 && row.leadDays <= 10 && [11, 12, 1, 2, 3].includes(Number(row.issueDate.slice(5, 7))))
   const signals = new Map([...group(eligible).entries()].map(([date, rows]) => [date, createSignal(rows, selectedContracts.winterFollow, 'winter')]))
@@ -402,8 +781,67 @@ async function positionParity(result, marketFile, label) {
     const inferred = inferAllYearTarget({ forecastRows: result.forecasts, actualWeatherRows: result.actualWeatherRows, marketDays: market, storageRows: storage, targetDate: row.entryTradeDate })
     assert.ok(Math.abs(Number(inferred.gasPosition) - Number(row.ungPosition)) <= 0.001, `${label} position mismatch on ${row.entryTradeDate}: ${inferred.gasPosition} != ${row.ungPosition} (${inferred.thesisKind} / ${row.thesisKind}) ${JSON.stringify(inferred.diagnostics)}`)
     assert.equal(inferred.thesisKind, row.thesisKind, `${label} thesis mismatch on ${row.entryTradeDate}`)
+    assert.deepEqual(liveGasPositionContractBlocks({
+      season: inferred.componentStrategyId === 'index-fallback'
+        ? liveInferenceSeasonForDate(row.entryTradeDate)
+        : label,
+      targetDate: row.entryTradeDate,
+      componentStrategyId: inferred.componentStrategyId,
+      windowId: inferred.windowId,
+      thesisKind: inferred.thesisKind,
+      gasPosition: inferred.gasPosition,
+    }), [], `${label} inferred target is outside the sealed executable lattice on ${row.entryTradeDate}`)
   }
   return active.length + fallback.length
+}
+
+function liveComponentCalendarContract() {
+  const target = ({ season, targetDate, componentStrategyId, windowId, thesisKind, gasPosition }) =>
+    liveGasPositionContractBlocks({
+      season,
+      targetDate,
+      componentStrategyId,
+      windowId,
+      thesisKind,
+      gasPosition,
+    })
+  for (const row of [
+    {
+      season: 'winter', targetDate: '2026-04-01', componentStrategyId: 'ngas-winter-alpha',
+      windowId: 'weather-follow', thesisKind: 'cold-long', gasPosition: 0.2031,
+    },
+    {
+      season: 'winter', targetDate: '2026-10-01', componentStrategyId: 'ngas-winter-alpha',
+      windowId: 'weather-follow', thesisKind: 'cold-long', gasPosition: 0.2031,
+    },
+    {
+      season: 'summer', targetDate: '2026-04-24', componentStrategyId: 'ngas-summer-alpha',
+      windowId: 'weather-follow', thesisKind: 'summer-heat-long', gasPosition: 0.35,
+    },
+    {
+      season: 'winter', targetDate: '2026-11-01', componentStrategyId: 'ngas-winter-alpha',
+      windowId: 'weather-follow', thesisKind: 'cold-long', gasPosition: 0.2031,
+    },
+  ]) {
+    assert.match(target(row).join('; '), /is not active for target date/)
+  }
+  assert.deepEqual(target({
+    season: 'summer', targetDate: '2026-04-25', componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-follow', thesisKind: 'summer-heat-long', gasPosition: 0.35,
+  }), [])
+  assert.deepEqual(target({
+    season: 'summer', targetDate: '2026-04-27', componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-follow', thesisKind: 'summer-heat-long', gasPosition: 0.35,
+  }), [])
+  assert.deepEqual(target({
+    season: 'summer', targetDate: '2026-05-01', componentStrategyId: 'ngas-summer-alpha',
+    windowId: 'weather-follow', thesisKind: 'summer-heat-long', gasPosition: 0.35,
+  }), [])
+  assert.deepEqual(target({
+    season: 'winter', targetDate: '2026-11-02', componentStrategyId: 'ngas-winter-alpha',
+    windowId: 'weather-follow', thesisKind: 'cold-long', gasPosition: 0.2031,
+  }), [])
+  console.log('ok - material component targets are restricted to their sealed active-date policies')
 }
 
 async function winterStorageReleaseCalendarBoundary(result) {
@@ -493,7 +931,8 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
       { id: 'gefs-mean', files: { signalScores: 'research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv', locationAnomalies: 'weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv' } },
     ]
     const winterCalendars = manifest.forecastCalendars.filter((calendar) => selectedContracts.winterFollow.liveHeatingDemandSourceIds.includes(calendar.id))
-    const calendars = expectedSources === selectedContracts.summer.sourceIds ? summerCalendars : winterCalendars
+    const summerFixture = expectedSources === selectedContracts.summer.sourceIds
+    const calendars = summerFixture ? summerCalendars : winterCalendars
     for (const calendar of calendars) {
       if (options.omittedSources?.includes(calendar.id)) continue
       const fixtureSourceId = options.fixtureSources?.[calendar.id] ?? calendar.id
@@ -505,6 +944,14 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
       await writeCsvWindow(path.join(dataRoot, fixtureCalendar.files.signalScores), scorePath, addDays(date, -16), issueEndDate)
       const locationPath = path.join(forecastRoot, 'weather', weatherDirs[calendar.id], `${base}-location-anomalies.csv`)
       await writeCsvWindow(path.join(dataRoot, fixtureCalendar.files.locationAnomalies), locationPath, addDays(date, -16), issueEndDate)
+      if (summerFixture && !options.legacyTemporalInputs) {
+        if (options.relabelOnlyTemporalInputs) {
+          await addSummerTemporalMetadata(scorePath)
+          await addSummerTemporalMetadata(locationPath)
+        } else {
+          await addSummerTemporalValueBinding(scorePath, locationPath, calendar.id)
+        }
+      }
       if (options.partialLocationSources?.includes(calendar.id)) await dropLocation(locationPath, 'minneapolis')
       if (options.replacedLocationSources?.includes(calendar.id)) {
         await replaceLocationId(locationPath, 'minneapolis', 'chicago')
@@ -512,7 +959,28 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
       if (options.reweightedLocationSources?.includes(calendar.id)) {
         await reweightLocationAndScore(locationPath, scorePath, 'minneapolis', 0.01)
       }
-      await writeFile(path.join(forecastRoot, 'weather', weatherDirs[calendar.id], `${base}-manifest.json`), `${JSON.stringify({ forecastSource: calendar.id, generatedAt: `${date}T12:00:00.000Z`, failures: [] })}\n`)
+      const temporalManifest = summerFixture && !options.legacyTemporalInputs
+        ? {
+            runHour: '00',
+            leadDays: [7],
+            validTimeOffsetsHoursFromTargetUtcMidnight: [6, 12, 18, 24],
+            validHoursUtc: [6, 12, 18, 24],
+            temporalSampling: {
+              ...SUMMER_FORECAST_TEMPORAL_CONTRACT,
+              leadDays: [7],
+            },
+          }
+        : {
+            runHour: '00',
+            leadDays: summerFixture ? [7] : [1, 2, 3, 7, 8, 9, 10],
+            validHoursUtc: [0],
+          }
+      await writeFile(path.join(forecastRoot, 'weather', weatherDirs[calendar.id], `${base}-manifest.json`), `${JSON.stringify({
+        forecastSource: calendar.id,
+        generatedAt: `${date}T12:00:00.000Z`,
+        failures: [],
+        ...temporalManifest,
+      })}\n`)
     }
     const outputPath = path.join(scratch, 'target.json')
     const strategyArtifactPath = path.join(scratch, 'eligible-all-year-run-summary.json')
@@ -566,6 +1034,9 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
     if (options.expectedError) {
       assert.equal(run.code, 1, `Expected live inference to fail, got: ${run.stdout}`)
       assert.match(run.stderr, options.expectedError)
+      if (options.expectNoTargetWrite) {
+        await assert.rejects(stat(outputPath), { code: 'ENOENT' })
+      }
       return
     }
     assert.equal(run.code, 0, run.stderr)
@@ -589,6 +1060,21 @@ async function liveLoaderParity(result, date, expectedSources, options = {}) {
       close(snapshot.target.gasPosition, expectedPosition, 0.001)
     }
     assert.deepEqual(snapshot.forecastValidation.requiredSources, expectedSources)
+    if (summerFixture) {
+      assert.equal(
+        snapshot.forecastValidation.temporalContract.contractId,
+        SUMMER_FORECAST_TEMPORAL_CONTRACT_ID,
+      )
+      assert.deepEqual(
+        snapshot.forecastValidation.temporalContract.validTimeOffsetsHoursFromTargetUtcMidnight,
+        [6, 12, 18, 24],
+      )
+    } else {
+      assert.deepEqual(
+        snapshot.forecastValidation.temporalContract.validTimeOffsetsHoursFromTargetUtcMidnight,
+        [0],
+      )
+    }
     if (options.expectedLatestIssueDate) assert.equal(snapshot.forecastValidation.latestCommonIssueDate, options.expectedLatestIssueDate)
     if (options.expectedMarket) {
       for (const [key, value] of Object.entries(options.expectedMarket)) assert.deepEqual(snapshot.marketValidation[key], value, `Unexpected marketValidation.${key}`)
@@ -749,10 +1235,11 @@ async function portableGribPlatformBranch() {
   const scratch = await mkdtemp(path.join(tmpdir(), 'qore-portable-grib-'))
   const packageRoot = path.dirname(require.resolve('grib-js'))
   const gribBytes = await readFile(path.join(packageRoot, 'samples', 'regular_latlon_surface.grib2'))
+  const indexPayload = `1:0:d=2026010100:TMP:2 m above ground:24 hour fcst:\n2:${gribBytes.length}:d=2026010100:RH:2 m above ground:24 hour fcst:\n`
   const server = createServer((request, response) => {
     if (request.url === '/fixture.idx') {
       response.writeHead(200, { 'content-type': 'text/plain' })
-      response.end(`1:0:d=2026010100:TMP:2 m above ground:24 hour fcst:\n2:${gribBytes.length}:d=2026010100:RH:2 m above ground:24 hour fcst:\n`)
+      response.end(indexPayload)
       return
     }
     if (request.url === '/fixture') {
@@ -783,8 +1270,19 @@ async function portableGribPlatformBranch() {
     })
     assert.equal(run.code, 0, run.stderr || run.stdout)
     const rows = await csv(path.join(outputRoot, 'weather/noaa-gfs/portable-grib-regression-location-anomalies.csv'))
+    const scores = await csv(path.join(outputRoot, 'research/portable-grib-regression-signal-scores.csv'))
     assert.equal(rows.length, 18)
     assert.ok(rows.every((row) => Number.isFinite(Number(row.forecastMeanF))))
+    const [sample] = JSON.parse(scores[0].forecastSampleProvenanceJson)
+    assert.equal(sample.indexUrl, `${sample.sourceUrl}.idx`)
+    assert.equal(
+      sample.sourceIndexPayloadDigestSha256,
+      crypto.createHash('sha256').update(indexPayload).digest('hex'),
+    )
+    assert.equal(
+      sample.sourcePayloadDigestSha256,
+      crypto.createHash('sha256').update(gribBytes).digest('hex'),
+    )
   } finally {
     await new Promise((resolve) => server.close(resolve))
     await rm(scratch, { recursive: true, force: true })
@@ -809,12 +1307,15 @@ async function allYearInstrumentContract() {
     .every((row) => row.researchInstrument === 'US-INDEX-BASKET'))
 }
 
+await productionInputOverridesFailClosed()
 await portableGribPlatformBranch()
 await nonPromotedStrategyArtifactFailsClosed()
 await mismatchedLiveComponentContractFailsClosed()
 await mismatchedValidationIntegrityFailsClosed()
 await mismatchedBrokerExecutionProfileFailsClosed()
 await allYearInstrumentContract()
+summerDirectionalContract()
+liveComponentCalendarContract()
 const summer = await summerParity()
 const winter = await winterParity()
 await summerStorageReleaseCalendarBoundary(summer)
@@ -823,6 +1324,16 @@ const summerPositions = await positionParity(summer, 'NG-F-qore-market.csv', 'su
 const winterPositions = await positionParity(winter, 'UNG-qore-market.csv', 'winter')
 await liveMarketBoundary(summer)
 await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  legacyTemporalInputs: true,
+  expectedError: /Corrected Summer forecast temporal inputs are required:.*hours-0|Corrected Summer forecast temporal inputs are required:.*temporalSampling metadata is missing/,
+  expectNoTargetWrite: true,
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
+  relabelOnlyTemporalInputs: true,
+  expectedError: /Corrected Summer forecast temporal inputs are required:.*sample count|Corrected Summer forecast temporal inputs are required:.*sample vectors|Corrected Summer forecast temporal inputs are required:.*provenance/,
+  expectNoTargetWrite: true,
+})
+await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
   expectedMarket: {
     gasSymbol: 'NG=F', latestGasDate: '2024-04-24', latestIndexDate: '2024-04-24',
     latestCommonDate: '2024-04-24', marketAgeDays: 1, maxMarketAgeDays: 4, provisionalTargetDate: '2024-04-25',
@@ -830,11 +1341,11 @@ await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds,
 })
 await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
   replacedLocationSources: ['gfs'],
-  expectedError: /stale or incomplete/,
+  expectedError: /forecastSampleVectorDigestSha256|location vectors contain duplicate locationId values/,
 })
 await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
   reweightedLocationSources: ['gfs'],
-  expectedError: /stale or incomplete/,
+  expectedError: /forecastSampleVectorDigestSha256|weightedAnomalyF does not match/,
 })
 await liveLoaderParity(summer, '2024-04-25', selectedContracts.summer.sourceIds, {
   marketFixture: { gasEndDate: '2024-04-19', indexEndDate: '2024-04-19' },
@@ -911,12 +1422,14 @@ await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.live
 await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.liveSourceIds, {
   fixtureSources: completeWinterFixtures,
   partialLocationSources: ['aigfs'],
-  expectedError: /stale or incomplete/,
+  expectedError: /location-universe-count-mismatch/,
+  expectNoTargetWrite: true,
 })
 await liveLoaderParity(winter, '2026-01-27', selectedContracts.winterFollow.liveSourceIds, {
   fixtureSources: completeWinterFixtures,
   partialLocationSources: ['ecmwf-aifs'],
-  expectedError: /stale or incomplete/,
+  expectedError: /location-universe-count-mismatch/,
+  expectNoTargetWrite: true,
 })
 await liveLoaderParity(winter, '2026-03-10', selectedContracts.winterFollow.liveSourceIds, {
   fixtureSources: completeWinterFixtures,

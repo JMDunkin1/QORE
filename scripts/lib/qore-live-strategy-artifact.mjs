@@ -23,6 +23,11 @@ import {
   evaluateVersionedLiveTargetParity,
   versionedLiveTargetParityInputDigestSha256,
 } from './qore-live-target-parity.mjs'
+import {
+  SUMMER_FORECAST_FAILURE_SAMPLE_LIMIT,
+  SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  compactSummerForecastFailures,
+} from './qore-summer-forecast-contract.mjs'
 import { validateAllYearOutputArtifacts } from './qore-all-year-output-artifacts.mjs'
 
 const STRATEGY_ID = 'ngas-all-year-beta'
@@ -35,6 +40,7 @@ const REQUIRED_PAPER_GATES = [
   'trainMaxDrawdown',
   'validationMaxDrawdown',
   'summerComponent',
+  'summerTemporalContract',
   'winterComponent',
   'liveContract',
   'liveTargetParity',
@@ -82,6 +88,15 @@ function liveContractFailures(summary) {
   }
   if (computedDigest !== executableLiveComponentContractDigestSha256) {
     failures.push('reviewed component contract digest does not match the executable live contract')
+  }
+  if (!parityValuesMatch(
+    binding.componentContract?.summer?.implementation?.forecastTemporalContract,
+    SUMMER_FORECAST_TEMPORAL_CONTRACT,
+  )) {
+    failures.push('Summer component does not use the corrected target-local-day temporal contract')
+  }
+  if (summary?.validation?.promotionGates?.summerTemporalContract !== true) {
+    failures.push('promotion gate summerTemporalContract must pass')
   }
   return failures
 }
@@ -141,6 +156,28 @@ function currentLiveTargetParity(repoDir, summary) {
   return report
 }
 
+function compactFailureDiagnosticsAreCoherent({
+  failureCount,
+  failureDigestSha256,
+  failureSamples,
+}) {
+  if (
+    !Number.isInteger(failureCount)
+    || failureCount < 0
+    || !/^[a-f0-9]{64}$/.test(String(failureDigestSha256 ?? ''))
+    || !Array.isArray(failureSamples)
+    || failureSamples.length !== Math.min(failureCount, SUMMER_FORECAST_FAILURE_SAMPLE_LIMIT)
+    || failureSamples.some((failure) => typeof failure !== 'string' || !failure.trim())
+    || new Set(failureSamples).size !== failureSamples.length
+    || JSON.stringify([...failureSamples].sort()) !== JSON.stringify(failureSamples)
+  ) return false
+  if (failureCount <= SUMMER_FORECAST_FAILURE_SAMPLE_LIMIT) {
+    return compactSummerForecastFailures(failureSamples).failureDigestSha256
+      === failureDigestSha256
+  }
+  return true
+}
+
 export function liveTargetParityFailures(summary, currentParity) {
   const failures = []
   const embedded = summary?.validation?.liveTargetParity
@@ -180,8 +217,43 @@ export function liveTargetParityFailures(summary, currentParity) {
     && embedded.mismatches.length === embedded.mismatchCount
   )
   if (!countsAreCoherent) failures.push('live-target parity row counts are internally inconsistent')
-  if (embedded.exactTargetParity !== (embedded.mismatchCount === 0)) {
-    failures.push('live-target parity status does not agree with its mismatch count')
+  const inputContractCoherent = (
+    typeof embedded.inputContractValid === 'boolean'
+    && !Object.hasOwn(embedded, 'inputContractFailures')
+    && compactFailureDiagnosticsAreCoherent({
+      failureCount: embedded.inputContractFailureCount,
+      failureDigestSha256: embedded.inputContractFailureDigestSha256,
+      failureSamples: embedded.inputContractFailureSamples,
+    })
+    && embedded.inputContractValid === (embedded.inputContractFailureCount === 0)
+    && embedded.components
+    && typeof embedded.components === 'object'
+    && Object.values(embedded.components).every((component) =>
+      typeof component?.inputContractValid === 'boolean'
+      && !Object.hasOwn(component, 'inputContractFailures')
+      && compactFailureDiagnosticsAreCoherent({
+        failureCount: component.inputContractFailureCount,
+        failureDigestSha256: component.inputContractFailureDigestSha256,
+        failureSamples: component.inputContractFailureSamples,
+      })
+      && component.inputContractValid === (component.inputContractFailureCount === 0)
+      && (!Array.isArray(component.temporalInputs) || component.temporalInputs.every((input) =>
+        !Object.hasOwn(input, 'failures')
+        && compactFailureDiagnosticsAreCoherent({
+          failureCount: input.failureCount,
+          failureDigestSha256: input.failureDigestSha256,
+          failureSamples: input.failureSamples,
+        })))
+    )
+  )
+  if (!inputContractCoherent) {
+    failures.push('live-target parity input-contract status is internally inconsistent')
+  }
+  if (embedded.exactTargetParity !== (
+    embedded.mismatchCount === 0
+    && embedded.inputContractValid === true
+  )) {
+    failures.push('live-target parity status does not agree with target mismatches and input-contract validity')
   }
   if (embedded.status !== (embedded.exactTargetParity ? 'pass' : 'fail')) {
     failures.push('live-target parity status label does not agree with exactTargetParity')

@@ -1,11 +1,27 @@
 {
-  "schemaVersion": 3,
-  "manifestId": "ngas-all-year-beta-prospective-validation-v2",
+  "schemaVersion": 6,
+  "manifestId": "ngas-all-year-beta-prospective-validation-v5",
   "strategyId": "ngas-all-year-beta",
-  "reviewedAt": "2026-07-22T04:30:43.000Z",
-  "sealedStrategyContractDigestSha256": "1bc910fe30f7f0e3f161f017fe0d7a05f2aad8e0b0a9fa1193db58dfd297d3ec",
-  "sealedStrategyArtifactDigestSha256": "413f2854fdf1274caf015c919b91e5bdecb0c862b8f8885415c5487bc85593cb",
+  "sealedAt": "2026-07-22T18:55:40.000Z",
+  "reviewedAt": "2026-07-22T18:55:40.000Z",
+  "sealedStrategyContractDigestSha256": "07ae468c936b65c141ae2d52d0088c13e185495bcfe9a9b897892d3b83c99285",
+  "sealedStrategyArtifactDigestSha256": "a50a218d741e0c3a0ccd181026a329a7f8e0647f8c38d13252a6a6a06b94c18c",
   "sealedBrokerExecutionProfileDigestSha256": "b41943fa21851d359a3d177420d86015444a30dfe3af1f08c660761af473e75c",
+  "candidateRegistry": {
+    "schemaVersion": 1,
+    "registryId": "ngas-all-year-beta-frozen-production-candidates-v1",
+    "familySize": 1,
+    "selectionPolicy": "single-frozen-production-candidate-no-post-seal-additions-v1",
+    "candidates": [
+      {
+        "candidateId": "ngas-all-year-beta",
+        "strategyContractDigestSha256": "07ae468c936b65c141ae2d52d0088c13e185495bcfe9a9b897892d3b83c99285",
+        "strategyArtifactCoreDigestSha256": "a50a218d741e0c3a0ccd181026a329a7f8e0647f8c38d13252a6a6a06b94c18c"
+      }
+    ],
+    "registryDigestSha256": "a947217b8c9aacc3beb64ada40297ce42699b6a835cc04290db4d66ee1a490f3"
+  },
+  "preregistrationDigestSha256": "826b95a7e9d4ef1a483100ddf6aca4531719b2cf8ce98f6375b62b6e03bc6d4b",
   "historicalEvidence": {
     "status": "development-contaminated",
     "evidenceStart": "2021-01-01",
@@ -13,6 +29,221 @@
     "observedThrough": "2026-07-14",
     "prospectiveStart": "2026-07-23",
     "pristineForwardEvidence": false
+  },
+  "forwardOutcomePolicy": {
+    "schemaVersion": 1,
+    "policyId": "matched-fallback-forward-outcomes-v1",
+    "executionContractId": "qore-causal-etf-execution-v2",
+    "executionContractDigestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d",
+    "marketDataSourceId": "reviewed-normalized-ung-voo-qqqm-bars-v1",
+    "scenarioIds": [
+      "baseline",
+      "elevated",
+      "stress"
+    ],
+    "minimumMaterialAbsoluteGasPosition": 0.1,
+    "episodeEmbargoSessions": 10,
+    "bootstrapIterations": 5000,
+    "bootstrapSeed": 1729,
+    "maximumBootstrapProbabilityMeanActiveReturnNonPositive": 0.2,
+    "minimumMaterialEpisodesByComponent": {
+      "ngas-summer-alpha": 15,
+      "ngas-winter-alpha": 15
+    },
+    "minimumMaterialSeasonsByComponent": {
+      "ngas-summer-alpha": 2,
+      "ngas-winter-alpha": 2
+    },
+    "minimumCompoundedActiveReturnPct": {
+      "baseline": 2,
+      "elevated": 1,
+      "stress": -2
+    },
+    "minimumComponentCompoundedActiveReturnPct": {
+      "ngas-summer-alpha": 0,
+      "ngas-winter-alpha": 0
+    },
+    "maximumActiveDrawdownPct": 10,
+    "maximumTopEpisodePositiveContributionFraction": 0.5,
+    "requirePositiveLeaveOneComponentSeasonOut": true,
+    "requireTrustedPreopenWriter": true
+  },
+  "forwardValidationImplementation": {
+    "schemaVersion": 1,
+    "implementationId": "qore-forward-validation-implementation-v1",
+    "reviewedNyseCalendarId": "nyse-full-day-sessions-2020-2035-v1",
+    "sourceFiles": [
+      {
+        "path": "scripts/build-gfs-forecast-calendar.mjs",
+        "digestSha256": "41e2f4be6a3ec4a41a9e6c634c55fef025febe3914f381c9fbab4635b50c243f"
+      },
+      {
+        "path": "scripts/lib/eia-release-time.mjs",
+        "digestSha256": "4ee4e51102f847e57dd7cca5738c1b26769717616369d9227702f6c4ac339449"
+      },
+      {
+        "path": "scripts/lib/qore-all-year-output-artifacts.mjs",
+        "digestSha256": "63f4cbe40c4f048d4a77f37e94f986743c5ede6557724cc1cf8bfda3ffa36008"
+      },
+      {
+        "path": "scripts/lib/qore-broker-execution-profile.mjs",
+        "digestSha256": "050a871c119de332d26d8a2ec3a3628e60278faceced3f528ee4bca9cf83161c"
+      },
+      {
+        "path": "scripts/lib/qore-execution-host.mjs",
+        "digestSha256": "ad630f7b6dda9b44be1145883fc2d75acff1c342241c367dc957a1cd033f7de8"
+      },
+      {
+        "path": "scripts/lib/qore-git-state.mjs",
+        "digestSha256": "e46399cd9d58f1b17b7fb0ed8bca6300642ba303607f71597b75e60b5e9a6ca3"
+      },
+      {
+        "path": "scripts/lib/qore-index-basket.mjs",
+        "digestSha256": "86b3630e9550e52aaaf54aaa8fc28f644a10508cc30e9ec6bbe452b8b1485697"
+      },
+      {
+        "path": "scripts/lib/qore-live-all-year-inference.mjs",
+        "digestSha256": "e04cf7ca22ca8da6c247aa2f4bb87568bfa7279bc140cacbb955dfebe473fe1f"
+      },
+      {
+        "path": "scripts/lib/qore-live-contract.mjs",
+        "digestSha256": "eee7fe8e32990b9d18a16448596d1fc3cc56c20c9f169b291874a5ec43ea8c72"
+      },
+      {
+        "path": "scripts/lib/qore-live-inference-provenance.mjs",
+        "digestSha256": "88f9bf5518a5f1a6840df979f5a31ee75fda47444cc489ad8b695f0eb041a916"
+      },
+      {
+        "path": "scripts/lib/qore-live-paths.mjs",
+        "digestSha256": "907d70fc2309ec7d8ef06b6b922451a8edb98ce6c02fe913e69767adf505f984"
+      },
+      {
+        "path": "scripts/lib/qore-live-strategy-artifact.mjs",
+        "digestSha256": "23dfa0a952c191b582ed82bcaf48088f6b99dd64a655de52e0894e6d754eb81f"
+      },
+      {
+        "path": "scripts/lib/qore-live-target-lattice.mjs",
+        "digestSha256": "a7e54523f236cce8c5f8b740cedd77fb3c9d6e2869609505b538dcf191e03034"
+      },
+      {
+        "path": "scripts/lib/qore-live-target-parity.mjs",
+        "digestSha256": "17502fa94c935f2d3c623b3c473312259c87b4d1efe939d8155c6203a7ad45f4"
+      },
+      {
+        "path": "scripts/lib/qore-rebalance-deadband.mjs",
+        "digestSha256": "5638cdd9f45e6225ae6b027fa815212d1bb1ab72e6d4b0b914b8b34e64986eb6"
+      },
+      {
+        "path": "scripts/lib/qore-research-execution.mjs",
+        "digestSha256": "403474428891a2444e5edd59fc8d9569b4bc629b272c367b311b3b0c281235c7"
+      },
+      {
+        "path": "scripts/lib/qore-signal-availability.mjs",
+        "digestSha256": "22898f07b104896e54bb7f26bb28adc693a90540aa64aaee74a45d3fcaf4fd23"
+      },
+      {
+        "path": "scripts/lib/qore-summer-forecast-contract.mjs",
+        "digestSha256": "4506346b91a8651fe8d14fb8d9e39a980750a22903bff3633856b83095b6c7bb"
+      },
+      {
+        "path": "scripts/lib/qore-summer-forecast-coverage.mjs",
+        "digestSha256": "e9222de9c2ed6ec598e0a43c7cb0aec699021f8be26a3fc6c071a8fb12ce19d3"
+      },
+      {
+        "path": "scripts/lib/qore-summer-location-universe.mjs",
+        "digestSha256": "932a0d19c7de677ef7403969c1f5e1dfa5c1c5c0266d9f88323a8526c7f58185"
+      },
+      {
+        "path": "scripts/lib/qore-summer-shadow-challenger.mjs",
+        "digestSha256": "efb1fba27e6120a630ce2e359d128c1164799a0c0ef6011258e58cc72a271ded"
+      },
+      {
+        "path": "scripts/lib/qore-validation-evidence.mjs",
+        "digestSha256": "ecb1511d829ee62a199cf610240522e3d5b9302ab78e8c2129a64636a2c8dc1f"
+      },
+      {
+        "path": "scripts/lib/qore-validation-integrity.mjs",
+        "digestSha256": "86c7a2a77d472c3e090453b86fa689be30d5f33aff11aa9b97971e37ca3907ef"
+      },
+      {
+        "path": "scripts/lib/qore-weather-data-quality.mjs",
+        "digestSha256": "17ce4cba6192534fe49eb10ab4a98cd08a3ed6b972629cb5644f03db7c4b49bd"
+      },
+      {
+        "path": "scripts/lib/qore-winter-target-engine.mjs",
+        "digestSha256": "5dc56ef095e4fa118da8fed2503aa044b2a96a551bd8ecb2070178e58052ac73"
+      },
+      {
+        "path": "scripts/lib/secret-redaction.mjs",
+        "digestSha256": "c89181bafe14c2fcb686771e279dbf5418ccb70503ed7bd46407fb12cf0106fa"
+      },
+      {
+        "path": "scripts/local-env.mjs",
+        "digestSha256": "4b4b5fb901a00f71b5473e4967100f04a86d3327030acd8752639adca4436c5c"
+      },
+      {
+        "path": "scripts/qore-alpaca-broker.mjs",
+        "digestSha256": "be220a2db8dea3a1319dfa1e59d7db7b818d1d513f783e5e09ef700a7ed04bfe"
+      },
+      {
+        "path": "scripts/qore-live-market-history.mjs",
+        "digestSha256": "e949d7c869c37713bdef100dd2a05572a7910693e5cd3c2fdb1d06eee24d8be6"
+      },
+      {
+        "path": "scripts/qore-live-readiness.mjs",
+        "digestSha256": "c377e0030b8c1b3aa8a26b8677183ce066dcf8b83f154df59cb4c9f67d769ef2"
+      },
+      {
+        "path": "scripts/qore-live-strategy-inference.mjs",
+        "digestSha256": "79318a2e1bd7281a7f4be7ff816ac5b0909cb51bb76030db444bfdbd774ad407"
+      },
+      {
+        "path": "scripts/qore-live-trading-supervisor.mjs",
+        "digestSha256": "2df1b440ef2139aa416b34456bb51e12bf03bcbd3c01439e9a4c28fb8278285d"
+      },
+      {
+        "path": "scripts/qore-live-weather-service.mjs",
+        "digestSha256": "f31c27554ca3a10e71fc5f460df5ffa78b0e5a68c7653eff97b7b42b573c618a"
+      }
+    ],
+    "inputFiles": [
+      {
+        "path": "config/qore-live-broker-settings.json",
+        "digestSha256": "c549376af7072f54fed0438284f1d6e00ed8a74eed3e260964f96a308f6a8a88"
+      },
+      {
+        "path": "config/qore-live-weather-settings.json",
+        "digestSha256": "866df02fc47734e390088fb9bf78c3aa52ce2b810e06c2983f190970895b3d86"
+      },
+      {
+        "path": "config/qore-research-execution.json",
+        "digestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d"
+      },
+      {
+        "path": "data/qore/market/index-basket-config.json",
+        "digestSha256": "7119fbd61803add8a7bb2773e0fe28b5cda11ae294b1efed7937c600869553cc"
+      },
+      {
+        "path": "package-lock.json",
+        "digestSha256": "c6d59cea55c6d9d3599ff63592255db9ced4653cff34d12eb02a47bbba27950e"
+      },
+      {
+        "path": "package.json",
+        "digestSha256": "ce63bee4d25a40fed7397ce89b4785c95159d5b3b778b3d09a503c64da3756bc"
+      }
+    ],
+    "appendOnlyInputs": [
+      {
+        "schemaVersion": 1,
+        "contractId": "eia-release-calendar-append-only-prefix-v1",
+        "path": "data/qore/fundamentals/eia/working-gas-storage-release-calendar.json",
+        "calendarId": "eia-wngsr-release-calendar-v1",
+        "prefixThroughPeriodEndDate": "2026-12-25",
+        "prefixReleaseCount": 887,
+        "prefixDigestSha256": "48eb2bcf2c090f3694b3d5b293ec72f718daa8702f4192345e895a246e31c582"
+      }
+    ],
+    "implementationDigestSha256": "56bcfe726e9b5b0626b90055fedf0955585ab006dd68bd51df783b7e84db6de3"
   },
   "minimumForwardEvidence": {
     "independentEpisodes": 60,
@@ -26,6 +257,9 @@
     "observedThrough": null,
     "strategyContractDigestSha256": null,
     "strategyArtifactDigestSha256": null,
+    "outcomePolicyDigestSha256": null,
+    "preregistrationDigestSha256": null,
+    "sealedAt": null,
     "evidenceArtifactDigestSha256": null,
     "reviewedAt": null
   },
@@ -35,6 +269,7 @@
     "ungFilledOrders": 4,
     "ungLongFilledOrders": 2,
     "ungShortFilledOrders": 2,
+    "minimumFilledOrderRatio": 0.8,
     "maximumMedianAbsoluteSlippageBps": 25,
     "maximumP95AbsoluteSlippageBps": 50
   },
@@ -48,11 +283,14 @@
     "tradingSessions": 0,
     "submittedOrders": 0,
     "filledOrders": 0,
+    "filledOrderRatio": null,
     "ungFilledOrders": 0,
     "ungLongFilledOrders": 0,
     "ungShortFilledOrders": 0,
     "medianAbsoluteSlippageBps": null,
     "p95AbsoluteSlippageBps": null,
+    "ungMedianAbsoluteSlippageBps": null,
+    "ungP95AbsoluteSlippageBps": null,
     "evidenceArtifactDigestSha256": null,
     "reviewedAt": null
   },

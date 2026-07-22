@@ -33,6 +33,8 @@ import {
   evaluateVersionedLiveTargetParity,
 } from './lib/qore-live-target-parity.mjs'
 import { ALL_YEAR_STRATEGY_ARTIFACT_SCHEMA_VERSION } from './lib/qore-live-strategy-artifact.mjs'
+import { SUMMER_FORECAST_TEMPORAL_CONTRACT } from './lib/qore-summer-forecast-contract.mjs'
+import { forwardOutcomePolicyDigestSha256 } from './lib/qore-validation-evidence.mjs'
 import { downsideDeviation } from './lib/qore-research-statistics.mjs'
 import {
   brokerExecutionProfileTieOutFailures,
@@ -708,6 +710,9 @@ function main() {
   const liveComponentContractDigest = liveComponentContractDigestSha256(liveComponentContract)
   const liveComponentContractMatchesExecutable =
     liveComponentContractDigest === executableLiveComponentContractDigestSha256
+  const summerTemporalContractMatches = liveComponentContractDigestSha256(
+    liveComponentContract?.summer?.implementation?.forecastTemporalContract,
+  ) === liveComponentContractDigestSha256(SUMMER_FORECAST_TEMPORAL_CONTRACT)
   const liveTargetParity = evaluateVersionedLiveTargetParity(REPO_ROOT)
   const artifactExecutionContract = {
     contractId: EXECUTION_CONTRACT.contractId,
@@ -751,6 +756,13 @@ function main() {
     componentContract: liveComponentContract,
     componentContractDigestSha256: liveComponentContractDigest,
     executableContractDigestSha256: executableLiveComponentContractDigestSha256,
+  }
+  const artifactForwardOutcomePolicyContract = {
+    schemaVersion: VALIDATION_INTEGRITY.manifest.forwardOutcomePolicy.schemaVersion,
+    policyId: VALIDATION_INTEGRITY.manifest.forwardOutcomePolicy.policyId,
+    policyDigestSha256: forwardOutcomePolicyDigestSha256(
+      VALIDATION_INTEGRITY.manifest.forwardOutcomePolicy,
+    ),
   }
   const rows = createCompositeRows(summer.rows, winter.rows, contractsByStrategyId, splitContract, executionByDate)
   const splits = splitRows(rows)
@@ -826,6 +838,7 @@ function main() {
     strategyId: STRATEGY_ID,
     contract: {
       allYearSelection: ALL_YEAR_SELECTION_CONTRACT,
+      forwardOutcomePolicy: artifactForwardOutcomePolicyContract,
       execution: artifactExecutionContract,
       brokerExecution: artifactBrokerExecutionContract,
       overnightRisk: artifactOvernightRiskContract,
@@ -844,6 +857,7 @@ function main() {
     trainMaxDrawdown: selectionMetricsBySplit.train.maxDrawdownPct > MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
     validationMaxDrawdown: selectionMetricsBySplit.validation.maxDrawdownPct > MAX_DRAWDOWN_PROMOTION_FLOOR_PCT,
     summerComponent: summerSummary.promotion?.eligible === true,
+    summerTemporalContract: summerTemporalContractMatches,
     winterComponent: winterSummary.search.eligibleCandidateCount > 0,
     liveContract: liveComponentContractMatchesExecutable,
     liveTargetParity: liveTargetParity.exactTargetParity,
@@ -862,6 +876,7 @@ function main() {
     'trainMaxDrawdown',
     'validationMaxDrawdown',
     'summerComponent',
+    'summerTemporalContract',
     'winterComponent',
     'liveContract',
     'liveTargetParity',
@@ -928,6 +943,7 @@ function main() {
     },
     contract: {
       allYearSelection: ALL_YEAR_SELECTION_CONTRACT,
+      forwardOutcomePolicy: artifactForwardOutcomePolicyContract,
       trainEnd: splitContract.trainEnd,
       selectionEnd: splitContract.selectionEnd,
       validationEnd: splitContract.validationEnd,

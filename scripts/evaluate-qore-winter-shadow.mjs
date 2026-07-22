@@ -19,7 +19,10 @@ import {
   loadResearchExecutionContract,
   targetWeightsForAllocation,
 } from './lib/qore-research-execution.mjs'
-import { validateForecastCalendarTemperatures } from './lib/qore-weather-data-quality.mjs'
+import {
+  LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+  validateForecastCalendarTemperatures,
+} from './lib/qore-weather-data-quality.mjs'
 import {
   WINTER_SHADOW_CANDIDATE_FAMILY,
   WINTER_SHADOW_CANDIDATE_FAMILY_DIGEST_SHA256,
@@ -292,9 +295,12 @@ function loadForecastInputs() {
     locationRows,
     mode: 'quarantine',
     label: 'Winter shadow historical forecast calendars',
+    scoreLocationAggregateContract: LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
   })
   return {
-    rows: enrichForecastRows(validated.scoreRows, validated.locationRows, 'winter'),
+    rows: enrichForecastRows(validated.scoreRows, validated.locationRows, 'winter', {
+      scoreLocationAggregateContract: LEGACY_FORECAST_SCORE_LOCATION_AGGREGATE_CONTRACT,
+    }),
     inputFiles,
     temperatureQuality: validated.diagnostics,
   }

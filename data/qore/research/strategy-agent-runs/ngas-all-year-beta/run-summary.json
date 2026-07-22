@@ -1,6 +1,6 @@
 {
   "artifactSchemaVersion": 6,
-  "generatedAt": "2026-07-22T04:30:57.846Z",
+  "generatedAt": "2026-07-22T18:56:06.013Z",
   "strategyId": "ngas-all-year-beta",
   "displayName": "NGAS All-Year Beta",
   "status": "needs-validation",
@@ -217,6 +217,11 @@
       "overlapPolicy": "fail-closed",
       "fallbackPolicy": "configured-voo-qqqm-index-basket"
     },
+    "forwardOutcomePolicy": {
+      "schemaVersion": 1,
+      "policyId": "matched-fallback-forward-outcomes-v1",
+      "policyDigestSha256": "92be20a63f569f4c7628cff959e0c53226cd3cf87e9ca345ed073d4969b66c0b"
+    },
     "trainEnd": "2023-12-31",
     "selectionEnd": "2024-12-31",
     "validationEnd": "2025-10-31",
@@ -396,11 +401,34 @@
       "candidateSummary": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-candidate-summary.csv"
     },
     "liveInference": {
-      "componentContractSchemaVersion": 2,
+      "componentContractSchemaVersion": 5,
       "componentContract": {
-        "schemaVersion": 2,
+        "schemaVersion": 5,
         "summer": {
           "strategyId": "ngas-summer-alpha",
+          "activeTargetDatePolicy": {
+            "policyId": "summer-session-or-lead-7-target-season-v1",
+            "sessionMonths": [
+              5,
+              6,
+              7,
+              8,
+              9
+            ],
+            "leadMonthActivation": {
+              "forecastLeadDays": 7,
+              "minimumEntryLagDays": 1,
+              "activationOffsetDays": 6,
+              "targetMonths": [
+                5,
+                6,
+                7,
+                8,
+                9
+              ]
+            },
+            "minimumCalendarDayByMonth": {}
+          },
           "selected": {
             "candidateId": "summer-gfs-gefs-core-equal-a5-c0.25-q0.5-wf0.35-rf0.35-rdcooling-demand-tiered-fh3-rh1-mv2-fresh3-wrnone-sdef1.25-vol0-fixed",
             "architectureId": "summer-weather-follow-and-fade",
@@ -508,6 +536,95 @@
                 }
               ]
             },
+            "scoreLocationAggregateContract": {
+              "schemaVersion": 1,
+              "contractId": "qore-executable-score-location-aggregate-v1",
+              "locationUniverse": {
+                "contractId": "qore-summer-eastern-conus-location-universe-v1",
+                "expectedLocationCount": 18,
+                "expectedSampledWeight": 1.06,
+                "locations": [
+                  {
+                    "locationId": "minneapolis",
+                    "weight": 0.07
+                  },
+                  {
+                    "locationId": "chicago",
+                    "weight": 0.09
+                  },
+                  {
+                    "locationId": "detroit",
+                    "weight": 0.06
+                  },
+                  {
+                    "locationId": "cleveland",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "indianapolis",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "st-louis",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "kansas-city",
+                    "weight": 0.04
+                  },
+                  {
+                    "locationId": "nashville",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "memphis",
+                    "weight": 0.04
+                  },
+                  {
+                    "locationId": "atlanta",
+                    "weight": 0.07
+                  },
+                  {
+                    "locationId": "charlotte",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "raleigh",
+                    "weight": 0.04
+                  },
+                  {
+                    "locationId": "washington-dc",
+                    "weight": 0.07
+                  },
+                  {
+                    "locationId": "philadelphia",
+                    "weight": 0.06
+                  },
+                  {
+                    "locationId": "new-york",
+                    "weight": 0.11
+                  },
+                  {
+                    "locationId": "boston",
+                    "weight": 0.06
+                  },
+                  {
+                    "locationId": "dallas",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "houston",
+                    "weight": 0.05
+                  }
+                ]
+              },
+              "coldCoverageAnomalyF": -8,
+              "extremeAnomalyF": -14,
+              "aggregatePrecisionDecimals": 3,
+              "locationWeightTolerance": 1e-9,
+              "weightedAnomalyToleranceF": 1e-9
+            },
+            "forecastTemporalContract": null,
             "storageDeficitHeatMultiplier": 1.25,
             "storageDeficitHeatMaxFraction": 0.4375,
             "storageSeasonalLookbackYears": 5,
@@ -524,19 +641,51 @@
               "extremeMaximumReversionFraction": 0.5
             }
           },
+          "targetLattice": {
+            "schemaVersion": 1,
+            "generatorId": "summer-enumerated-target-lattice-v1",
+            "roundingDecimalPlaces": 4,
+            "targetsByWindowAndThesis": {
+              "weather-follow": {
+                "summer-heat-long": [
+                  0.35,
+                  0.4375
+                ]
+              },
+              "weather-reversion": {
+                "reversion-short": [
+                  -0.5,
+                  -0.4,
+                  -0.2
+                ]
+              }
+            }
+          },
           "positionCaps": {
             "weather-follow": {
-              "summer-heat-long": 0.4375,
-              "summer-cold-short": 0.35
+              "summer-heat-long": 0.4375
             },
             "weather-reversion": {
-              "reversion-long": 0.35,
               "reversion-short": 0.5
             }
           }
         },
         "winter": {
           "strategyId": "ngas-winter-alpha",
+          "activeTargetDatePolicy": {
+            "policyId": "winter-session-months-v1",
+            "sessionMonths": [
+              11,
+              12,
+              1,
+              2,
+              3
+            ],
+            "leadMonthActivation": null,
+            "minimumCalendarDayByMonth": {
+              "11": 2
+            }
+          },
           "inputs": {
             "weatherReversion": {
               "strategyId": "winter-alpha-weather-reversion",
@@ -606,6 +755,173 @@
             }
           },
           "implementation": {
+            "forecastLocationUniverse": {
+              "contractId": "qore-summer-eastern-conus-location-universe-v1",
+              "expectedLocationCount": 18,
+              "expectedSampledWeight": 1.06,
+              "locations": [
+                {
+                  "locationId": "minneapolis",
+                  "weight": 0.07
+                },
+                {
+                  "locationId": "chicago",
+                  "weight": 0.09
+                },
+                {
+                  "locationId": "detroit",
+                  "weight": 0.06
+                },
+                {
+                  "locationId": "cleveland",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "indianapolis",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "st-louis",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "kansas-city",
+                  "weight": 0.04
+                },
+                {
+                  "locationId": "nashville",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "memphis",
+                  "weight": 0.04
+                },
+                {
+                  "locationId": "atlanta",
+                  "weight": 0.07
+                },
+                {
+                  "locationId": "charlotte",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "raleigh",
+                  "weight": 0.04
+                },
+                {
+                  "locationId": "washington-dc",
+                  "weight": 0.07
+                },
+                {
+                  "locationId": "philadelphia",
+                  "weight": 0.06
+                },
+                {
+                  "locationId": "new-york",
+                  "weight": 0.11
+                },
+                {
+                  "locationId": "boston",
+                  "weight": 0.06
+                },
+                {
+                  "locationId": "dallas",
+                  "weight": 0.05
+                },
+                {
+                  "locationId": "houston",
+                  "weight": 0.05
+                }
+              ]
+            },
+            "scoreLocationAggregateContract": {
+              "schemaVersion": 1,
+              "contractId": "qore-executable-score-location-aggregate-v1",
+              "locationUniverse": {
+                "contractId": "qore-summer-eastern-conus-location-universe-v1",
+                "expectedLocationCount": 18,
+                "expectedSampledWeight": 1.06,
+                "locations": [
+                  {
+                    "locationId": "minneapolis",
+                    "weight": 0.07
+                  },
+                  {
+                    "locationId": "chicago",
+                    "weight": 0.09
+                  },
+                  {
+                    "locationId": "detroit",
+                    "weight": 0.06
+                  },
+                  {
+                    "locationId": "cleveland",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "indianapolis",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "st-louis",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "kansas-city",
+                    "weight": 0.04
+                  },
+                  {
+                    "locationId": "nashville",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "memphis",
+                    "weight": 0.04
+                  },
+                  {
+                    "locationId": "atlanta",
+                    "weight": 0.07
+                  },
+                  {
+                    "locationId": "charlotte",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "raleigh",
+                    "weight": 0.04
+                  },
+                  {
+                    "locationId": "washington-dc",
+                    "weight": 0.07
+                  },
+                  {
+                    "locationId": "philadelphia",
+                    "weight": 0.06
+                  },
+                  {
+                    "locationId": "new-york",
+                    "weight": 0.11
+                  },
+                  {
+                    "locationId": "boston",
+                    "weight": 0.06
+                  },
+                  {
+                    "locationId": "dallas",
+                    "weight": 0.05
+                  },
+                  {
+                    "locationId": "houston",
+                    "weight": 0.05
+                  }
+                ]
+              },
+              "coldCoverageAnomalyF": -8,
+              "extremeAnomalyF": -14,
+              "aggregatePrecisionDecimals": 3,
+              "locationWeightTolerance": 1e-9,
+              "weightedAnomalyToleranceF": 1e-9
+            },
             "weatherFollow": {
               "candidateId": "dual-ncep-complex-bg-shrink-a5-c0.5-q0.5-wf0.25-rf0.2-fh3-rh2-mv2-vol0-fixed",
               "sourceSetId": "ncep-complex",
@@ -736,8 +1052,43 @@
               "strongScale": 1.25
             }
           },
+          "targetLattice": {
+            "schemaVersion": 1,
+            "generatorId": "winter-follow-reversion-scale-lattice-v2",
+            "roundingDecimalPlaces": 4,
+            "basePositions": {
+              "follow": 0.25,
+              "reversion": 0.2
+            },
+            "overlay": {
+              "rawCap": 0.45,
+              "riskMultiplier": 1.25,
+              "effectiveCap": 0.5625
+            },
+            "reversionModifiers": {
+              "standalone": 1,
+              "long": 1
+            },
+            "heatingDemandScales": [
+              0.65,
+              1,
+              1.1,
+              1.25
+            ],
+            "weatherResolutionScales": {
+              "minimum": 0.45,
+              "maximum": 1.25,
+              "increment": 0.0001,
+              "includeDroppedZero": true
+            },
+            "materializedTargetSetsDigestSha256": "bb63700111ae6056ff209ba3e805bc7d86cc265b92d4962b75017da11095ba1d"
+          },
           "positionCaps": {
             "weather-follow": {
+              "cold-long": 0.5625,
+              "warm-short": 0.5625
+            },
+            "winter-alpha-blend": {
               "cold-long": 0.5625,
               "warm-short": 0.5625
             },
@@ -748,12 +1099,12 @@
           }
         }
       },
-      "componentContractDigestSha256": "0f628f61b6f2f98d8b0ab123ec92154ceaf9a2aca05f47c55824a9bc908d0634",
-      "executableContractDigestSha256": "0f628f61b6f2f98d8b0ab123ec92154ceaf9a2aca05f47c55824a9bc908d0634"
+      "componentContractDigestSha256": "e529064ecec8852dc4bffc33ed2f0406a3bf7cf5e5ff2d8f548a5e38cf276bd6",
+      "executableContractDigestSha256": "c144bdd95201ddd47e5aa94b6fa597f5faf6f603a84e9b570afbf6fc47c0ea3b"
     },
     "liveTargetParity": {
-      "schemaVersion": 3,
-      "policyId": "all-year-component-production-source-exact-target-replay-v3",
+      "schemaVersion": 6,
+      "policyId": "all-year-component-production-source-exact-target-identity-and-input-contract-replay-v6",
       "componentStrategyId": "ngas-all-year-beta",
       "componentStrategyIds": [
         "ngas-summer-alpha",
@@ -762,10 +1113,13 @@
       "comparisonFields": [
         "gasPosition",
         "indexFraction",
-        "thesisKind"
+        "thesisKind",
+        "componentStrategyId",
+        "windowId"
       ],
-      "gasPositionTolerance": 0.001,
-      "indexFractionTolerance": 0.001,
+      "comparisonPrecisionDecimals": 4,
+      "gasPositionTolerance": 0,
+      "indexFractionTolerance": 0,
       "replayContract": {
         "targetDateField": "entryTradeDate",
         "storage": "versioned-EIA-lower48-weekly-with-reviewed-release-calendar",
@@ -781,7 +1135,91 @@
             8,
             9
           ],
-          "marketDays": "versioned-NG=F-adjusted-close"
+          "marketDays": "versioned-NG=F-adjusted-close",
+          "temporalContract": {
+            "schemaVersion": 2,
+            "contractId": "summer-target-local-day-four-sample-mean-v1",
+            "forecastIssueRunHourUtc": "00",
+            "requiredLeadDays": 7,
+            "validTimeOffsetsHoursFromTargetUtcMidnight": [
+              6,
+              12,
+              18,
+              24
+            ],
+            "aggregation": "equal-weighted-arithmetic-mean",
+            "targetDateSemantics": "The targetDate remains issueDate plus leadDays. Offset 24 samples the following UTC midnight and is aggregated into that targetDate as the reviewed Eastern/Central US local-day approximation.",
+            "targetDayBasis": "eastern-central-us-local-calendar-day-four-sample-approximation",
+            "comparisonStatistic": "NASA-POWER-daily-T2M-mean",
+            "valueBinding": {
+              "schemaVersion": 1,
+              "sampleValuesField": "sampledForecastValuesF",
+              "sampleValuesEncoding": "pipe-delimited-degrees-F-in-offset-order-decimal-round-trip",
+              "sampleProvenanceField": "forecastSampleProvenanceJson",
+              "sampleProvenanceDigestField": "forecastSampleProvenanceDigestSha256",
+              "locationVectorDigestField": "forecastSampleVectorDigestSha256",
+              "locationSetDigestField": "locationSampleVectorSetDigestSha256",
+              "normalIdentityFields": [
+                "normalSourceContractId",
+                "normalSourceContractDigestSha256",
+                "normalSourcePayloadDigestSha256"
+              ],
+              "normalSourceContract": {
+                "contractId": "nasa-power-merra2-lst-t2m-1991-2020-v1",
+                "apiName": "POWER Daily API",
+                "apiVersion": "v2.9.4",
+                "upstreamSource": "MERRA2",
+                "timeStandard": "LST",
+                "parameter": "T2M",
+                "startDate": "1991-01-01",
+                "endDate": "2020-12-31",
+                "aggregation": "same-calendar-month-day-arithmetic-mean-converted-C-to-F",
+                "retainedPayloadPathTemplate": "data/qore/weather/nasa-power/normals/{locationId}-1991-01-01-2020-12-31.json",
+                "payloadDigestSha256ByLocationId": {
+                  "atlanta": "0810f0fc8a90118b9ee78160ca0a8b07ff765c211e2b358ccb1ad515a5d0f9ec",
+                  "boston": "f1ace71546bd44d70b32c8281ffd0c8146e43e5a70e4519b1dd4724a70c21ff9",
+                  "charlotte": "79c72d67eaeaa2f7a571397b527ce7e643101fe2e59e4662af47f89bbd135589",
+                  "chicago": "371516b28991c393b58e0397b11fec342fa0889673dfd349cf1f4e303f37003b",
+                  "cleveland": "2796510c46879cfd3000abc92f23fe433abda00cb69bef106b5576698224b135",
+                  "dallas": "4b3d8648923891fab65ad6cf3ff64146f4462deaf80c0c2e8ec3d2e4db2348fd",
+                  "detroit": "2e824bb05e63c57f04b5920e50151539d9a7098badf46a90cd42d230a8aac7f2",
+                  "houston": "520c32658c959069798e70f4acf024e687f937dee358507780208922db6781f5",
+                  "indianapolis": "dd17c50dc054452117f2924a591c07694d15f84c11545dbb29523bdc6468854c",
+                  "kansas-city": "69456f00d87cb878a5519ed38c73c0bf241995a5a2f88cb8335a9535dab607f7",
+                  "memphis": "9abe74e9c50ed3b38351c9e2e348c614f51cca718e4238099a0def5f96315125",
+                  "minneapolis": "783c46d0c07a7a7b99ff3fa8f65c66e4773f1bf5d7ae19f7e6b2f17a311584e6",
+                  "nashville": "f8d2cd1ef3b61c6c360f7cf7d685c187da76dc78986e69395a216e88c0aa0689",
+                  "new-york": "da386333e72f33767c006da9febf366ed0b2090168caaf911e4577588b562938",
+                  "philadelphia": "4c0ebfca3239e592cced47e0ba1e1a8d315bbf3892434811fa4766d16d73bb36",
+                  "raleigh": "02d9ee85ef2804f9a482f1c97d460bf5348064ee498b6cb78f3a2f414e825852",
+                  "st-louis": "afe6c6bac4ed1e9812cb767798328eddc6c7d8bf4c34ee024af26a4ac250befc",
+                  "washington-dc": "475680dd2ac2d3ec115de7bbeb6eb37da8dbea2afe51777a34ff802bf1bda11f"
+                }
+              },
+              "normalSourceContractDigestSha256": "18b1670dbbab93e68a3a9bfb67853f7961a7d125095627df20ebec276b322bcf",
+              "reviewedWindowId": "rumor",
+              "reviewedModelIds": {
+                "gfs": "ncep-gfs-global-00z-noaa-aws",
+                "gefs-mean": "ncep-gefs-mean-00z-noaa-aws",
+                "graphcastgfs": "ncep-gfs-graphcast-00z-noaa-aws",
+                "aigfs": "ncep-aigfs-025-00z-openmeteo-single-runs",
+                "ecmwf-ifs": "ecmwf-ifs-00z-openmeteo-single-runs",
+                "ecmwf-aifs": "ecmwf-aifs-025-00z-openmeteo-single-runs",
+                "gem-global": "gem-global-00z-openmeteo-single-runs"
+              },
+              "acquisitionIdentityFields": [
+                "sourceUrl",
+                "indexUrl",
+                "indexLine",
+                "sourceIndexPayloadDigestSha256",
+                "sourcePayloadDigestSha256"
+              ],
+              "aggregateRule": "forecastMeanF-equals-rounded-3dp-arithmetic-mean-of-stored-samples",
+              "digestAlgorithm": "sha256-canonical-json",
+              "acquisitionTrustBoundary": "The builder hashes each fetched GRIB field or Open-Meteo response and binds that digest plus upstream object identity into the persisted score provenance. Relabel-only or accidental value changes fail validation. Raw forecast bytes are not retained and SHA-256 bindings are not signatures, so a malicious process able to fabricate values and recompute every digest remains inside the trusted builder acquisition-attestation boundary."
+            },
+            "summerExecutionEligible": true
+          }
         },
         "winter": {
           "expectedTargets": "versioned-ngas-winter-alpha-selected-trades",
@@ -1032,11 +1470,18 @@
   },
   "validation": {
     "integrity": {
-      "manifestSchemaVersion": 3,
-      "manifestId": "ngas-all-year-beta-prospective-validation-v2",
-      "manifestDigestSha256": "5795afefa908ada27be1274545a07282e18f87f47bcb99f15b50ca0cb9b2b942",
-      "sealedStrategyContractDigestSha256": "1bc910fe30f7f0e3f161f017fe0d7a05f2aad8e0b0a9fa1193db58dfd297d3ec",
-      "sealedStrategyArtifactDigestSha256": "413f2854fdf1274caf015c919b91e5bdecb0c862b8f8885415c5487bc85593cb",
+      "manifestSchemaVersion": 6,
+      "manifestId": "ngas-all-year-beta-prospective-validation-v5",
+      "manifestDigestSha256": "5a5cbbeff103dae8b1c295309d22762587e7cbc0390784c1310883d3752755c1",
+      "sealedAt": "2026-07-22T18:55:40.000Z",
+      "preregistrationDigestSha256": "826b95a7e9d4ef1a483100ddf6aca4531719b2cf8ce98f6375b62b6e03bc6d4b",
+      "candidateRegistryId": "ngas-all-year-beta-frozen-production-candidates-v1",
+      "candidateRegistryDigestSha256": "a947217b8c9aacc3beb64ada40297ce42699b6a835cc04290db4d66ee1a490f3",
+      "candidateFamilySize": 1,
+      "forwardValidationImplementationId": "qore-forward-validation-implementation-v1",
+      "forwardValidationImplementationDigestSha256": "56bcfe726e9b5b0626b90055fedf0955585ab006dd68bd51df783b7e84db6de3",
+      "sealedStrategyContractDigestSha256": "07ae468c936b65c141ae2d52d0088c13e185495bcfe9a9b897892d3b83c99285",
+      "sealedStrategyArtifactDigestSha256": "a50a218d741e0c3a0ccd181026a329a7f8e0647f8c38d13252a6a6a06b94c18c",
       "sealedBrokerExecutionProfileDigestSha256": "b41943fa21851d359a3d177420d86015444a30dfe3af1f08c660761af473e75c",
       "historicalEvidenceStatus": "development-contaminated",
       "historicalEvidenceStart": "2021-01-01",
@@ -1084,7 +1529,7 @@
       "liveApprovalStatus": "absent",
       "liveApprovalStrategyContractDigestSha256": null,
       "liveApprovalBrokerProfileDigestSha256": null,
-      "strategyContractDigestSha256": "1bc910fe30f7f0e3f161f017fe0d7a05f2aad8e0b0a9fa1193db58dfd297d3ec"
+      "strategyContractDigestSha256": "07ae468c936b65c141ae2d52d0088c13e185495bcfe9a9b897892d3b83c99285"
     },
     "eligibility": {
       "paperEligible": false,
@@ -1359,8 +1804,8 @@
       "blockLength": 10
     },
     "liveTargetParity": {
-      "schemaVersion": 3,
-      "policyId": "all-year-component-production-source-exact-target-replay-v3",
+      "schemaVersion": 6,
+      "policyId": "all-year-component-production-source-exact-target-identity-and-input-contract-replay-v6",
       "componentStrategyId": "ngas-all-year-beta",
       "componentStrategyIds": [
         "ngas-summer-alpha",
@@ -1369,10 +1814,13 @@
       "comparisonFields": [
         "gasPosition",
         "indexFraction",
-        "thesisKind"
+        "thesisKind",
+        "componentStrategyId",
+        "windowId"
       ],
-      "gasPositionTolerance": 0.001,
-      "indexFractionTolerance": 0.001,
+      "comparisonPrecisionDecimals": 4,
+      "gasPositionTolerance": 0,
+      "indexFractionTolerance": 0,
       "replayContract": {
         "targetDateField": "entryTradeDate",
         "storage": "versioned-EIA-lower48-weekly-with-reviewed-release-calendar",
@@ -1388,7 +1836,91 @@
             8,
             9
           ],
-          "marketDays": "versioned-NG=F-adjusted-close"
+          "marketDays": "versioned-NG=F-adjusted-close",
+          "temporalContract": {
+            "schemaVersion": 2,
+            "contractId": "summer-target-local-day-four-sample-mean-v1",
+            "forecastIssueRunHourUtc": "00",
+            "requiredLeadDays": 7,
+            "validTimeOffsetsHoursFromTargetUtcMidnight": [
+              6,
+              12,
+              18,
+              24
+            ],
+            "aggregation": "equal-weighted-arithmetic-mean",
+            "targetDateSemantics": "The targetDate remains issueDate plus leadDays. Offset 24 samples the following UTC midnight and is aggregated into that targetDate as the reviewed Eastern/Central US local-day approximation.",
+            "targetDayBasis": "eastern-central-us-local-calendar-day-four-sample-approximation",
+            "comparisonStatistic": "NASA-POWER-daily-T2M-mean",
+            "valueBinding": {
+              "schemaVersion": 1,
+              "sampleValuesField": "sampledForecastValuesF",
+              "sampleValuesEncoding": "pipe-delimited-degrees-F-in-offset-order-decimal-round-trip",
+              "sampleProvenanceField": "forecastSampleProvenanceJson",
+              "sampleProvenanceDigestField": "forecastSampleProvenanceDigestSha256",
+              "locationVectorDigestField": "forecastSampleVectorDigestSha256",
+              "locationSetDigestField": "locationSampleVectorSetDigestSha256",
+              "normalIdentityFields": [
+                "normalSourceContractId",
+                "normalSourceContractDigestSha256",
+                "normalSourcePayloadDigestSha256"
+              ],
+              "normalSourceContract": {
+                "contractId": "nasa-power-merra2-lst-t2m-1991-2020-v1",
+                "apiName": "POWER Daily API",
+                "apiVersion": "v2.9.4",
+                "upstreamSource": "MERRA2",
+                "timeStandard": "LST",
+                "parameter": "T2M",
+                "startDate": "1991-01-01",
+                "endDate": "2020-12-31",
+                "aggregation": "same-calendar-month-day-arithmetic-mean-converted-C-to-F",
+                "retainedPayloadPathTemplate": "data/qore/weather/nasa-power/normals/{locationId}-1991-01-01-2020-12-31.json",
+                "payloadDigestSha256ByLocationId": {
+                  "atlanta": "0810f0fc8a90118b9ee78160ca0a8b07ff765c211e2b358ccb1ad515a5d0f9ec",
+                  "boston": "f1ace71546bd44d70b32c8281ffd0c8146e43e5a70e4519b1dd4724a70c21ff9",
+                  "charlotte": "79c72d67eaeaa2f7a571397b527ce7e643101fe2e59e4662af47f89bbd135589",
+                  "chicago": "371516b28991c393b58e0397b11fec342fa0889673dfd349cf1f4e303f37003b",
+                  "cleveland": "2796510c46879cfd3000abc92f23fe433abda00cb69bef106b5576698224b135",
+                  "dallas": "4b3d8648923891fab65ad6cf3ff64146f4462deaf80c0c2e8ec3d2e4db2348fd",
+                  "detroit": "2e824bb05e63c57f04b5920e50151539d9a7098badf46a90cd42d230a8aac7f2",
+                  "houston": "520c32658c959069798e70f4acf024e687f937dee358507780208922db6781f5",
+                  "indianapolis": "dd17c50dc054452117f2924a591c07694d15f84c11545dbb29523bdc6468854c",
+                  "kansas-city": "69456f00d87cb878a5519ed38c73c0bf241995a5a2f88cb8335a9535dab607f7",
+                  "memphis": "9abe74e9c50ed3b38351c9e2e348c614f51cca718e4238099a0def5f96315125",
+                  "minneapolis": "783c46d0c07a7a7b99ff3fa8f65c66e4773f1bf5d7ae19f7e6b2f17a311584e6",
+                  "nashville": "f8d2cd1ef3b61c6c360f7cf7d685c187da76dc78986e69395a216e88c0aa0689",
+                  "new-york": "da386333e72f33767c006da9febf366ed0b2090168caaf911e4577588b562938",
+                  "philadelphia": "4c0ebfca3239e592cced47e0ba1e1a8d315bbf3892434811fa4766d16d73bb36",
+                  "raleigh": "02d9ee85ef2804f9a482f1c97d460bf5348064ee498b6cb78f3a2f414e825852",
+                  "st-louis": "afe6c6bac4ed1e9812cb767798328eddc6c7d8bf4c34ee024af26a4ac250befc",
+                  "washington-dc": "475680dd2ac2d3ec115de7bbeb6eb37da8dbea2afe51777a34ff802bf1bda11f"
+                }
+              },
+              "normalSourceContractDigestSha256": "18b1670dbbab93e68a3a9bfb67853f7961a7d125095627df20ebec276b322bcf",
+              "reviewedWindowId": "rumor",
+              "reviewedModelIds": {
+                "gfs": "ncep-gfs-global-00z-noaa-aws",
+                "gefs-mean": "ncep-gefs-mean-00z-noaa-aws",
+                "graphcastgfs": "ncep-gfs-graphcast-00z-noaa-aws",
+                "aigfs": "ncep-aigfs-025-00z-openmeteo-single-runs",
+                "ecmwf-ifs": "ecmwf-ifs-00z-openmeteo-single-runs",
+                "ecmwf-aifs": "ecmwf-aifs-025-00z-openmeteo-single-runs",
+                "gem-global": "gem-global-00z-openmeteo-single-runs"
+              },
+              "acquisitionIdentityFields": [
+                "sourceUrl",
+                "indexUrl",
+                "indexLine",
+                "sourceIndexPayloadDigestSha256",
+                "sourcePayloadDigestSha256"
+              ],
+              "aggregateRule": "forecastMeanF-equals-rounded-3dp-arithmetic-mean-of-stored-samples",
+              "digestAlgorithm": "sha256-canonical-json",
+              "acquisitionTrustBoundary": "The builder hashes each fetched GRIB field or Open-Meteo response and binds that digest plus upstream object identity into the persisted score provenance. Relabel-only or accidental value changes fail validation. Raw forecast bytes are not retained and SHA-256 bindings are not signatures, so a malicious process able to fabricate values and recompute every digest remains inside the trusted builder acquisition-attestation boundary."
+            },
+            "summerExecutionEligible": true
+          }
         },
         "winter": {
           "expectedTargets": "versioned-ngas-winter-alpha-selected-trades",
@@ -1398,7 +1930,7 @@
           "actualWeather": "versioned-NASA-POWER-arctic-blast-daily"
         }
       },
-      "status": "pass",
+      "status": "fail",
       "productionForecastSourceIds": {
         "summer": [
           "gfs",
@@ -1427,7 +1959,32 @@
         ]
       },
       "forecastRowCount": 19903,
-      "inputDigestSha256": "b3db23f1ba03ff946373376d989f95ffbd1c4316b156fc1dbd85fd7ce9ac4e4f",
+      "inputContractValid": false,
+      "inputContractFailureCount": 12142,
+      "inputContractFailureDigestSha256": "fce84b39b1ab0bac63a25d9060b103b69ffd6d155629ddde0ce82b2403661157",
+      "inputContractFailureSamples": [
+        "ngas-summer-alpha: gefs-mean: gefs-mean location rows forecastTemporalContractId is not the corrected Summer contract",
+        "ngas-summer-alpha: gefs-mean: gefs-mean location rows sampledValidHoursUtc does not match sampledValidTimeOffsetsHours",
+        "ngas-summer-alpha: gefs-mean: gefs-mean location rows sampledValidTimeOffsetsHours is not exactly 6|12|18|24",
+        "ngas-summer-alpha: gefs-mean: gefs-mean manifest temporalSampling metadata is missing",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+        "ngas-summer-alpha: gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed"
+      ],
+      "inputDigestSha256": "48786d1ccaf822b1eb13cbf2816bcfbd81a19881d76321b38dc03ea60efd6d0e",
       "inputFiles": {
         "storage": "data/qore/fundamentals/eia/working-gas-storage-lower48-weekly.csv",
         "storageReleaseCalendar": "data/qore/fundamentals/eia/working-gas-storage-release-calendar.json",
@@ -1436,8 +1993,10 @@
           "forecastCalendars": [
             "data/qore/research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv",
             "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv",
+            "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json",
             "data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv",
-            "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv"
+            "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv",
+            "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json"
           ],
           "market": "data/qore/market/yahoo/NG-F-qore-market.csv"
         },
@@ -1470,13 +2029,15 @@
       "gasPositionMismatchCount": 0,
       "indexFractionMismatchCount": 0,
       "thesisKindMismatchCount": 0,
-      "exactTargetParity": true,
-      "comparisonDigestSha256": "35e51a783daa42d2d5b16006da89d18cb8f0b7ec6c25bfa9a35d335f3893100a",
+      "componentStrategyIdMismatchCount": 0,
+      "windowIdMismatchCount": 0,
+      "exactTargetParity": false,
+      "comparisonDigestSha256": "a0de442023150a6984ae817ac83d4ad7ef8a6f458488b8cae9abd3c548bf11d4",
       "mismatches": [],
       "components": {
         "summer": {
           "componentStrategyId": "ngas-summer-alpha",
-          "status": "pass",
+          "status": "fail",
           "productionForecastSourceIds": [
             "gfs",
             "gefs-mean"
@@ -1494,6 +2055,7 @@
               "maximum": 160
             },
             "anomalyToleranceF": 0.01,
+            "scoreLocationAggregateContractId": null,
             "inputLocationRowCount": 27288,
             "acceptedLocationRowCount": 27288,
             "quarantinedLocationRowCount": 0,
@@ -1503,13 +2065,108 @@
             "quarantinedGroupCount": 0,
             "quarantinedGroups": []
           },
+          "temporalInputs": [
+            {
+              "schemaVersion": 2,
+              "contractId": "summer-target-local-day-four-sample-mean-v1",
+              "complete": false,
+              "promotionEligible": false,
+              "sourceId": "gfs",
+              "scoreRowCount": 758,
+              "locationRowCount": 13644,
+              "failureCount": 6071,
+              "failureDigestSha256": "db71d83dbbf715b6a60e8bd6287fbf80c7ee484c52c99ce82a9a43d726f9a9e1",
+              "failureSamples": [
+                "gfs location rows forecastTemporalContractId is not the corrected Summer contract",
+                "gfs location rows sampledValidHoursUtc does not match sampledValidTimeOffsetsHours",
+                "gfs location rows sampledValidTimeOffsetsHours is not exactly 6|12|18|24",
+                "gfs manifest temporalSampling metadata is missing",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws location sample vector is not bound to the score provenance",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+                "gfs score group 2021-05-01|2021-05-08|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws location sample vector is not bound to the score provenance",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+                "gfs score group 2021-05-02|2021-05-09|7|rumor|ncep-gfs-global-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed"
+              ]
+            },
+            {
+              "schemaVersion": 2,
+              "contractId": "summer-target-local-day-four-sample-mean-v1",
+              "complete": false,
+              "promotionEligible": false,
+              "sourceId": "gefs-mean",
+              "scoreRowCount": 758,
+              "locationRowCount": 13644,
+              "failureCount": 6071,
+              "failureDigestSha256": "bfd879c1f2cdfef334d13d3f667af2b0cc7bf48096f1ed38bc08f6fa45e37e75",
+              "failureSamples": [
+                "gefs-mean location rows forecastTemporalContractId is not the corrected Summer contract",
+                "gefs-mean location rows sampledValidHoursUtc does not match sampledValidTimeOffsetsHours",
+                "gefs-mean location rows sampledValidTimeOffsetsHours is not exactly 6|12|18|24",
+                "gefs-mean manifest temporalSampling metadata is missing",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+                "gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+                "gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed"
+              ]
+            }
+          ],
+          "inputContractValid": false,
+          "inputContractFailureCount": 12142,
+          "inputContractFailureDigestSha256": "37c53289d51b4a5572ea25648a5b7a28d10039728fb412fd345c2bbe9b5a17d1",
+          "inputContractFailureSamples": [
+            "gefs-mean: gefs-mean location rows forecastTemporalContractId is not the corrected Summer contract",
+            "gefs-mean: gefs-mean location rows sampledValidHoursUtc does not match sampledValidTimeOffsetsHours",
+            "gefs-mean: gefs-mean location rows sampledValidTimeOffsetsHours is not exactly 6|12|18|24",
+            "gefs-mean: gefs-mean manifest temporalSampling metadata is missing",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+            "gefs-mean: gefs-mean score group 2021-05-01|2021-05-08|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceDigestSha256 does not bind the persisted provenance",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleProvenanceJson is not valid JSON",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws forecastSampleVectorDigestSha256 does not bind samples, normals, anomaly, weight, provenance, and row identity",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws location sample vector is not bound to the score provenance",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws locationSampleVectorSetDigestSha256 does not bind the score to its location vectors",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractDigestSha256 does not match the reviewed normal source/version",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourceContractId does not match the reviewed NASA POWER normal contract",
+            "gefs-mean: gefs-mean score group 2021-05-02|2021-05-09|7|rumor|ncep-gefs-mean-00z-noaa-aws normalSourcePayloadDigestSha256 is missing or malformed"
+          ],
           "inputFiles": {
             "expectedTargets": "data/qore/research/strategy-agent-runs/ngas-summer-alpha/selected-trades.csv",
             "forecastCalendars": [
               "data/qore/research/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv",
               "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv",
+              "data/qore/weather/noaa-gfs/gfs-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json",
               "data/qore/research/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-signal-scores.csv",
-              "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv"
+              "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-location-anomalies.csv",
+              "data/qore/weather/noaa-gefs/gefs-mean-00z-daily-forecast-calendar-2021-05-01-2025-09-30-leads-7-hours-0-manifest.json"
             ]
           },
           "comparedRowCount": 585,
@@ -1518,9 +2175,12 @@
           "gasPositionMismatchCount": 0,
           "indexFractionMismatchCount": 0,
           "thesisKindMismatchCount": 0,
-          "exactTargetParity": true,
-          "comparisonDigestSha256": "0c3c70e713938e03c7b5a371df2f1e9d2c17708637eb2670779b458057034e20",
-          "mismatches": []
+          "componentStrategyIdMismatchCount": 0,
+          "windowIdMismatchCount": 0,
+          "exactTargetParity": false,
+          "comparisonDigestSha256": "0c3ca96378c0b367098b7f4890839a28082ef4529b77c24313bdb025d28f1887",
+          "mismatches": [],
+          "targetReplayExact": true
         },
         "winter": {
           "componentStrategyId": "ngas-winter-alpha",
@@ -1549,6 +2209,7 @@
               "maximum": 160
             },
             "anomalyToleranceF": 0.01,
+            "scoreLocationAggregateContractId": null,
             "inputLocationRowCount": 331002,
             "acceptedLocationRowCount": 330966,
             "quarantinedLocationRowCount": 36,
@@ -1599,6 +2260,10 @@
               }
             ]
           },
+          "inputContractValid": true,
+          "inputContractFailureCount": 0,
+          "inputContractFailureDigestSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "inputContractFailureSamples": [],
           "inputFiles": {
             "datasetManifest": "data/qore/dataset-manifest.json",
             "expectedTargets": "data/qore/research/strategy-agent-runs/ngas-winter-alpha/selected-trades.csv",
@@ -1626,8 +2291,10 @@
           "gasPositionMismatchCount": 0,
           "indexFractionMismatchCount": 0,
           "thesisKindMismatchCount": 0,
+          "componentStrategyIdMismatchCount": 0,
+          "windowIdMismatchCount": 0,
           "exactTargetParity": true,
-          "comparisonDigestSha256": "c712905a14df29ce21ee2f67debf8127785cc3bb4ede286b911411d37dd8e650",
+          "comparisonDigestSha256": "94e5b8d03a81a0b31b2def16563984fc13a0c453cf48bace54726c094f9eb0eb",
           "mismatches": []
         }
       }
@@ -1639,9 +2306,10 @@
       "trainMaxDrawdown": false,
       "validationMaxDrawdown": true,
       "summerComponent": false,
+      "summerTemporalContract": false,
       "winterComponent": false,
-      "liveContract": true,
-      "liveTargetParity": true,
+      "liveContract": false,
+      "liveTargetParity": false,
       "brokerExecution": true,
       "pristineForwardEvidence": false,
       "strategyContractSeal": true,
