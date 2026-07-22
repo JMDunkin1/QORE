@@ -81,6 +81,7 @@ export const promotionGateKeys = [
   'trainMaxDrawdown',
   'validationMaxDrawdown',
   'summerComponent',
+  'summerTemporalContract',
   'winterComponent',
   'liveContract',
   'liveTargetParity',

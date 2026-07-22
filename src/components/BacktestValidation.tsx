@@ -18,6 +18,7 @@ const promotionGateLabels = {
   trainMaxDrawdown: 'TRAIN MAX DRAWDOWN',
   validationMaxDrawdown: 'VALIDATION MAX DRAWDOWN',
   summerComponent: 'SUMMER COMPONENT',
+  summerTemporalContract: 'SUMMER TEMPORAL CONTRACT',
   winterComponent: 'WINTER COMPONENT',
   liveContract: 'LIVE CONTRACT DIGEST',
   liveTargetParity: 'LIVE TARGET PARITY',
