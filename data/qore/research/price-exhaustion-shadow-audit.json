@@ -1,0 +1,5249 @@
+{
+  "schemaVersion": 1,
+  "evaluationId": "ngas-all-year-price-exhaustion-shadow-audit-v1",
+  "contractId": "ngas-all-year-price-exhaustion-shadow-v1",
+  "contractDigestSha256": "4715db73b0d3bdda7c460606893081a09d3b99e881765ad23fe47ec05a815b60",
+  "candidateFamilyDigestSha256": "0a8f8a02ad1e8c0a50ba78905b6e6384d98a066916aa1abffab1d2836d9621b6",
+  "evaluatedThrough": "2026-07-14",
+  "historicalEvidenceStatus": "development-contaminated",
+  "status": "research-only-not-promotion-eligible",
+  "executionEligible": false,
+  "promotionEligible": false,
+  "publicStrategy": false,
+  "activeStrategyChanged": false,
+  "decision": {
+    "outcome": "retain-active-strategy-and-freeze-price-exhaustion-as-an-ineligible-research-shadow",
+    "reasons": [
+      "The five-session rule was discovered in a wider retrospective search; this focused family cannot turn that discovery into independent validation.",
+      "The frozen rule loses incremental return in 2025, including the single worst embargoed intervention episode.",
+      "The focused 48-member bootstrap is only a lower bound on the wider lifetime search multiplicity.",
+      "A one-extra-session-lag negative control reverses the selection-prefix and full-calendar edge, so the timing result is not robust.",
+      "Every historical session was already development-visible, so none is a pristine holdout.",
+      "The legacy active comparator is bound, but there is no trusted writer, external chronology seal, or outcome-independent terminal date."
+    ],
+    "prospectiveStart": null,
+    "prospectiveCollectionStatus": "blocked-no-trusted-writer-terminal-date-or-external-seal"
+  },
+  "inputBindings": {
+    "implementationManifest": {
+      "path": "config/qore-price-exhaustion-shadow-implementation.json",
+      "digestSha256": "41ac35aefbba092e1f742e8d4d93f7cb3633895fc8d15b1ef7284cf20239de83",
+      "files": [
+        {
+          "path": "scripts/evaluate-qore-price-exhaustion-shadow.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "93697022db979a14372f052da740511b30e77c63e86294862fbc47a1e2842098"
+        },
+        {
+          "path": "scripts/lib/qore-price-exhaustion-shadow.mjs",
+          "digestMode": "price-exhaustion-shadow-source-projection-v1",
+          "digestSha256": "7dc467936047b6bd7e6fefa60c455d0407d986d84a1026ccef836de0171055f7"
+        },
+        {
+          "path": "scripts/lib/qore-research-execution.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "403474428891a2444e5edd59fc8d9569b4bc629b272c367b311b3b0c281235c7"
+        },
+        {
+          "path": "scripts/lib/qore-rebalance-deadband.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "5638cdd9f45e6225ae6b027fa815212d1bb1ab72e6d4b0b914b8b34e64986eb6"
+        },
+        {
+          "path": "package.json",
+          "digestMode": "sha256",
+          "digestSha256": "ce63bee4d25a40fed7397ce89b4785c95159d5b3b778b3d09a503c64da3756bc"
+        },
+        {
+          "path": "package-lock.json",
+          "digestMode": "sha256",
+          "digestSha256": "c6d59cea55c6d9d3599ff63592255db9ced4653cff34d12eb02a47bbba27950e"
+        },
+        {
+          "path": "config/qore-research-execution.json",
+          "digestMode": "sha256",
+          "digestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d"
+        },
+        {
+          "path": "data/qore/market/index-basket-config.json",
+          "digestMode": "sha256",
+          "digestSha256": "7119fbd61803add8a7bb2773e0fe28b5cda11ae294b1efed7937c600869553cc"
+        },
+        {
+          "path": "data/qore/market/yahoo/UNG-daily.csv",
+          "digestMode": "sha256",
+          "digestSha256": "780fc8edcf1e3d15444028f8febfe2ecb64c8693f8e63d135787aa4172b3b064"
+        },
+        {
+          "path": "data/qore/market/yahoo/VOO-daily.csv",
+          "digestMode": "sha256",
+          "digestSha256": "6ae956abeb1c71c51f6bfc98fbb39c4469eb8070674c660c999cb79c0c58381a"
+        },
+        {
+          "path": "data/qore/market/yahoo/QQQM-daily.csv",
+          "digestMode": "sha256",
+          "digestSha256": "f4995f0bce53c5b4023d287296e37895af4e3ba2806293e8645add7e953ecebf"
+        },
+        {
+          "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+          "digestMode": "sha256",
+          "digestSha256": "ff39c0755c4777550113419e32a000e41a625612b30cedefa6103f2f8c2f04ea"
+        },
+        {
+          "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json",
+          "digestMode": "sha256",
+          "digestSha256": "c1542dd264c8e3e342d4a63d5e4973864ac1e4bb0bf4109fd22bb2fdf4d1d7b8"
+        }
+      ]
+    },
+    "selectedTrades": {
+      "role": "legacy-active-all-year-comparator-ledger",
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+      "digestSha256": "ff39c0755c4777550113419e32a000e41a625612b30cedefa6103f2f8c2f04ea",
+      "byteLength": 1235401
+    },
+    "runSummary": {
+      "role": "legacy-active-all-year-comparator-summary",
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json",
+      "digestSha256": "c1542dd264c8e3e342d4a63d5e4973864ac1e4bb0bf4109fd22bb2fdf4d1d7b8",
+      "byteLength": 114177
+    },
+    "executionContract": {
+      "role": "shared-research-execution-contract",
+      "path": "config/qore-research-execution.json",
+      "digestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d",
+      "byteLength": 1767
+    },
+    "sealedStrategyContractDigestSha256": "07ae468c936b65c141ae2d52d0088c13e185495bcfe9a9b897892d3b83c99285",
+    "adjustedClosePayload": {
+      "role": "prior-completed-ung-adjusted-close-signal-and-execution-input",
+      "path": "data/qore/market/yahoo/UNG-daily.csv",
+      "digestSha256": "780fc8edcf1e3d15444028f8febfe2ecb64c8693f8e63d135787aa4172b3b064",
+      "byteLength": 609217
+    },
+    "executionMarketInputs": [
+      {
+        "role": "ung-adjusted-market-bars",
+        "path": "data/qore/market/yahoo/UNG-daily.csv",
+        "digestSha256": "780fc8edcf1e3d15444028f8febfe2ecb64c8693f8e63d135787aa4172b3b064",
+        "byteLength": 609217
+      },
+      {
+        "role": "voo-adjusted-market-bars",
+        "path": "data/qore/market/yahoo/VOO-daily.csv",
+        "digestSha256": "6ae956abeb1c71c51f6bfc98fbb39c4469eb8070674c660c999cb79c0c58381a",
+        "byteLength": 558226
+      },
+      {
+        "role": "qqqm-adjusted-market-bars",
+        "path": "data/qore/market/yahoo/QQQM-daily.csv",
+        "digestSha256": "f4995f0bce53c5b4023d287296e37895af4e3ba2806293e8645add7e953ecebf",
+        "byteLength": 205707
+      },
+      {
+        "role": "index-basket-weights",
+        "path": "data/qore/market/index-basket-config.json",
+        "digestSha256": "7119fbd61803add8a7bb2773e0fe28b5cda11ae294b1efed7937c600869553cc",
+        "byteLength": 602
+      }
+    ],
+    "simulatorSources": [
+      {
+        "role": "shared-execution-simulator",
+        "path": "scripts/lib/qore-research-execution.mjs",
+        "digestSha256": "403474428891a2444e5edd59fc8d9569b4bc629b272c367b311b3b0c281235c7",
+        "byteLength": 16741
+      },
+      {
+        "role": "shared-rebalance-deadband",
+        "path": "scripts/lib/qore-rebalance-deadband.mjs",
+        "digestSha256": "5638cdd9f45e6225ae6b027fa815212d1bb1ab72e6d4b0b914b8b34e64986eb6",
+        "byteLength": 3193
+      }
+    ]
+  },
+  "signalContract": {
+    "selectedRule": "strict full veto when sign(selected gas position) times the prior five-session compounded UNG adjusted-close return divided by prior up-to-20-session daily sample standard deviation times sqrt(5) is greater than 1",
+    "targetSessionExcluded": true,
+    "targetSessionReturnUse": "never; the context is built before appending the current session return",
+    "expandingInceptionWindow": "The historical discovery used up to 20 prior returns at comparator inception; the first selected-rule veto occurs only after 20 prior observations.",
+    "releasedCapacityDestination": "the unchanged 80/20 VOO/QQQM index basket"
+  },
+  "baselineTieOut": {
+    "sessionCount": 1387,
+    "maximumDailyNetReturnDifferencePct": 0.000049976,
+    "pass": true
+  },
+  "comparator": {
+    "development2021To2023": {
+      "sessions": 753,
+      "totalReturnPct": 66.050551,
+      "cagrPct": 18.496609,
+      "sharpe": 0.910917,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 114.4114,
+      "incrementalDailySumPct": 0
+    },
+    "selectionAndTuning2024": {
+      "sessions": 252,
+      "totalReturnPct": 25.908697,
+      "cagrPct": 25.908697,
+      "sharpe": 1.295827,
+      "maxDrawdownPct": -11.46421,
+      "turnover": 60.240129,
+      "incrementalDailySumPct": 0
+    },
+    "reportOnly2025": {
+      "sessions": 250,
+      "totalReturnPct": 60.179467,
+      "cagrPct": 60.784322,
+      "sharpe": 2.275956,
+      "maxDrawdownPct": -16.681789,
+      "turnover": 49.369597,
+      "incrementalDailySumPct": 0
+    },
+    "observed2026": {
+      "sessions": 132,
+      "totalReturnPct": 17.357491,
+      "cagrPct": 35.738318,
+      "sharpe": 1.733889,
+      "maxDrawdownPct": -9.38314,
+      "turnover": 17.016883,
+      "incrementalDailySumPct": 0
+    },
+    "selectionPrefix": {
+      "sessions": 1005,
+      "totalReturnPct": 109.072085,
+      "cagrPct": 20.313134,
+      "sharpe": 1.000517,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 174.651529,
+      "incrementalDailySumPct": 0
+    },
+    "full": {
+      "sessions": 1387,
+      "totalReturnPct": 293.019148,
+      "cagrPct": 28.232261,
+      "sharpe": 1.30653,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 241.038008,
+      "incrementalDailySumPct": 0
+    }
+  },
+  "selectedShadow": {
+    "candidateId": "price-exhaustion-ung-l5-z1-s0-v1",
+    "status": "retrospectively-discovered-and-frozen-before-this-focused-sensitivity-audit",
+    "focusedFamilyPromotionSelected": false,
+    "focusedFamilySensitivityRank": 1,
+    "selectionCaveat": "Rank is descriptive sensitivity information only. The focused family neither selected nor promoted this previously discovered rule.",
+    "lookbackSessions": 5,
+    "volatilityLookbackSessions": 20,
+    "threshold": 1,
+    "exhaustedScale": 0,
+    "changedTargetCount": 52,
+    "periods": {
+      "development2021To2023": {
+        "sessions": 753,
+        "totalReturnPct": 106.364935,
+        "cagrPct": 27.437275,
+        "sharpe": 1.278816,
+        "maxDrawdownPct": -23.653769,
+        "turnover": 114.313445,
+        "incrementalDailySumPct": 21.464839
+      },
+      "selectionAndTuning2024": {
+        "sessions": 252,
+        "totalReturnPct": 33.81721,
+        "cagrPct": 33.81721,
+        "sharpe": 1.633968,
+        "maxDrawdownPct": -9.08462,
+        "turnover": 60.15285,
+        "incrementalDailySumPct": 6.045477
+      },
+      "reportOnly2025": {
+        "sessions": 250,
+        "totalReturnPct": 52.449568,
+        "cagrPct": 52.964696,
+        "sharpe": 2.103286,
+        "maxDrawdownPct": -16.48349,
+        "turnover": 53.959405,
+        "incrementalDailySumPct": -5.089917
+      },
+      "observed2026": {
+        "sessions": 132,
+        "totalReturnPct": 21.467749,
+        "cagrPct": 44.958504,
+        "sharpe": 2.158292,
+        "maxDrawdownPct": -6.653531,
+        "turnover": 13.932009,
+        "incrementalDailySumPct": 3.383628
+      },
+      "selectionPrefix": {
+        "sessions": 1005,
+        "totalReturnPct": 176.151798,
+        "cagrPct": 29.007864,
+        "sharpe": 1.361948,
+        "maxDrawdownPct": -23.653769,
+        "turnover": 174.466295,
+        "incrementalDailySumPct": 27.510316
+      },
+      "full": {
+        "sessions": 1387,
+        "totalReturnPct": 411.369778,
+        "cagrPct": 34.514163,
+        "sharpe": 1.56964,
+        "maxDrawdownPct": -23.653769,
+        "turnover": 242.357709,
+        "incrementalDailySumPct": 25.804026
+      }
+    },
+    "incrementalByYear": {
+      "2021": 5.562765,
+      "2022": 10.182855,
+      "2023": 5.719219,
+      "2024": 6.045477,
+      "2025": -5.089917,
+      "2026": 3.383628
+    }
+  },
+  "reportOnly2025Failure": {
+    "verdict": "failed",
+    "comparatorTotalReturnPct": 60.179467,
+    "shadowTotalReturnPct": 52.449568,
+    "incrementalDailySumPct": -5.089917,
+    "worstEpisode": {
+      "startDate": "2025-02-18",
+      "endDate": "2025-02-21",
+      "componentStrategyId": "ngas-winter-alpha",
+      "thesisKind": "cold-long",
+      "componentSeasonId": "winter-2024-2025",
+      "changedTargetCount": 3,
+      "incrementalDailySumPct": -5.318018
+    },
+    "consequence": "reject-promotion-and-do-not-assign-a-prospective-start"
+  },
+  "multipleTesting": {
+    "focusedFamilyCandidateCount": 48,
+    "exactGrid": {
+      "lookbackSessions": [
+        2,
+        3,
+        5,
+        10
+      ],
+      "thresholds": [
+        0.5,
+        1,
+        1.5,
+        2
+      ],
+      "exhaustedScales": [
+        0,
+        0.5,
+        0.75
+      ]
+    },
+    "selectionPeriod": "through-2024-12-31",
+    "scopeCaveat": "Focused-family lower bound only: the adjustment covers all 48 UNG exhaustion rows, but not the wider prior 388-row market-state search, the later 480-row cross-market search, the active comparator, or the lifetime QORE search.",
+    "fixedDiscoveredCandidateCircularBlockBootstrap": [
+      {
+        "blockLength": 1,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.011998
+      },
+      {
+        "blockLength": 5,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.004199
+      },
+      {
+        "blockLength": 10,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.005399
+      },
+      {
+        "blockLength": 20,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.004199
+      },
+      {
+        "blockLength": 60,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.0016
+      }
+    ],
+    "full48FamilyAdjustedCircularBlockBootstrap": [
+      {
+        "candidateCount": 48,
+        "blockLength": 1,
+        "iterations": 5000,
+        "observedWinnerId": "price-exhaustion-ung-l5-z1-s0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.09938
+      },
+      {
+        "candidateCount": 48,
+        "blockLength": 5,
+        "iterations": 5000,
+        "observedWinnerId": "price-exhaustion-ung-l5-z1-s0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.064587
+      },
+      {
+        "candidateCount": 48,
+        "blockLength": 10,
+        "iterations": 5000,
+        "observedWinnerId": "price-exhaustion-ung-l5-z1-s0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.066387
+      },
+      {
+        "candidateCount": 48,
+        "blockLength": 20,
+        "iterations": 5000,
+        "observedWinnerId": "price-exhaustion-ung-l5-z1-s0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.066787
+      },
+      {
+        "candidateCount": 48,
+        "blockLength": 60,
+        "iterations": 5000,
+        "observedWinnerId": "price-exhaustion-ung-l5-z1-s0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.02737345,
+        "pValue": 0.068186
+      }
+    ],
+    "pboNonCalibratedDiagnostic": {
+      "method": "10-block combinatorially symmetric cross-validation with a 10-session embargo",
+      "interpretationWarning": "PBO is a non-calibrated rank diagnostic, not a posterior probability that the discovered rule is overfit or safe.",
+      "calibratedProbability": false,
+      "candidateCount": 49,
+      "splitCount": 252,
+      "pboDiagnostic": 0.214286,
+      "medianSelectedTestPercentile": 0.94898,
+      "mostFrequentTrainWinners": [
+        {
+          "candidateId": "price-exhaustion-ung-l5-z1-s0-v1",
+          "selections": 129
+        },
+        {
+          "candidateId": "price-exhaustion-ung-l3-z0.5-s0-v1",
+          "selections": 42
+        },
+        {
+          "candidateId": "price-exhaustion-ung-l2-z0.5-s0-v1",
+          "selections": 33
+        },
+        {
+          "candidateId": "price-exhaustion-ung-l10-z0.5-s0-v1",
+          "selections": 27
+        },
+        {
+          "candidateId": "price-exhaustion-ung-l10-z1-s0-v1",
+          "selections": 18
+        },
+        {
+          "candidateId": "price-exhaustion-ung-l10-z1.5-s0-v1",
+          "selections": 1
+        },
+        {
+          "candidateId": "price-exhaustion-ung-l2-z1-s0-v1",
+          "selections": 1
+        },
+        {
+          "candidateId": "price-exhaustion-ung-l5-z0.5-s0-v1",
+          "selections": 1
+        }
+      ]
+    }
+  },
+  "episodeRobustness": {
+    "selectionPrefix": {
+      "method": "Changed targets within 10 sessions share an episode; attribution runs through one session after the final changed target.",
+      "embargoSessions": 10,
+      "changedTargetCount": 37,
+      "independentEpisodeCount": 16,
+      "positiveEpisodes": 14,
+      "negativeEpisodes": 2,
+      "episodesByComponent": {
+        "ngas-summer-alpha": 13,
+        "ngas-winter-alpha": 3
+      },
+      "episodesByThesis": {
+        "cold-long": 3,
+        "mixed-thesis-embargo-cluster": 1,
+        "summer-heat-long": 12
+      },
+      "topEpisodePositiveContributionShare": 0.207364,
+      "incrementalSumAfterRemovingBestEpisodePct": 21.213472,
+      "incrementalSumAfterRemovingBestThreeEpisodesPct": 14.222474,
+      "episodes": [
+        {
+          "startDate": "2021-02-02",
+          "endDate": "2021-02-09",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2020-2021",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 6.296844
+        },
+        {
+          "startDate": "2024-01-12",
+          "endDate": "2024-01-16",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2023-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 4.313636
+        },
+        {
+          "startDate": "2022-08-23",
+          "endDate": "2022-08-24",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 2.677362
+        },
+        {
+          "startDate": "2023-06-20",
+          "endDate": "2023-06-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 4,
+          "incrementalDailySumPct": 2.542174
+        },
+        {
+          "startDate": "2022-02-02",
+          "endDate": "2022-02-03",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2021-2022",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 2.532298
+        },
+        {
+          "startDate": "2022-07-14",
+          "endDate": "2022-07-19",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 2.516862
+        },
+        {
+          "startDate": "2022-05-04",
+          "endDate": "2022-05-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 2.462216
+        },
+        {
+          "startDate": "2023-07-21",
+          "endDate": "2023-08-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "mixed-thesis-embargo-cluster",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 5,
+          "incrementalDailySumPct": 2.395909
+        },
+        {
+          "startDate": "2021-07-01",
+          "endDate": "2021-07-07",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 1.620179
+        },
+        {
+          "startDate": "2024-06-12",
+          "endDate": "2024-06-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 1.409387
+        },
+        {
+          "startDate": "2023-09-14",
+          "endDate": "2023-09-15",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.783456
+        },
+        {
+          "startDate": "2021-05-18",
+          "endDate": "2021-06-03",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.493091
+        },
+        {
+          "startDate": "2024-09-06",
+          "endDate": "2024-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.294075
+        },
+        {
+          "startDate": "2024-09-24",
+          "endDate": "2024-09-26",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.028648
+        },
+        {
+          "startDate": "2021-07-21",
+          "endDate": "2021-08-06",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": -0.044134
+        },
+        {
+          "startDate": "2021-09-07",
+          "endDate": "2021-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -2.801565
+        }
+      ]
+    },
+    "fullCalendar": {
+      "method": "Changed targets within 10 sessions share an episode; attribution runs through one session after the final changed target.",
+      "embargoSessions": 10,
+      "changedTargetCount": 52,
+      "independentEpisodeCount": 22,
+      "positiveEpisodes": 18,
+      "negativeEpisodes": 4,
+      "episodesByComponent": {
+        "ngas-summer-alpha": 16,
+        "ngas-winter-alpha": 6
+      },
+      "episodesByThesis": {
+        "cold-long": 5,
+        "mixed-thesis-embargo-cluster": 2,
+        "summer-heat-long": 15
+      },
+      "topEpisodePositiveContributionShare": 0.18004,
+      "incrementalSumAfterRemovingBestEpisodePct": 19.507182,
+      "incrementalSumAfterRemovingBestThreeEpisodesPct": 11.810702,
+      "episodes": [
+        {
+          "startDate": "2021-02-02",
+          "endDate": "2021-02-09",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2020-2021",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 6.296844
+        },
+        {
+          "startDate": "2024-01-12",
+          "endDate": "2024-01-16",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2023-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 4.313636
+        },
+        {
+          "startDate": "2026-01-22",
+          "endDate": "2026-02-10",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "mixed-thesis-embargo-cluster",
+          "componentSeasonId": "winter-2025-2026",
+          "changedTargetCount": 5,
+          "incrementalDailySumPct": 3.382844
+        },
+        {
+          "startDate": "2022-08-23",
+          "endDate": "2022-08-24",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 2.677362
+        },
+        {
+          "startDate": "2023-06-20",
+          "endDate": "2023-06-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 4,
+          "incrementalDailySumPct": 2.542174
+        },
+        {
+          "startDate": "2022-02-02",
+          "endDate": "2022-02-03",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2021-2022",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 2.532298
+        },
+        {
+          "startDate": "2022-07-14",
+          "endDate": "2022-07-19",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 2.516862
+        },
+        {
+          "startDate": "2022-05-04",
+          "endDate": "2022-05-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 2.462216
+        },
+        {
+          "startDate": "2023-07-21",
+          "endDate": "2023-08-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "mixed-thesis-embargo-cluster",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 5,
+          "incrementalDailySumPct": 2.395909
+        },
+        {
+          "startDate": "2021-07-01",
+          "endDate": "2021-07-07",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 1.620179
+        },
+        {
+          "startDate": "2024-06-12",
+          "endDate": "2024-06-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 1.409387
+        },
+        {
+          "startDate": "2025-01-14",
+          "endDate": "2025-01-21",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2024-2025",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 0.813243
+        },
+        {
+          "startDate": "2023-09-14",
+          "endDate": "2023-09-15",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.783456
+        },
+        {
+          "startDate": "2021-05-18",
+          "endDate": "2021-06-03",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.493091
+        },
+        {
+          "startDate": "2025-07-17",
+          "endDate": "2025-07-18",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.316693
+        },
+        {
+          "startDate": "2024-09-06",
+          "endDate": "2024-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.294075
+        },
+        {
+          "startDate": "2025-06-09",
+          "endDate": "2025-06-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.095758
+        },
+        {
+          "startDate": "2024-09-24",
+          "endDate": "2024-09-26",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.028648
+        },
+        {
+          "startDate": "2021-07-21",
+          "endDate": "2021-08-06",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": -0.044134
+        },
+        {
+          "startDate": "2025-05-02",
+          "endDate": "2025-05-06",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -0.994415
+        },
+        {
+          "startDate": "2021-09-07",
+          "endDate": "2021-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -2.801565
+        },
+        {
+          "startDate": "2025-02-18",
+          "endDate": "2025-02-21",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2024-2025",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": -5.318018
+        }
+      ]
+    }
+  },
+  "componentAndThesisAttribution": {
+    "changedTargetSessionsOnly": {
+      "byComponent": {
+        "ngas-summer-alpha": {
+          "sessions": 36,
+          "changedTargetCount": 36,
+          "incrementalDailySumPct": 10.741378,
+          "positiveIncrementSessions": 23,
+          "negativeIncrementSessions": 13
+        },
+        "ngas-winter-alpha": {
+          "sessions": 16,
+          "changedTargetCount": 16,
+          "incrementalDailySumPct": 1.440059,
+          "positiveIncrementSessions": 8,
+          "negativeIncrementSessions": 8
+        }
+      },
+      "byThesis": {
+        "cold-long": {
+          "sessions": 15,
+          "changedTargetCount": 15,
+          "incrementalDailySumPct": 1.141682,
+          "positiveIncrementSessions": 7,
+          "negativeIncrementSessions": 8
+        },
+        "reversion-short": {
+          "sessions": 1,
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.646749,
+          "positiveIncrementSessions": 0,
+          "negativeIncrementSessions": 1
+        },
+        "summer-heat-long": {
+          "sessions": 35,
+          "changedTargetCount": 35,
+          "incrementalDailySumPct": 11.388127,
+          "positiveIncrementSessions": 23,
+          "negativeIncrementSessions": 12
+        },
+        "warm-short": {
+          "sessions": 1,
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.298377,
+          "positiveIncrementSessions": 1,
+          "negativeIncrementSessions": 0
+        }
+      },
+      "byComponentAndThesis": {
+        "ngas-summer-alpha/reversion-short": {
+          "sessions": 1,
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.646749,
+          "positiveIncrementSessions": 0,
+          "negativeIncrementSessions": 1
+        },
+        "ngas-summer-alpha/summer-heat-long": {
+          "sessions": 35,
+          "changedTargetCount": 35,
+          "incrementalDailySumPct": 11.388127,
+          "positiveIncrementSessions": 23,
+          "negativeIncrementSessions": 12
+        },
+        "ngas-winter-alpha/cold-long": {
+          "sessions": 15,
+          "changedTargetCount": 15,
+          "incrementalDailySumPct": 1.141682,
+          "positiveIncrementSessions": 7,
+          "negativeIncrementSessions": 8
+        },
+        "ngas-winter-alpha/warm-short": {
+          "sessions": 1,
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.298377,
+          "positiveIncrementSessions": 1,
+          "negativeIncrementSessions": 0
+        }
+      }
+    },
+    "allSessionIncrementAccounting": {
+      "byComponent": {
+        "ngas-summer-alpha": {
+          "sessions": 1187,
+          "changedTargetCount": 36,
+          "incrementalDailySumPct": 13.402131,
+          "positiveIncrementSessions": 164,
+          "negativeIncrementSessions": 135
+        },
+        "ngas-winter-alpha": {
+          "sessions": 200,
+          "changedTargetCount": 16,
+          "incrementalDailySumPct": 12.401895,
+          "positiveIncrementSessions": 24,
+          "negativeIncrementSessions": 15
+        }
+      },
+      "byThesis": {
+        "cold-long": {
+          "sessions": 34,
+          "changedTargetCount": 15,
+          "incrementalDailySumPct": 3.214155,
+          "positiveIncrementSessions": 13,
+          "negativeIncrementSessions": 8
+        },
+        "index-fallback": {
+          "sessions": 990,
+          "changedTargetCount": 0,
+          "incrementalDailySumPct": 4.786958,
+          "positiveIncrementSessions": 100,
+          "negativeIncrementSessions": 97
+        },
+        "reversion-long": {
+          "sessions": 41,
+          "changedTargetCount": 0,
+          "incrementalDailySumPct": 0,
+          "positiveIncrementSessions": 1,
+          "negativeIncrementSessions": 1
+        },
+        "reversion-short": {
+          "sessions": 92,
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 4.064452,
+          "positiveIncrementSessions": 10,
+          "negativeIncrementSessions": 8
+        },
+        "summer-heat-long": {
+          "sessions": 155,
+          "changedTargetCount": 35,
+          "incrementalDailySumPct": 8.766177,
+          "positiveIncrementSessions": 58,
+          "negativeIncrementSessions": 33
+        },
+        "warm-short": {
+          "sessions": 75,
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 4.972284,
+          "positiveIncrementSessions": 6,
+          "negativeIncrementSessions": 3
+        }
+      }
+    }
+  },
+  "deletionRobustness": {
+    "method": "Delete the named calendar or component-season rows from the aligned incremental-return series; do not retune or reselect.",
+    "selectionPrefixLeaveOneCalendarYear": {
+      "2021": {
+        "excludedIncrementalDailySumPct": 5.562765,
+        "remaining": {
+          "sessions": 753,
+          "totalReturnPct": 82.865068,
+          "cagrPct": 22.38411,
+          "sharpe": 1.042656,
+          "maxDrawdownPct": -22.11962,
+          "turnover": 137.653398,
+          "incrementalDailySumPct": 21.947551
+        }
+      },
+      "2022": {
+        "excludedIncrementalDailySumPct": 10.182855,
+        "remaining": {
+          "sessions": 754,
+          "totalReturnPct": 218.320366,
+          "cagrPct": 47.253659,
+          "sharpe": 2.38774,
+          "maxDrawdownPct": -10.757171,
+          "turnover": 138.621118,
+          "incrementalDailySumPct": 17.327461
+        }
+      },
+      "2023": {
+        "excludedIncrementalDailySumPct": 5.719219,
+        "remaining": {
+          "sessions": 755,
+          "totalReturnPct": 75.312362,
+          "cagrPct": 20.60866,
+          "sharpe": 0.983037,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 132.810923,
+          "incrementalDailySumPct": 21.791097
+        }
+      },
+      "2024": {
+        "excludedIncrementalDailySumPct": 6.045477,
+        "remaining": {
+          "sessions": 753,
+          "totalReturnPct": 106.364935,
+          "cagrPct": 27.437275,
+          "sharpe": 1.278816,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 114.313445,
+          "incrementalDailySumPct": 21.464839
+        }
+      }
+    },
+    "fullLeaveOneCalendarYear": {
+      "2021": {
+        "excludedIncrementalDailySumPct": 5.562765,
+        "remaining": {
+          "sessions": 1135,
+          "totalReturnPct": 238.624156,
+          "cagrPct": 31.102624,
+          "sharpe": 1.386916,
+          "maxDrawdownPct": -22.11962,
+          "turnover": 205.544812,
+          "incrementalDailySumPct": 20.241261
+        }
+      },
+      "2022": {
+        "excludedIncrementalDailySumPct": 10.182855,
+        "remaining": {
+          "sessions": 1136,
+          "totalReturnPct": 489.456294,
+          "cagrPct": 48.221103,
+          "sharpe": 2.277201,
+          "maxDrawdownPct": -16.48349,
+          "turnover": 206.512531,
+          "incrementalDailySumPct": 15.621172
+        }
+      },
+      "2023": {
+        "excludedIncrementalDailySumPct": 5.719219,
+        "remaining": {
+          "sessions": 1137,
+          "totalReturnPct": 224.638277,
+          "cagrPct": 29.820874,
+          "sharpe": 1.348508,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 200.702337,
+          "incrementalDailySumPct": 20.084808
+        }
+      },
+      "2024": {
+        "excludedIncrementalDailySumPct": 6.045477,
+        "remaining": {
+          "sessions": 1135,
+          "totalReturnPct": 282.140518,
+          "cagrPct": 34.669397,
+          "sharpe": 1.556643,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 182.204859,
+          "incrementalDailySumPct": 19.758549
+        }
+      },
+      "2025": {
+        "excludedIncrementalDailySumPct": -5.089917,
+        "remaining": {
+          "sessions": 1137,
+          "totalReturnPct": 235.435373,
+          "cagrPct": 30.765682,
+          "sharpe": 1.444662,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 188.398304,
+          "incrementalDailySumPct": 30.893943
+        }
+      },
+      "2026": {
+        "excludedIncrementalDailySumPct": 3.383628,
+        "remaining": {
+          "sessions": 1255,
+          "totalReturnPct": 320.992223,
+          "cagrPct": 33.460345,
+          "sharpe": 1.515856,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 228.4257,
+          "incrementalDailySumPct": 22.420399
+        }
+      }
+    },
+    "fullLeaveOneComponentSeason": {
+      "summer-2021": {
+        "excludedIncrementalDailySumPct": -0.734224,
+        "remaining": {
+          "sessions": 1167,
+          "totalReturnPct": 278.465294,
+          "cagrPct": 33.296261,
+          "sharpe": 1.462759,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 220.88311,
+          "incrementalDailySumPct": 26.53825
+        }
+      },
+      "summer-2022": {
+        "excludedIncrementalDailySumPct": 7.650605,
+        "remaining": {
+          "sessions": 1167,
+          "totalReturnPct": 550.721175,
+          "cagrPct": 49.845299,
+          "sharpe": 2.303232,
+          "maxDrawdownPct": -16.48349,
+          "turnover": 219.5476,
+          "incrementalDailySumPct": 18.153421
+        }
+      },
+      "summer-2023": {
+        "excludedIncrementalDailySumPct": 5.719219,
+        "remaining": {
+          "sessions": 1166,
+          "totalReturnPct": 247.12215,
+          "cagrPct": 30.86121,
+          "sharpe": 1.388978,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 211.368378,
+          "incrementalDailySumPct": 20.084808
+        }
+      },
+      "summer-2024": {
+        "excludedIncrementalDailySumPct": 1.731836,
+        "remaining": {
+          "sessions": 1175,
+          "totalReturnPct": 297.552191,
+          "cagrPct": 34.446938,
+          "sharpe": 1.523614,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 201.140667,
+          "incrementalDailySumPct": 24.072191
+        }
+      },
+      "summer-2025": {
+        "excludedIncrementalDailySumPct": -1.706195,
+        "remaining": {
+          "sessions": 1178,
+          "totalReturnPct": 277.733596,
+          "cagrPct": 32.883985,
+          "sharpe": 1.525994,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 207.808,
+          "incrementalDailySumPct": 27.510222
+        }
+      },
+      "summer-2026": {
+        "excludedIncrementalDailySumPct": 0.740891,
+        "remaining": {
+          "sessions": 1282,
+          "totalReturnPct": 373.470436,
+          "cagrPct": 35.750324,
+          "sharpe": 1.588352,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 237.934024,
+          "incrementalDailySumPct": 25.063136
+        }
+      },
+      "winter-2020-2021": {
+        "excludedIncrementalDailySumPct": 6.296989,
+        "remaining": {
+          "sessions": 1364,
+          "totalReturnPct": 371.51538,
+          "cagrPct": 33.176886,
+          "sharpe": 1.521773,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 230.950106,
+          "incrementalDailySumPct": 19.507037
+        }
+      },
+      "winter-2021-2022": {
+        "excludedIncrementalDailySumPct": 2.532249,
+        "remaining": {
+          "sessions": 1358,
+          "totalReturnPct": 405.057259,
+          "cagrPct": 35.056912,
+          "sharpe": 1.592483,
+          "maxDrawdownPct": -21.539284,
+          "turnover": 230.640169,
+          "incrementalDailySumPct": 23.271777
+        }
+      },
+      "winter-2022-2023": {
+        "excludedIncrementalDailySumPct": 0,
+        "remaining": {
+          "sessions": 1357,
+          "totalReturnPct": 345.7585,
+          "cagrPct": 31.989761,
+          "sharpe": 1.486129,
+          "maxDrawdownPct": -26.62094,
+          "turnover": 230.68944,
+          "incrementalDailySumPct": 25.804026
+        }
+      },
+      "winter-2023-2024": {
+        "excludedIncrementalDailySumPct": 4.313641,
+        "remaining": {
+          "sessions": 1352,
+          "totalReturnPct": 374.781354,
+          "cagrPct": 33.687873,
+          "sharpe": 1.551966,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 228.03322,
+          "incrementalDailySumPct": 21.490385
+        }
+      },
+      "winter-2024-2025": {
+        "excludedIncrementalDailySumPct": -3.383722,
+        "remaining": {
+          "sessions": 1345,
+          "totalReturnPct": 358.35955,
+          "cagrPct": 33.009911,
+          "sharpe": 1.524932,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 221.794484,
+          "incrementalDailySumPct": 29.187748
+        }
+      },
+      "winter-2025-2026": {
+        "excludedIncrementalDailySumPct": 2.642737,
+        "remaining": {
+          "sessions": 1346,
+          "totalReturnPct": 345.321461,
+          "cagrPct": 32.265197,
+          "sharpe": 1.494626,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 225.145596,
+          "incrementalDailySumPct": 23.16129
+        }
+      }
+    }
+  },
+  "temporalNegativeControl": {
+    "status": "diagnostic-only-not-a-reselection",
+    "rule": "apply the exact frozen rule with one additional completed-session lag",
+    "purpose": "Checks whether the result depends narrowly on the immediately preceding adjusted-close return.",
+    "periods": {
+      "development2021To2023": {
+        "sessions": 753,
+        "totalReturnPct": 60.93527,
+        "cagrPct": 17.262239,
+        "sharpe": 0.890216,
+        "maxDrawdownPct": -30.479862,
+        "turnover": 113.36711,
+        "incrementalDailySumPct": -3.688004
+      },
+      "selectionAndTuning2024": {
+        "sessions": 252,
+        "totalReturnPct": 25.320147,
+        "cagrPct": 25.320147,
+        "sharpe": 1.340767,
+        "maxDrawdownPct": -9.08462,
+        "turnover": 56.005369,
+        "incrementalDailySumPct": -0.6815
+      },
+      "reportOnly2025": {
+        "sessions": 250,
+        "totalReturnPct": 58.587957,
+        "cagrPct": 59.174086,
+        "sharpe": 2.292203,
+        "maxDrawdownPct": -16.481258,
+        "turnover": 51.452259,
+        "incrementalDailySumPct": -1.140289
+      },
+      "observed2026": {
+        "sessions": 132,
+        "totalReturnPct": 16.985872,
+        "cagrPct": 34.91893,
+        "sharpe": 1.728391,
+        "maxDrawdownPct": -8.589217,
+        "turnover": 17.319679,
+        "incrementalDailySumPct": -0.348476
+      },
+      "selectionPrefix": {
+        "sessions": 1005,
+        "totalReturnPct": 101.684318,
+        "cagrPct": 19.232706,
+        "sharpe": 0.99334,
+        "maxDrawdownPct": -30.479862,
+        "turnover": 169.372479,
+        "incrementalDailySumPct": -4.369504
+      },
+      "full": {
+        "sessions": 1387,
+        "totalReturnPct": 274.175849,
+        "cagrPct": 27.09266,
+        "sharpe": 1.308262,
+        "maxDrawdownPct": -30.479862,
+        "turnover": 238.144417,
+        "incrementalDailySumPct": -5.858269
+      }
+    },
+    "incrementalByYear": {
+      "2021": -0.192363,
+      "2022": -0.690424,
+      "2023": -2.805217,
+      "2024": -0.6815,
+      "2025": -1.140289,
+      "2026": -0.348476
+    },
+    "episodeRobustness": {
+      "method": "Changed targets within 10 sessions share an episode; attribution runs through one session after the final changed target.",
+      "embargoSessions": 10,
+      "changedTargetCount": 61,
+      "independentEpisodeCount": 37,
+      "positiveEpisodes": 19,
+      "negativeEpisodes": 18,
+      "episodesByComponent": {
+        "ngas-summer-alpha": 25,
+        "ngas-winter-alpha": 12
+      },
+      "episodesByThesis": {
+        "cold-long": 5,
+        "mixed-thesis-embargo-cluster": 4,
+        "reversion-long": 1,
+        "reversion-short": 6,
+        "summer-heat-long": 18,
+        "warm-short": 3
+      },
+      "topEpisodePositiveContributionShare": 0.178986,
+      "incrementalSumAfterRemovingBestEpisodePct": -10.171905,
+      "incrementalSumAfterRemovingBestThreeEpisodesPct": -15.361908,
+      "episodes": [
+        {
+          "startDate": "2024-01-12",
+          "endDate": "2024-01-16",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2023-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 4.313636
+        },
+        {
+          "startDate": "2022-12-12",
+          "endDate": "2022-12-13",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "warm-short",
+          "componentSeasonId": "winter-2022-2023",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 2.657705
+        },
+        {
+          "startDate": "2022-02-02",
+          "endDate": "2022-02-03",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2021-2022",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 2.532298
+        },
+        {
+          "startDate": "2025-07-18",
+          "endDate": "2025-07-21",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 1.942217
+        },
+        {
+          "startDate": "2021-07-01",
+          "endDate": "2021-07-07",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 1.620179
+        },
+        {
+          "startDate": "2022-05-05",
+          "endDate": "2022-05-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 1.511786
+        },
+        {
+          "startDate": "2025-01-15",
+          "endDate": "2025-01-22",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2024-2025",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 1.398751
+        },
+        {
+          "startDate": "2021-05-19",
+          "endDate": "2021-06-04",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 1.271015
+        },
+        {
+          "startDate": "2024-07-31",
+          "endDate": "2024-08-01",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "reversion-short",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 1.249882
+        },
+        {
+          "startDate": "2023-06-20",
+          "endDate": "2023-06-27",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 4,
+          "incrementalDailySumPct": 1.112966
+        },
+        {
+          "startDate": "2023-11-14",
+          "endDate": "2023-11-15",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "warm-short",
+          "componentSeasonId": "winter-2023-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 1.053929
+        },
+        {
+          "startDate": "2024-04-25",
+          "endDate": "2024-04-26",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.858179
+        },
+        {
+          "startDate": "2023-08-10",
+          "endDate": "2023-08-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.807382
+        },
+        {
+          "startDate": "2025-09-26",
+          "endDate": "2025-09-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "reversion-short",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.667248
+        },
+        {
+          "startDate": "2025-09-08",
+          "endDate": "2025-09-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.361772
+        },
+        {
+          "startDate": "2024-09-25",
+          "endDate": "2024-09-26",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": 0.293157
+        },
+        {
+          "startDate": "2025-05-29",
+          "endDate": "2025-06-11",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.288739
+        },
+        {
+          "startDate": "2025-05-05",
+          "endDate": "2025-05-07",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": 0.134431
+        },
+        {
+          "startDate": "2024-06-04",
+          "endDate": "2024-06-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "mixed-thesis-embargo-cluster",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 0.025136
+        },
+        {
+          "startDate": "2023-09-15",
+          "endDate": "2023-09-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "mixed-thesis-embargo-cluster",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -0.091557
+        },
+        {
+          "startDate": "2024-09-09",
+          "endDate": "2024-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.134428
+        },
+        {
+          "startDate": "2022-08-24",
+          "endDate": "2022-08-25",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.146636
+        },
+        {
+          "startDate": "2021-02-01",
+          "endDate": "2021-02-10",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "mixed-thesis-embargo-cluster",
+          "componentSeasonId": "winter-2020-2021",
+          "changedTargetCount": 4,
+          "incrementalDailySumPct": -0.229967
+        },
+        {
+          "startDate": "2026-01-23",
+          "endDate": "2026-01-27",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2025-2026",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -0.348404
+        },
+        {
+          "startDate": "2023-05-09",
+          "endDate": "2023-05-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "reversion-short",
+          "componentSeasonId": "summer-2023",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.41667
+        },
+        {
+          "startDate": "2021-07-22",
+          "endDate": "2021-07-23",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.576892
+        },
+        {
+          "startDate": "2025-08-18",
+          "endDate": "2025-08-19",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "reversion-short",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.914067
+        },
+        {
+          "startDate": "2024-05-13",
+          "endDate": "2024-05-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.968317
+        },
+        {
+          "startDate": "2024-02-22",
+          "endDate": "2024-02-23",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "warm-short",
+          "componentSeasonId": "winter-2023-2024",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -1.402535
+        },
+        {
+          "startDate": "2023-01-24",
+          "endDate": "2023-01-25",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "reversion-short",
+          "componentSeasonId": "winter-2022-2023",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -1.922961
+        },
+        {
+          "startDate": "2022-07-15",
+          "endDate": "2022-07-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -2.030892
+        },
+        {
+          "startDate": "2025-06-30",
+          "endDate": "2025-07-01",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "reversion-short",
+          "componentSeasonId": "summer-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -2.117926
+        },
+        {
+          "startDate": "2021-09-07",
+          "endDate": "2021-09-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2021",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -2.280005
+        },
+        {
+          "startDate": "2025-02-10",
+          "endDate": "2025-02-21",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "cold-long",
+          "componentSeasonId": "winter-2024-2025",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": -2.899664
+        },
+        {
+          "startDate": "2023-12-18",
+          "endDate": "2023-12-22",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "mixed-thesis-embargo-cluster",
+          "componentSeasonId": "winter-2023-2024",
+          "changedTargetCount": 2,
+          "incrementalDailySumPct": -3.353957
+        },
+        {
+          "startDate": "2024-12-27",
+          "endDate": "2024-12-30",
+          "componentStrategyId": "ngas-winter-alpha",
+          "thesisKind": "reversion-long",
+          "componentSeasonId": "winter-2024-2025",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -4.915802
+        },
+        {
+          "startDate": "2022-06-09",
+          "endDate": "2022-06-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "thesisKind": "summer-heat-long",
+          "componentSeasonId": "summer-2022",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -5.214001
+        }
+      ]
+    }
+  },
+  "frictionScenarios": {
+    "baseline": {
+      "selectionEligible": true,
+      "comparator": {
+        "sessions": 1387,
+        "totalReturnPct": 293.019148,
+        "cagrPct": 28.232261,
+        "sharpe": 1.30653,
+        "maxDrawdownPct": -28.339707,
+        "turnover": 241.038008,
+        "incrementalDailySumPct": 0
+      },
+      "shadow": {
+        "sessions": 1387,
+        "totalReturnPct": 411.369778,
+        "cagrPct": 34.514163,
+        "sharpe": 1.56964,
+        "maxDrawdownPct": -23.653769,
+        "turnover": 242.357709,
+        "incrementalDailySumPct": 25.804026
+      },
+      "incrementalByYear": {
+        "2021": 5.562765,
+        "2022": 10.182855,
+        "2023": 5.719219,
+        "2024": 6.045477,
+        "2025": -5.089917,
+        "2026": 3.383628
+      }
+    },
+    "elevated": {
+      "selectionEligible": false,
+      "comparator": {
+        "sessions": 1387,
+        "totalReturnPct": 279.758443,
+        "cagrPct": 27.435088,
+        "sharpe": 1.27631,
+        "maxDrawdownPct": -28.64151,
+        "turnover": 241.050444,
+        "incrementalDailySumPct": 0
+      },
+      "shadow": {
+        "sessions": 1387,
+        "totalReturnPct": 394.093365,
+        "cagrPct": 33.676832,
+        "sharpe": 1.53883,
+        "maxDrawdownPct": -23.795898,
+        "turnover": 242.36496,
+        "incrementalDailySumPct": 25.795713
+      },
+      "incrementalByYear": {
+        "2021": 5.514992,
+        "2022": 10.222018,
+        "2023": 5.735144,
+        "2024": 6.051742,
+        "2025": -5.153616,
+        "2026": 3.425433
+      }
+    },
+    "stress": {
+      "selectionEligible": false,
+      "comparator": {
+        "sessions": 1387,
+        "totalReturnPct": 234.994042,
+        "cagrPct": 24.563976,
+        "sharpe": 1.166002,
+        "maxDrawdownPct": -29.720703,
+        "turnover": 241.089429,
+        "incrementalDailySumPct": 0
+      },
+      "shadow": {
+        "sessions": 1387,
+        "totalReturnPct": 335.907747,
+        "cagrPct": 30.668151,
+        "sharpe": 1.42644,
+        "maxDrawdownPct": -24.439268,
+        "turnover": 242.404428,
+        "incrementalDailySumPct": 25.797732
+      },
+      "incrementalByYear": {
+        "2021": 5.373858,
+        "2022": 10.332542,
+        "2023": 5.790727,
+        "2024": 6.069367,
+        "2025": -5.333967,
+        "2026": 3.565205
+      }
+    }
+  },
+  "matchedFallbackRealityCheck": {
+    "comparator": "98%-deployed VOO/QQQM basket replayed through the same execution simulator",
+    "activeAllYearSelectionPrefix": {
+      "sessions": 1005,
+      "totalReturnPct": 109.072085,
+      "cagrPct": 20.313134,
+      "sharpe": 1.000517,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 174.651529,
+      "incrementalDailySumPct": 26.047046
+    },
+    "matchedFallbackFull": {
+      "sessions": 1387,
+      "totalReturnPct": 118.768714,
+      "cagrPct": 15.284501,
+      "sharpe": 0.912392,
+      "maxDrawdownPct": -26.002879,
+      "turnover": 0.733825,
+      "incrementalDailySumPct": 0
+    },
+    "circularBlockBootstrap": [
+      {
+        "blockLength": 1,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.185763
+      },
+      {
+        "blockLength": 5,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.158568
+      },
+      {
+        "blockLength": 10,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.146971
+      },
+      {
+        "blockLength": 20,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.131974
+      },
+      {
+        "blockLength": 60,
+        "iterations": 5000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.114377
+      }
+    ]
+  },
+  "candidateSummaries": [
+    {
+      "candidateId": "price-exhaustion-ung-l5-z1-s0-v1",
+      "lookbackSessions": 5,
+      "threshold": 1,
+      "exhaustedScale": 0,
+      "changedTargetCount": 52,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 106.364935,
+          "cagrPct": 27.437275,
+          "sharpe": 1.278816,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 114.313445,
+          "incrementalDailySumPct": 21.464839
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 33.81721,
+          "cagrPct": 33.81721,
+          "sharpe": 1.633968,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 60.15285,
+          "incrementalDailySumPct": 6.045477
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 52.449568,
+          "cagrPct": 52.964696,
+          "sharpe": 2.103286,
+          "maxDrawdownPct": -16.48349,
+          "turnover": 53.959405,
+          "incrementalDailySumPct": -5.089917
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 21.467749,
+          "cagrPct": 44.958504,
+          "sharpe": 2.158292,
+          "maxDrawdownPct": -6.653531,
+          "turnover": 13.932009,
+          "incrementalDailySumPct": 3.383628
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 176.151798,
+          "cagrPct": 29.007864,
+          "sharpe": 1.361948,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 174.466295,
+          "incrementalDailySumPct": 27.510316
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 411.369778,
+          "cagrPct": 34.514163,
+          "sharpe": 1.56964,
+          "maxDrawdownPct": -23.653769,
+          "turnover": 242.357709,
+          "incrementalDailySumPct": 25.804026
+        }
+      },
+      "incrementalByYear": {
+        "2021": 5.562765,
+        "2022": 10.182855,
+        "2023": 5.719219,
+        "2024": 6.045477,
+        "2025": -5.089917,
+        "2026": 3.383628
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z0.5-s0-v1",
+      "lookbackSessions": 3,
+      "threshold": 0.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 89,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 99.092809,
+          "cagrPct": 25.916413,
+          "sharpe": 1.229507,
+          "maxDrawdownPct": -22.639973,
+          "turnover": 116.93623,
+          "incrementalDailySumPct": 17.770925
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 33.213659,
+          "cagrPct": 33.213659,
+          "sharpe": 1.623899,
+          "maxDrawdownPct": -11.772146,
+          "turnover": 55.774645,
+          "incrementalDailySumPct": 5.557674
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 47.356365,
+          "cagrPct": 47.814096,
+          "sharpe": 1.982677,
+          "maxDrawdownPct": -16.480311,
+          "turnover": 51.682314,
+          "incrementalDailySumPct": -8.593022
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.037142,
+          "cagrPct": 37.243005,
+          "sharpe": 1.843135,
+          "maxDrawdownPct": -7.545369,
+          "turnover": 16.130291,
+          "incrementalDailySumPct": 0.524556
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 165.218815,
+          "cagrPct": 27.707736,
+          "sharpe": 1.321762,
+          "maxDrawdownPct": -22.639973,
+          "turnover": 172.710875,
+          "incrementalDailySumPct": 23.328599
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 361.308988,
+          "cagrPct": 32.019706,
+          "sharpe": 1.490548,
+          "maxDrawdownPct": -22.639973,
+          "turnover": 240.523479,
+          "incrementalDailySumPct": 15.260132
+        }
+      },
+      "incrementalByYear": {
+        "2021": 2.923654,
+        "2022": 11.015856,
+        "2023": 3.831415,
+        "2024": 5.557674,
+        "2025": -8.593022,
+        "2026": 0.524556
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z1-s0-v1",
+      "lookbackSessions": 10,
+      "threshold": 1,
+      "exhaustedScale": 0,
+      "changedTargetCount": 62,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 94.995195,
+          "cagrPct": 25.043118,
+          "sharpe": 1.204697,
+          "maxDrawdownPct": -24.358596,
+          "turnover": 104.865956,
+          "incrementalDailySumPct": 15.569205
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.961084,
+          "cagrPct": 31.961084,
+          "sharpe": 1.594864,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 58.072577,
+          "incrementalDailySumPct": 4.560605
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 51.279686,
+          "cagrPct": 51.781507,
+          "sharpe": 2.068025,
+          "maxDrawdownPct": -16.482131,
+          "turnover": 52.571239,
+          "incrementalDailySumPct": -5.86418
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 20.358827,
+          "cagrPct": 42.442543,
+          "sharpe": 2.055762,
+          "maxDrawdownPct": -6.653531,
+          "turnover": 16.32237,
+          "incrementalDailySumPct": 2.469562
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 157.317773,
+          "cagrPct": 26.742937,
+          "sharpe": 1.295433,
+          "maxDrawdownPct": -24.358596,
+          "turnover": 162.938532,
+          "incrementalDailySumPct": 20.12981
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 368.520229,
+          "cagrPct": 32.392287,
+          "sharpe": 1.509044,
+          "maxDrawdownPct": -24.358596,
+          "turnover": 231.832141,
+          "incrementalDailySumPct": 16.735192
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.688299,
+        "2022": 14.02393,
+        "2023": 2.233574,
+        "2024": 4.560605,
+        "2025": -5.86418,
+        "2026": 2.469562
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z0.5-s0-v1",
+      "lookbackSessions": 2,
+      "threshold": 0.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 100,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 89.803648,
+          "cagrPct": 23.918966,
+          "sharpe": 1.149376,
+          "maxDrawdownPct": -22.380649,
+          "turnover": 112.88488,
+          "incrementalDailySumPct": 13.014755
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.748599,
+          "cagrPct": 28.748599,
+          "sharpe": 1.434631,
+          "maxDrawdownPct": -11.772146,
+          "turnover": 55.283607,
+          "incrementalDailySumPct": 2.168542
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.884931,
+          "cagrPct": 57.451166,
+          "sharpe": 2.254121,
+          "maxDrawdownPct": -16.480311,
+          "turnover": 53.642058,
+          "incrementalDailySumPct": -2.250183
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.095217,
+          "cagrPct": 37.371944,
+          "sharpe": 1.873,
+          "maxDrawdownPct": -7.879479,
+          "turnover": 17.305848,
+          "incrementalDailySumPct": 0.550074
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 144.369539,
+          "cagrPct": 25.112688,
+          "sharpe": 1.216328,
+          "maxDrawdownPct": -22.380649,
+          "turnover": 168.168487,
+          "incrementalDailySumPct": 15.183296
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 352.752242,
+          "cagrPct": 31.571374,
+          "sharpe": 1.46807,
+          "maxDrawdownPct": -22.380649,
+          "turnover": 239.116392,
+          "incrementalDailySumPct": 13.483187
+        }
+      },
+      "incrementalByYear": {
+        "2021": 3.935488,
+        "2022": 7.087465,
+        "2023": 1.991801,
+        "2024": 2.168542,
+        "2025": -2.250183,
+        "2026": 0.550074
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z1-s0.5-v1",
+      "lookbackSessions": 5,
+      "threshold": 1,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 52,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 85.329077,
+          "cagrPct": 22.933531,
+          "sharpe": 1.102285,
+          "maxDrawdownPct": -25.574292,
+          "turnover": 113.429785,
+          "incrementalDailySumPct": 10.735741
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 29.835142,
+          "cagrPct": 29.835142,
+          "sharpe": 1.479305,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 60.186331,
+          "incrementalDailySumPct": 3.006951
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.332698,
+          "cagrPct": 56.892514,
+          "sharpe": 2.215208,
+          "maxDrawdownPct": -16.582612,
+          "turnover": 51.632233,
+          "incrementalDailySumPct": -2.554322
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 19.407542,
+          "cagrPct": 40.300956,
+          "sharpe": 1.966719,
+          "maxDrawdownPct": -7.119465,
+          "turnover": 15.325969,
+          "incrementalDailySumPct": 1.67939
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 140.62227,
+          "cagrPct": 24.628835,
+          "sharpe": 1.190049,
+          "maxDrawdownPct": -25.574292,
+          "turnover": 173.616116,
+          "incrementalDailySumPct": 13.742692
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 349.176887,
+          "cagrPct": 31.381986,
+          "sharpe": 1.450453,
+          "maxDrawdownPct": -25.574292,
+          "turnover": 240.574318,
+          "incrementalDailySumPct": 12.86776
+        }
+      },
+      "incrementalByYear": {
+        "2021": 2.791788,
+        "2022": 5.084772,
+        "2023": 2.859181,
+        "2024": 3.006951,
+        "2025": -2.554322,
+        "2026": 1.67939
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z0.5-s0-v1",
+      "lookbackSessions": 10,
+      "threshold": 0.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 108,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 84.649653,
+          "cagrPct": 22.782522,
+          "sharpe": 1.111374,
+          "maxDrawdownPct": -19.814945,
+          "turnover": 89.226135,
+          "incrementalDailySumPct": 10.15442
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 30.486126,
+          "cagrPct": 30.486126,
+          "sharpe": 1.551985,
+          "maxDrawdownPct": -11.906918,
+          "turnover": 48.868009,
+          "incrementalDailySumPct": 3.393092
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 54.747959,
+          "cagrPct": 55.289442,
+          "sharpe": 2.208939,
+          "maxDrawdownPct": -16.139409,
+          "turnover": 46.233092,
+          "incrementalDailySumPct": -3.667593
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 20.0457,
+          "cagrPct": 41.735908,
+          "sharpe": 2.030922,
+          "maxDrawdownPct": -6.653531,
+          "turnover": 13.942033,
+          "incrementalDailySumPct": 2.206089
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 140.942178,
+          "cagrPct": 24.670361,
+          "sharpe": 1.212243,
+          "maxDrawdownPct": -19.814945,
+          "turnover": 138.094144,
+          "incrementalDailySumPct": 13.547512
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 347.594117,
+          "cagrPct": 31.297752,
+          "sharpe": 1.47172,
+          "maxDrawdownPct": -19.814945,
+          "turnover": 198.269269,
+          "incrementalDailySumPct": 12.086009
+        }
+      },
+      "incrementalByYear": {
+        "2021": -8.799622,
+        "2022": 21.367549,
+        "2023": -2.413507,
+        "2024": 3.393092,
+        "2025": -3.667593,
+        "2026": 2.206089
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z0.5-s0.5-v1",
+      "lookbackSessions": 3,
+      "threshold": 0.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 89,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 82.133846,
+          "cagrPct": 22.220116,
+          "sharpe": 1.081444,
+          "maxDrawdownPct": -25.080248,
+          "turnover": 114.920042,
+          "incrementalDailySumPct": 8.892611
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 29.596831,
+          "cagrPct": 29.596831,
+          "sharpe": 1.488689,
+          "maxDrawdownPct": -10.015569,
+          "turnover": 57.929502,
+          "incrementalDailySumPct": 2.769719
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 53.703715,
+          "cagrPct": 54.233189,
+          "sharpe": 2.157197,
+          "maxDrawdownPct": -16.582611,
+          "turnover": 50.405316,
+          "incrementalDailySumPct": -4.302425
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.7108,
+          "cagrPct": 36.519527,
+          "sharpe": 1.807014,
+          "maxDrawdownPct": -8.019972,
+          "turnover": 16.431377,
+          "incrementalDailySumPct": 0.254592
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 136.039693,
+          "cagrPct": 24.02939,
+          "sharpe": 1.175671,
+          "maxDrawdownPct": -25.080248,
+          "turnover": 172.849543,
+          "incrementalDailySumPct": 11.662331
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 327.056874,
+          "cagrPct": 30.182054,
+          "sharpe": 1.415976,
+          "maxDrawdownPct": -25.080248,
+          "turnover": 239.686237,
+          "incrementalDailySumPct": 7.614498
+        }
+      },
+      "incrementalByYear": {
+        "2021": 1.479448,
+        "2022": 5.491421,
+        "2023": 1.921742,
+        "2024": 2.769719,
+        "2025": -4.302425,
+        "2026": 0.254592
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z1-s0.5-v1",
+      "lookbackSessions": 10,
+      "threshold": 1,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 62,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 80.250751,
+          "cagrPct": 21.79576,
+          "sharpe": 1.069673,
+          "maxDrawdownPct": -25.918654,
+          "turnover": 109.244871,
+          "incrementalDailySumPct": 7.774016
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.950978,
+          "cagrPct": 28.950978,
+          "sharpe": 1.460369,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 58.747824,
+          "incrementalDailySumPct": 2.275592
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 55.729071,
+          "cagrPct": 56.281888,
+          "sharpe": 2.193187,
+          "maxDrawdownPct": -16.582612,
+          "turnover": 50.844965,
+          "incrementalDailySumPct": -2.932326
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.860787,
+          "cagrPct": 39.077064,
+          "sharpe": 1.905812,
+          "maxDrawdownPct": -7.578109,
+          "turnover": 16.524083,
+          "incrementalDailySumPct": 1.231796
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 132.435106,
+          "cagrPct": 23.551718,
+          "sharpe": 1.160708,
+          "maxDrawdownPct": -25.918654,
+          "turnover": 167.992694,
+          "incrementalDailySumPct": 10.049608
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 330.23924,
+          "cagrPct": 30.357773,
+          "sharpe": 1.423095,
+          "maxDrawdownPct": -25.918654,
+          "turnover": 235.361742,
+          "incrementalDailySumPct": 8.349078
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.334995,
+        "2022": 6.987444,
+        "2023": 1.121566,
+        "2024": 2.275592,
+        "2025": -2.932326,
+        "2026": 1.231796
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z1.5-s0-v1",
+      "lookbackSessions": 5,
+      "threshold": 1.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 16,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 81.583885,
+          "cagrPct": 22.096485,
+          "sharpe": 1.073341,
+          "maxDrawdownPct": -23.422256,
+          "turnover": 116.530631,
+          "incrementalDailySumPct": 8.628527
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.937316,
+          "cagrPct": 26.937316,
+          "sharpe": 1.340082,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 61.596393,
+          "incrementalDailySumPct": 0.808517
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 61.332807,
+          "cagrPct": 61.951312,
+          "sharpe": 2.34062,
+          "maxDrawdownPct": -16.481258,
+          "turnover": 52.58514,
+          "incrementalDailySumPct": 0.649161
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.985872,
+          "cagrPct": 34.91893,
+          "sharpe": 1.728391,
+          "maxDrawdownPct": -8.589217,
+          "turnover": 17.319679,
+          "incrementalDailySumPct": -0.348476
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 130.49771,
+          "cagrPct": 23.292682,
+          "sharpe": 1.136749,
+          "maxDrawdownPct": -23.422256,
+          "turnover": 178.127024,
+          "incrementalDailySumPct": 9.437044
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 335.033521,
+          "cagrPct": 30.620499,
+          "sharpe": 1.417618,
+          "maxDrawdownPct": -23.422256,
+          "turnover": 248.031843,
+          "incrementalDailySumPct": 9.737729
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.903996,
+        "2022": 6.365515,
+        "2023": 3.167008,
+        "2024": 0.808517,
+        "2025": 0.649161,
+        "2026": -0.348476
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z2-s0-v1",
+      "lookbackSessions": 5,
+      "threshold": 2,
+      "exhaustedScale": 0,
+      "changedTargetCount": 8,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 81.319839,
+          "cagrPct": 22.037039,
+          "sharpe": 1.068881,
+          "maxDrawdownPct": -23.422256,
+          "turnover": 114.867517,
+          "incrementalDailySumPct": 8.513964
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.937316,
+          "cagrPct": 26.937316,
+          "sharpe": 1.340082,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 61.596393,
+          "incrementalDailySumPct": 0.808517
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.19232,
+          "cagrPct": 58.773814,
+          "sharpe": 2.211082,
+          "maxDrawdownPct": -17.715414,
+          "turnover": 49.353141,
+          "incrementalDailySumPct": -1.232877
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.985872,
+          "cagrPct": 34.91893,
+          "sharpe": 1.728391,
+          "maxDrawdownPct": -8.589217,
+          "turnover": 17.319679,
+          "incrementalDailySumPct": -0.348476
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 130.162537,
+          "cagrPct": 23.247703,
+          "sharpe": 1.133194,
+          "maxDrawdownPct": -23.422256,
+          "turnover": 176.463911,
+          "incrementalDailySumPct": 9.322481
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 325.944924,
+          "cagrPct": 30.120403,
+          "sharpe": 1.392581,
+          "maxDrawdownPct": -23.422256,
+          "turnover": 243.136731,
+          "incrementalDailySumPct": 7.741128
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.510665,
+        "2022": 6.365515,
+        "2023": 1.637784,
+        "2024": 0.808517,
+        "2025": -1.232877,
+        "2026": -0.348476
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z1.5-s0-v1",
+      "lookbackSessions": 10,
+      "threshold": 1.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 25,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 78.816989,
+          "cagrPct": 21.47068,
+          "sharpe": 1.044698,
+          "maxDrawdownPct": -24.817106,
+          "turnover": 109.497655,
+          "incrementalDailySumPct": 7.154387
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.707606,
+          "cagrPct": 27.707606,
+          "sharpe": 1.387366,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 62.578384,
+          "incrementalDailySumPct": 1.365447
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 52.011959,
+          "cagrPct": 52.522101,
+          "sharpe": 2.065546,
+          "maxDrawdownPct": -16.48349,
+          "turnover": 49.305002,
+          "incrementalDailySumPct": -5.319714
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 20.5978,
+          "cagrPct": 42.98296,
+          "sharpe": 2.038776,
+          "maxDrawdownPct": -6.881155,
+          "turnover": 15.83452,
+          "incrementalDailySumPct": 2.702592
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 128.362896,
+          "cagrPct": 23.005354,
+          "sharpe": 1.124765,
+          "maxDrawdownPct": -24.817106,
+          "turnover": 172.076039,
+          "incrementalDailySumPct": 8.519834
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 318.641892,
+          "cagrPct": 29.71219,
+          "sharpe": 1.383029,
+          "maxDrawdownPct": -24.817106,
+          "turnover": 237.215561,
+          "incrementalDailySumPct": 5.902712
+        }
+      },
+      "incrementalByYear": {
+        "2021": -6.667583,
+        "2022": 8.908168,
+        "2023": 4.913802,
+        "2024": 1.365447,
+        "2025": -5.319714,
+        "2026": 2.702592
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z0.5-s0.5-v1",
+      "lookbackSessions": 2,
+      "threshold": 0.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 100,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 77.914134,
+          "cagrPct": 21.265083,
+          "sharpe": 1.045461,
+          "maxDrawdownPct": -25.332981,
+          "turnover": 112.978588,
+          "incrementalDailySumPct": 6.514272
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.400605,
+          "cagrPct": 27.400605,
+          "sharpe": 1.391187,
+          "maxDrawdownPct": -11.183248,
+          "turnover": 57.226894,
+          "incrementalDailySumPct": 1.076155
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.590535,
+          "cagrPct": 59.176695,
+          "sharpe": 2.293814,
+          "maxDrawdownPct": -16.582611,
+          "turnover": 51.481288,
+          "incrementalDailySumPct": -1.14163
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.742697,
+          "cagrPct": 36.59016,
+          "sharpe": 1.817655,
+          "maxDrawdownPct": -8.622349,
+          "turnover": 17.010012,
+          "incrementalDailySumPct": 0.273966
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 126.663683,
+          "cagrPct": 22.775213,
+          "sharpe": 1.125994,
+          "maxDrawdownPct": -25.332981,
+          "turnover": 170.205482,
+          "incrementalDailySumPct": 7.590427
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 323.246314,
+          "cagrPct": 29.970232,
+          "sharpe": 1.407638,
+          "maxDrawdownPct": -25.332981,
+          "turnover": 238.696782,
+          "incrementalDailySumPct": 6.722763
+        }
+      },
+      "incrementalByYear": {
+        "2021": 1.985556,
+        "2022": 3.531667,
+        "2023": 0.997049,
+        "2024": 1.076155,
+        "2025": -1.14163,
+        "2026": 0.273966
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z0.5-s0-v1",
+      "lookbackSessions": 5,
+      "threshold": 0.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 102,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 85.681789,
+          "cagrPct": 23.01178,
+          "sharpe": 1.121858,
+          "maxDrawdownPct": -24.947248,
+          "turnover": 104.254597,
+          "incrementalDailySumPct": 10.701461
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 21.660014,
+          "cagrPct": 21.660014,
+          "sharpe": 1.160008,
+          "maxDrawdownPct": -10.044167,
+          "turnover": 55.145692,
+          "incrementalDailySumPct": -3.592523
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 48.50391,
+          "cagrPct": 48.974451,
+          "sharpe": 2.061034,
+          "maxDrawdownPct": -16.480311,
+          "turnover": 46.694974,
+          "incrementalDailySumPct": -7.909495
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.833228,
+          "cagrPct": 39.015508,
+          "sharpe": 1.96192,
+          "maxDrawdownPct": -7.837692,
+          "turnover": 13.89361,
+          "incrementalDailySumPct": 1.153955
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 125.900491,
+          "cagrPct": 22.671425,
+          "sharpe": 1.130199,
+          "maxDrawdownPct": -24.947248,
+          "turnover": 159.400289,
+          "incrementalDailySumPct": 7.108937
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 298.651092,
+          "cagrPct": 28.564182,
+          "sharpe": 1.373662,
+          "maxDrawdownPct": -24.947248,
+          "turnover": 219.988873,
+          "incrementalDailySumPct": 0.353397
+        }
+      },
+      "incrementalByYear": {
+        "2021": 5.876317,
+        "2022": 6.491625,
+        "2023": -1.666482,
+        "2024": -3.592523,
+        "2025": -7.909495,
+        "2026": 1.153955
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z1-s0-v1",
+      "lookbackSessions": 2,
+      "threshold": 1,
+      "exhaustedScale": 0,
+      "changedTargetCount": 49,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.141824,
+          "cagrPct": 20.629404,
+          "sharpe": 1.005218,
+          "maxDrawdownPct": -25.302835,
+          "turnover": 118.793136,
+          "incrementalDailySumPct": 5.172908
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.157408,
+          "cagrPct": 28.157408,
+          "sharpe": 1.395521,
+          "maxDrawdownPct": -11.906918,
+          "turnover": 60.094128,
+          "incrementalDailySumPct": 1.750008
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.389631,
+          "cagrPct": 59.985177,
+          "sharpe": 2.263536,
+          "maxDrawdownPct": -16.481258,
+          "turnover": 54.464061,
+          "incrementalDailySumPct": -0.518384
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 19.463226,
+          "cagrPct": 40.425889,
+          "sharpe": 1.939929,
+          "maxDrawdownPct": -6.926355,
+          "turnover": 17.129769,
+          "incrementalDailySumPct": 1.755898
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 124.457222,
+          "cagrPct": 22.474433,
+          "sharpe": 1.096572,
+          "maxDrawdownPct": -25.302835,
+          "turnover": 178.887264,
+          "incrementalDailySumPct": 6.922917
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 327.393476,
+          "cagrPct": 30.20069,
+          "sharpe": 1.392013,
+          "maxDrawdownPct": -25.302835,
+          "turnover": 250.481093,
+          "incrementalDailySumPct": 8.160431
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.3721,
+        "2022": 3.38693,
+        "2023": 1.413879,
+        "2024": 1.750008,
+        "2025": -0.518384,
+        "2026": 1.755898
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z1-s0.75-v1",
+      "lookbackSessions": 5,
+      "threshold": 1,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 52,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.47904,
+          "cagrPct": 20.707082,
+          "sharpe": 1.007816,
+          "maxDrawdownPct": -26.538765,
+          "turnover": 113.607127,
+          "incrementalDailySumPct": 5.370094
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.864185,
+          "cagrPct": 27.864185,
+          "sharpe": 1.390309,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 60.205938,
+          "incrementalDailySumPct": 1.498801
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.269807,
+          "cagrPct": 58.852209,
+          "sharpe": 2.252017,
+          "maxDrawdownPct": -16.632368,
+          "turnover": 50.457212,
+          "incrementalDailySumPct": -1.273483
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.381703,
+          "cagrPct": 38.008848,
+          "sharpe": 1.854096,
+          "maxDrawdownPct": -8.255915,
+          "turnover": 16.118101,
+          "incrementalDailySumPct": 0.836959
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 124.374843,
+          "cagrPct": 22.46316,
+          "sharpe": 1.096795,
+          "maxDrawdownPct": -26.538765,
+          "turnover": 173.813065,
+          "incrementalDailySumPct": 6.868895
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 320.3943,
+          "cagrPct": 29.810671,
+          "sharpe": 1.38099,
+          "maxDrawdownPct": -26.538765,
+          "turnover": 240.388379,
+          "incrementalDailySumPct": 6.43237
+        }
+      },
+      "incrementalByYear": {
+        "2021": 1.400095,
+        "2022": 2.540285,
+        "2023": 1.429713,
+        "2024": 1.498801,
+        "2025": -1.273483,
+        "2026": 0.836959
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z0.5-s0.5-v1",
+      "lookbackSessions": 10,
+      "threshold": 0.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 108,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.457942,
+          "cagrPct": 20.702225,
+          "sharpe": 1.026962,
+          "maxDrawdownPct": -23.713533,
+          "turnover": 101.310739,
+          "incrementalDailySumPct": 5.053548
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.265852,
+          "cagrPct": 28.265852,
+          "sharpe": 1.456406,
+          "maxDrawdownPct": -10.082096,
+          "turnover": 54.156791,
+          "incrementalDailySumPct": 1.67738
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.520122,
+          "cagrPct": 58.09376,
+          "sharpe": 2.27146,
+          "maxDrawdownPct": -16.41163,
+          "turnover": 47.508334,
+          "incrementalDailySumPct": -1.840014
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.706901,
+          "cagrPct": 38.733515,
+          "sharpe": 1.903157,
+          "maxDrawdownPct": -7.664438,
+          "turnover": 15.334083,
+          "incrementalDailySumPct": 1.091336
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 125.052624,
+          "cagrPct": 22.555814,
+          "sharpe": 1.125364,
+          "maxDrawdownPct": -23.713533,
+          "turnover": 155.46753,
+          "incrementalDailySumPct": 6.730928
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 320.819724,
+          "cagrPct": 29.834528,
+          "sharpe": 1.4114,
+          "maxDrawdownPct": -23.713533,
+          "turnover": 218.309946,
+          "incrementalDailySumPct": 5.98225
+        }
+      },
+      "incrementalByYear": {
+        "2021": -4.40436,
+        "2022": 10.655049,
+        "2023": -1.197141,
+        "2024": 1.67738,
+        "2025": -1.840014,
+        "2026": 1.091336
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z2-s0-v1",
+      "lookbackSessions": 10,
+      "threshold": 2,
+      "exhaustedScale": 0,
+      "changedTargetCount": 9,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.524517,
+          "cagrPct": 19.320555,
+          "sharpe": 0.948855,
+          "maxDrawdownPct": -27.504892,
+          "turnover": 115.697424,
+          "incrementalDailySumPct": 1.982413
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.504692,
+          "cagrPct": 31.504692,
+          "sharpe": 1.536623,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 59.475346,
+          "incrementalDailySumPct": 4.313636
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.19232,
+          "cagrPct": 58.773814,
+          "sharpe": 2.211082,
+          "maxDrawdownPct": -17.715414,
+          "turnover": 49.353141,
+          "incrementalDailySumPct": -1.232877
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 20.5978,
+          "cagrPct": 42.98296,
+          "sharpe": 2.038776,
+          "maxDrawdownPct": -6.881155,
+          "turnover": 15.83452,
+          "incrementalDailySumPct": 2.702592
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 122.932693,
+          "cagrPct": 22.265315,
+          "sharpe": 1.085315,
+          "maxDrawdownPct": -27.504892,
+          "turnover": 175.17277,
+          "incrementalDailySumPct": 6.296049
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 325.303095,
+          "cagrPct": 30.084757,
+          "sharpe": 1.382807,
+          "maxDrawdownPct": -27.504892,
+          "turnover": 240.360431,
+          "incrementalDailySumPct": 7.765764
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.483338,
+        "2022": 2.677561,
+        "2023": 0.788191,
+        "2024": 4.313636,
+        "2025": -1.232877,
+        "2026": 2.702592
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z0.5-s0.75-v1",
+      "lookbackSessions": 3,
+      "threshold": 0.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 89,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 73.976903,
+          "cagrPct": 20.360295,
+          "sharpe": 0.998028,
+          "maxDrawdownPct": -26.294194,
+          "turnover": 114.479099,
+          "incrementalDailySumPct": 4.445787
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.7701,
+          "cagrPct": 27.7701,
+          "sharpe": 1.39809,
+          "maxDrawdownPct": -10.337387,
+          "turnover": 59.00947,
+          "incrementalDailySumPct": 1.389545
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.922716,
+          "cagrPct": 57.489391,
+          "sharpe": 2.223434,
+          "maxDrawdownPct": -16.632367,
+          "turnover": 49.75056,
+          "incrementalDailySumPct": -2.154572
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.538024,
+          "cagrPct": 36.137232,
+          "sharpe": 1.774644,
+          "maxDrawdownPct": -8.701761,
+          "turnover": 16.671829,
+          "incrementalDailySumPct": 0.125774
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 122.290463,
+          "cagrPct": 22.176901,
+          "sharpe": 1.090693,
+          "maxDrawdownPct": -26.294194,
+          "turnover": 173.488569,
+          "incrementalDailySumPct": 5.835332
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 310.001109,
+          "cagrPct": 29.221605,
+          "sharpe": 1.364873,
+          "maxDrawdownPct": -26.294194,
+          "turnover": 239.910958,
+          "incrementalDailySumPct": 3.806534
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.741319,
+        "2022": 2.744464,
+        "2023": 0.960005,
+        "2024": 1.389545,
+        "2025": -2.154572,
+        "2026": 0.125774
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z1-s0.75-v1",
+      "lookbackSessions": 10,
+      "threshold": 1,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 62,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 73.095703,
+          "cagrPct": 20.155931,
+          "sharpe": 0.99239,
+          "maxDrawdownPct": -26.70892,
+          "turnover": 111.747127,
+          "incrementalDailySumPct": 3.894045
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.433726,
+          "cagrPct": 27.433726,
+          "sharpe": 1.380855,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 59.46365,
+          "incrementalDailySumPct": 1.136668
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.96623,
+          "cagrPct": 58.545079,
+          "sharpe": 2.240191,
+          "maxDrawdownPct": -16.632368,
+          "turnover": 49.971065,
+          "incrementalDailySumPct": -1.45855
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.110394,
+          "cagrPct": 37.40565,
+          "sharpe": 1.822025,
+          "maxDrawdownPct": -8.482917,
+          "turnover": 16.716515,
+          "incrementalDailySumPct": 0.61567
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 120.582304,
+          "cagrPct": 21.940807,
+          "sharpe": 1.082889,
+          "maxDrawdownPct": -26.70892,
+          "turnover": 171.210776,
+          "incrementalDailySumPct": 5.030712
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 311.550412,
+          "cagrPct": 29.310186,
+          "sharpe": 1.368027,
+          "maxDrawdownPct": -26.70892,
+          "turnover": 237.898356,
+          "incrementalDailySumPct": 4.187832
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.155443,
+        "2022": 3.491186,
+        "2023": 0.558302,
+        "2024": 1.136668,
+        "2025": -1.45855,
+        "2026": 0.61567
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z1.5-s0.5-v1",
+      "lookbackSessions": 5,
+      "threshold": 1.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 16,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 73.71197,
+          "cagrPct": 20.298925,
+          "sharpe": 0.99349,
+          "maxDrawdownPct": -25.899121,
+          "turnover": 115.32937,
+          "incrementalDailySumPct": 4.32204
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.421753,
+          "cagrPct": 26.421753,
+          "sharpe": 1.318058,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.9172,
+          "incrementalDailySumPct": 0.40366
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.756066,
+          "cagrPct": 61.367737,
+          "sharpe": 2.319554,
+          "maxDrawdownPct": -16.582638,
+          "turnover": 50.985924,
+          "incrementalDailySumPct": 0.299301
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.175424,
+          "cagrPct": 35.336582,
+          "sharpe": 1.738467,
+          "maxDrawdownPct": -8.836065,
+          "turnover": 16.936826,
+          "incrementalDailySumPct": -0.178726
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 119.609716,
+          "cagrPct": 21.805767,
+          "sharpe": 1.069966,
+          "maxDrawdownPct": -25.899121,
+          "turnover": 176.24657,
+          "incrementalDailySumPct": 4.7257
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 313.671361,
+          "cagrPct": 29.431009,
+          "sharpe": 1.365089,
+          "maxDrawdownPct": -25.899121,
+          "turnover": 244.169321,
+          "incrementalDailySumPct": 4.846275
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.453003,
+        "2022": 3.190245,
+        "2023": 1.584798,
+        "2024": 0.40366,
+        "2025": 0.299301,
+        "2026": -0.178726
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z2-s0.5-v1",
+      "lookbackSessions": 5,
+      "threshold": 2,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 8,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 73.577816,
+          "cagrPct": 20.267826,
+          "sharpe": 0.990929,
+          "maxDrawdownPct": -25.899121,
+          "turnover": 114.498186,
+          "incrementalDailySumPct": 4.266732
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.421753,
+          "cagrPct": 26.421753,
+          "sharpe": 1.318058,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.9172,
+          "incrementalDailySumPct": 0.40366
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.186974,
+          "cagrPct": 59.780136,
+          "sharpe": 2.24425,
+          "maxDrawdownPct": -17.19804,
+          "turnover": 49.363044,
+          "incrementalDailySumPct": -0.615449
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.175424,
+          "cagrPct": 35.336582,
+          "sharpe": 1.738467,
+          "maxDrawdownPct": -8.836065,
+          "turnover": 16.936826,
+          "incrementalDailySumPct": -0.178726
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 119.440116,
+          "cagrPct": 21.782173,
+          "sharpe": 1.067884,
+          "maxDrawdownPct": -25.899121,
+          "turnover": 175.415386,
+          "incrementalDailySumPct": 4.670391
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 309.317286,
+          "cagrPct": 29.182421,
+          "sharpe": 1.35124,
+          "maxDrawdownPct": -25.899121,
+          "turnover": 241.715256,
+          "incrementalDailySumPct": 3.876217
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.255556,
+        "2022": 3.190245,
+        "2023": 0.820931,
+        "2024": 0.40366,
+        "2025": -0.615449,
+        "2026": -0.178726
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z1.5-s0.5-v1",
+      "lookbackSessions": 10,
+      "threshold": 1.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 25,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 72.446681,
+          "cagrPct": 20.004969,
+          "sharpe": 0.982756,
+          "maxDrawdownPct": -26.03804,
+          "turnover": 111.931128,
+          "incrementalDailySumPct": 3.578684
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.852291,
+          "cagrPct": 26.852291,
+          "sharpe": 1.353524,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 61.235165,
+          "incrementalDailySumPct": 0.687623
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.093465,
+          "cagrPct": 56.650505,
+          "sharpe": 2.182745,
+          "maxDrawdownPct": -16.582612,
+          "turnover": 49.348735,
+          "incrementalDailySumPct": -2.649578
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.976782,
+          "cagrPct": 39.336288,
+          "sharpe": 1.894491,
+          "maxDrawdownPct": -8.132814,
+          "turnover": 16.419101,
+          "incrementalDailySumPct": 1.350939
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 118.752566,
+          "cagrPct": 21.686384,
+          "sharpe": 1.068955,
+          "maxDrawdownPct": -26.03804,
+          "turnover": 173.166293,
+          "incrementalDailySumPct": 4.266307
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 306.256288,
+          "cagrPct": 29.00636,
+          "sharpe": 1.352639,
+          "maxDrawdownPct": -26.03804,
+          "turnover": 238.934129,
+          "incrementalDailySumPct": 2.967668
+        }
+      },
+      "incrementalByYear": {
+        "2021": -3.337814,
+        "2022": 4.456341,
+        "2023": 2.460158,
+        "2024": 0.687623,
+        "2025": -2.649578,
+        "2026": 1.350939
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z1.5-s0-v1",
+      "lookbackSessions": 3,
+      "threshold": 1.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 22,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 71.630625,
+          "cagrPct": 19.814618,
+          "sharpe": 0.972369,
+          "maxDrawdownPct": -26.521694,
+          "turnover": 115.645554,
+          "incrementalDailySumPct": 3.149474
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.97486,
+          "cagrPct": 26.97486,
+          "sharpe": 1.341907,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 62.283803,
+          "incrementalDailySumPct": 0.837232
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.341107,
+          "cagrPct": 58.924344,
+          "sharpe": 2.23749,
+          "maxDrawdownPct": -16.481258,
+          "turnover": 49.354489,
+          "incrementalDailySumPct": -1.190174
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.167599,
+          "cagrPct": 33.123035,
+          "sharpe": 1.638785,
+          "maxDrawdownPct": -9.383123,
+          "turnover": 18.352006,
+          "incrementalDailySumPct": -1.0321
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.927746,
+          "cagrPct": 21.571172,
+          "sharpe": 1.059189,
+          "maxDrawdownPct": -26.521694,
+          "turnover": 177.929356,
+          "incrementalDailySumPct": 3.986706
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 300.858613,
+          "cagrPct": 28.693236,
+          "sharpe": 1.334009,
+          "maxDrawdownPct": -26.521694,
+          "turnover": 245.635852,
+          "incrementalDailySumPct": 1.764433
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.244615,
+        "2022": 2.454914,
+        "2023": 1.939175,
+        "2024": 0.837232,
+        "2025": -1.190174,
+        "2026": -1.0321
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z0.5-s0.75-v1",
+      "lookbackSessions": 2,
+      "threshold": 0.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 100,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 71.979509,
+          "cagrPct": 19.896071,
+          "sharpe": 0.981092,
+          "maxDrawdownPct": -26.829754,
+          "turnover": 113.580059,
+          "incrementalDailySumPct": 3.263103
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.68152,
+          "cagrPct": 26.68152,
+          "sharpe": 1.349536,
+          "maxDrawdownPct": -11.322652,
+          "turnover": 58.593583,
+          "incrementalDailySumPct": 0.543299
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.399763,
+          "cagrPct": 59.995428,
+          "sharpe": 2.291527,
+          "maxDrawdownPct": -16.632367,
+          "turnover": 50.389192,
+          "incrementalDailySumPct": -0.574778
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.554632,
+          "cagrPct": 36.173959,
+          "sharpe": 1.778859,
+          "maxDrawdownPct": -9.000278,
+          "turnover": 16.973816,
+          "incrementalDailySumPct": 0.137085
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.866256,
+          "cagrPct": 21.56257,
+          "sharpe": 1.066816,
+          "maxDrawdownPct": -26.829754,
+          "turnover": 172.173642,
+          "incrementalDailySumPct": 3.806402
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 308.241723,
+          "cagrPct": 29.12068,
+          "sharpe": 1.361446,
+          "maxDrawdownPct": -26.829754,
+          "turnover": 239.53665,
+          "incrementalDailySumPct": 3.368709
+        }
+      },
+      "incrementalByYear": {
+        "2021": 1.002458,
+        "2022": 1.764113,
+        "2023": 0.496532,
+        "2024": 0.543299,
+        "2025": -0.574778,
+        "2026": 0.137085
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z1.5-s0-v1",
+      "lookbackSessions": 2,
+      "threshold": 1.5,
+      "exhaustedScale": 0,
+      "changedTargetCount": 23,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 73.393101,
+          "cagrPct": 20.224979,
+          "sharpe": 0.988125,
+          "maxDrawdownPct": -27.200045,
+          "turnover": 118.912567,
+          "incrementalDailySumPct": 4.183124
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.403438,
+          "cagrPct": 25.403438,
+          "sharpe": 1.281245,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 61.601439,
+          "incrementalDailySumPct": -0.423827
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 62.051469,
+          "cagrPct": 62.678513,
+          "sharpe": 2.3393,
+          "maxDrawdownPct": -16.481258,
+          "turnover": 51.044312,
+          "incrementalDailySumPct": 1.143139
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 19.521259,
+          "cagrPct": 40.556148,
+          "sharpe": 1.93887,
+          "maxDrawdownPct": -6.881142,
+          "turnover": 17.171225,
+          "incrementalDailySumPct": 1.810779
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.44091,
+          "cagrPct": 21.503017,
+          "sharpe": 1.056628,
+          "maxDrawdownPct": -27.200045,
+          "turnover": 180.514006,
+          "incrementalDailySumPct": 3.759296
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 321.152504,
+          "cagrPct": 29.853177,
+          "sharpe": 1.377574,
+          "maxDrawdownPct": -27.200045,
+          "turnover": 248.729543,
+          "incrementalDailySumPct": 6.713215
+        }
+      },
+      "incrementalByYear": {
+        "2021": 1.293382,
+        "2022": 1.504484,
+        "2023": 1.385258,
+        "2024": -0.423827,
+        "2025": 1.143139,
+        "2026": 1.810779
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z0.5-s0.5-v1",
+      "lookbackSessions": 5,
+      "threshold": 0.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 102,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.979756,
+          "cagrPct": 20.82224,
+          "sharpe": 1.028309,
+          "maxDrawdownPct": -25.910028,
+          "turnover": 109.177788,
+          "incrementalDailySumPct": 5.405967
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 23.865108,
+          "cagrPct": 23.865108,
+          "sharpe": 1.264012,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 57.505161,
+          "incrementalDailySumPct": -1.814628
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 54.332162,
+          "cagrPct": 54.868856,
+          "sharpe": 2.214253,
+          "maxDrawdownPct": -16.582611,
+          "turnover": 47.87643,
+          "incrementalDailySumPct": -3.976229
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.108629,
+          "cagrPct": 37.40173,
+          "sharpe": 1.866606,
+          "maxDrawdownPct": -7.709105,
+          "turnover": 15.299425,
+          "incrementalDailySumPct": 0.568873
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.977515,
+          "cagrPct": 21.578133,
+          "sharpe": 1.081824,
+          "maxDrawdownPct": -25.910028,
+          "turnover": 166.682949,
+          "incrementalDailySumPct": 3.591338
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 297.328545,
+          "cagrPct": 28.486583,
+          "sharpe": 1.361644,
+          "maxDrawdownPct": -25.910028,
+          "turnover": 229.858804,
+          "incrementalDailySumPct": 0.183983
+        }
+      },
+      "incrementalByYear": {
+        "2021": 2.947423,
+        "2022": 3.274463,
+        "2023": -0.815919,
+        "2024": -1.814628,
+        "2025": -3.976229,
+        "2026": 0.568873
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z1-s0.5-v1",
+      "lookbackSessions": 2,
+      "threshold": 1,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 49,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 70.69955,
+          "cagrPct": 19.596702,
+          "sharpe": 0.963568,
+          "maxDrawdownPct": -26.795133,
+          "turnover": 116.561704,
+          "incrementalDailySumPct": 2.606586
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.087662,
+          "cagrPct": 27.087662,
+          "sharpe": 1.363734,
+          "maxDrawdownPct": -11.183248,
+          "turnover": 60.057549,
+          "incrementalDailySumPct": 0.871652
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.806157,
+          "cagrPct": 60.406608,
+          "sharpe": 2.276351,
+          "maxDrawdownPct": -16.582638,
+          "turnover": 51.918787,
+          "incrementalDailySumPct": -0.258945
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.419237,
+          "cagrPct": 38.092396,
+          "sharpe": 1.851473,
+          "maxDrawdownPct": -8.15324,
+          "turnover": 17.052775,
+          "incrementalDailySumPct": 0.874239
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 116.938068,
+          "cagrPct": 21.432501,
+          "sharpe": 1.056275,
+          "maxDrawdownPct": -26.795133,
+          "turnover": 176.619254,
+          "incrementalDailySumPct": 3.478238
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 310.536271,
+          "cagrPct": 29.252234,
+          "sharpe": 1.358052,
+          "maxDrawdownPct": -26.795133,
+          "turnover": 245.590815,
+          "incrementalDailySumPct": 4.093532
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.195213,
+        "2022": 1.700133,
+        "2023": 0.71124,
+        "2024": 0.871652,
+        "2025": -0.258945,
+        "2026": 0.874239
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z0.5-s0.75-v1",
+      "lookbackSessions": 10,
+      "threshold": 0.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 108,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 70.785338,
+          "cagrPct": 19.616813,
+          "sharpe": 0.972013,
+          "maxDrawdownPct": -25.622641,
+          "turnover": 107.66251,
+          "incrementalDailySumPct": 2.526452
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.10237,
+          "cagrPct": 27.10237,
+          "sharpe": 1.382053,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 57.179165,
+          "incrementalDailySumPct": 0.832676
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.872852,
+          "cagrPct": 59.462324,
+          "sharpe": 2.280795,
+          "maxDrawdownPct": -16.544756,
+          "turnover": 48.294563,
+          "incrementalDailySumPct": -0.916193
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.033488,
+          "cagrPct": 37.234893,
+          "sharpe": 1.822641,
+          "maxDrawdownPct": -8.525769,
+          "turnover": 16.122972,
+          "incrementalDailySumPct": 0.542697
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.072212,
+          "cagrPct": 21.451324,
+          "sharpe": 1.066571,
+          "maxDrawdownPct": -25.622641,
+          "turnover": 164.841675,
+          "incrementalDailySumPct": 3.359129
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 307.060689,
+          "cagrPct": 29.052732,
+          "sharpe": 1.363618,
+          "maxDrawdownPct": -25.622641,
+          "turnover": 229.25921,
+          "incrementalDailySumPct": 2.985632
+        }
+      },
+      "incrementalByYear": {
+        "2021": -2.198606,
+        "2022": 5.324153,
+        "2023": -0.599095,
+        "2024": 0.832676,
+        "2025": -0.916193,
+        "2026": 0.542697
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z2-s0.5-v1",
+      "lookbackSessions": 10,
+      "threshold": 2,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 9,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 67.803154,
+          "cagrPct": 18.913706,
+          "sharpe": 0.931245,
+          "maxDrawdownPct": -27.504892,
+          "turnover": 115.030098,
+          "incrementalDailySumPct": 0.98412
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.706551,
+          "cagrPct": 28.706551,
+          "sharpe": 1.426111,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 59.857747,
+          "incrementalDailySumPct": 2.152508
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.186974,
+          "cagrPct": 59.780136,
+          "sharpe": 2.24425,
+          "maxDrawdownPct": -17.19804,
+          "turnover": 49.363044,
+          "incrementalDailySumPct": -0.615449
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.976782,
+          "cagrPct": 39.336288,
+          "sharpe": 1.894491,
+          "maxDrawdownPct": -8.132814,
+          "turnover": 16.419101,
+          "incrementalDailySumPct": 1.350939
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 115.973653,
+          "cagrPct": 21.296912,
+          "sharpe": 1.045674,
+          "maxDrawdownPct": -27.504892,
+          "turnover": 174.887845,
+          "incrementalDailySumPct": 3.136628
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 309.044464,
+          "cagrPct": 29.166773,
+          "sharpe": 1.347894,
+          "maxDrawdownPct": -27.504892,
+          "turnover": 240.66999,
+          "incrementalDailySumPct": 3.872118
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.749638,
+        "2022": 1.339654,
+        "2023": 0.394104,
+        "2024": 2.152508,
+        "2025": -0.615449,
+        "2026": 1.350939
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z2-s0-v1",
+      "lookbackSessions": 2,
+      "threshold": 2,
+      "exhaustedScale": 0,
+      "changedTargetCount": 9,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 71.762492,
+          "cagrPct": 19.845418,
+          "sharpe": 0.968103,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 120.692926,
+          "incrementalDailySumPct": 3.324224
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.544367,
+          "cagrPct": 25.544367,
+          "sharpe": 1.280457,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 61.613605,
+          "incrementalDailySumPct": -0.289168
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.19232,
+          "cagrPct": 58.773814,
+          "sharpe": 2.211082,
+          "maxDrawdownPct": -17.715414,
+          "turnover": 49.353141,
+          "incrementalDailySumPct": -1.232877
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.309874,
+          "cagrPct": 33.434468,
+          "sharpe": 1.636705,
+          "maxDrawdownPct": -9.383127,
+          "turnover": 18.353588,
+          "incrementalDailySumPct": -0.891813
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 115.638135,
+          "cagrPct": 21.249635,
+          "sharpe": 1.041096,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 182.306531,
+          "incrementalDailySumPct": 3.035056
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 296.759694,
+          "cagrPct": 28.453142,
+          "sharpe": 1.316622,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 250.01326,
+          "incrementalDailySumPct": 0.910366
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.547384,
+        "2022": 0,
+        "2023": 2.77684,
+        "2024": -0.289168,
+        "2025": -1.232877,
+        "2026": -0.891813
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z1.5-s0.75-v1",
+      "lookbackSessions": 5,
+      "threshold": 1.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 16,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.855933,
+          "cagrPct": 19.39857,
+          "sharpe": 0.952472,
+          "maxDrawdownPct": -27.123993,
+          "turnover": 114.801701,
+          "incrementalDailySumPct": 2.163513
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.163971,
+          "cagrPct": 26.163971,
+          "sharpe": 1.306926,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.576554,
+          "incrementalDailySumPct": 0.20094
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.463762,
+          "cagrPct": 61.071975,
+          "sharpe": 2.30019,
+          "maxDrawdownPct": -16.632383,
+          "turnover": 50.18236,
+          "incrementalDailySumPct": 0.141057
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.269287,
+          "cagrPct": 35.543622,
+          "sharpe": 1.738117,
+          "maxDrawdownPct": -9.110082,
+          "turnover": 16.832822,
+          "incrementalDailySumPct": -0.088852
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 114.29699,
+          "cagrPct": 21.060105,
+          "sharpe": 1.035518,
+          "maxDrawdownPct": -27.123993,
+          "turnover": 175.378256,
+          "incrementalDailySumPct": 2.364452
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 303.252738,
+          "cagrPct": 28.832545,
+          "sharpe": 1.336462,
+          "maxDrawdownPct": -27.123993,
+          "turnover": 242.393438,
+          "incrementalDailySumPct": 2.416657
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.226482,
+        "2022": 1.596983,
+        "2023": 0.793012,
+        "2024": 0.20094,
+        "2025": 0.141057,
+        "2026": -0.088852
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z2-s0.75-v1",
+      "lookbackSessions": 5,
+      "threshold": 2,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 8,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.787823,
+          "cagrPct": 19.382545,
+          "sharpe": 0.951124,
+          "maxDrawdownPct": -27.123993,
+          "turnover": 114.390729,
+          "incrementalDailySumPct": 2.136016
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.163971,
+          "cagrPct": 26.163971,
+          "sharpe": 1.306926,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.576554,
+          "incrementalDailySumPct": 0.20094
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.684587,
+          "cagrPct": 60.283606,
+          "sharpe": 2.260324,
+          "maxDrawdownPct": -16.939203,
+          "turnover": 49.366251,
+          "incrementalDailySumPct": -0.306797
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.269287,
+          "cagrPct": 35.543622,
+          "sharpe": 1.738117,
+          "maxDrawdownPct": -9.110082,
+          "turnover": 16.832822,
+          "incrementalDailySumPct": -0.088852
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 114.211059,
+          "cagrPct": 21.047931,
+          "sharpe": 1.03441,
+          "maxDrawdownPct": -27.123993,
+          "turnover": 174.967283,
+          "incrementalDailySumPct": 2.336956
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 301.133721,
+          "cagrPct": 28.709279,
+          "sharpe": 1.329291,
+          "maxDrawdownPct": -27.123993,
+          "turnover": 241.166357,
+          "incrementalDailySumPct": 1.941307
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.127786,
+        "2022": 1.596983,
+        "2023": 0.411247,
+        "2024": 0.20094,
+        "2025": -0.306797,
+        "2026": -0.088852
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z1-s0-v1",
+      "lookbackSessions": 3,
+      "threshold": 1,
+      "exhaustedScale": 0,
+      "changedTargetCount": 43,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 67.464676,
+          "cagrPct": 18.833379,
+          "sharpe": 0.941444,
+          "maxDrawdownPct": -26.07065,
+          "turnover": 118.554723,
+          "incrementalDailySumPct": 0.536293
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.093963,
+          "cagrPct": 28.093963,
+          "sharpe": 1.384194,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 65.024974,
+          "incrementalDailySumPct": 1.726667
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 54.657163,
+          "cagrPct": 55.197599,
+          "sharpe": 2.135859,
+          "maxDrawdownPct": -16.481259,
+          "turnover": 54.589718,
+          "incrementalDailySumPct": -3.567406
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 19.175755,
+          "cagrPct": 39.781485,
+          "sharpe": 1.951481,
+          "maxDrawdownPct": -6.653531,
+          "turnover": 16.126376,
+          "incrementalDailySumPct": 1.47936
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 114.512139,
+          "cagrPct": 21.090569,
+          "sharpe": 1.046882,
+          "maxDrawdownPct": -26.07065,
+          "turnover": 183.579698,
+          "incrementalDailySumPct": 2.262961
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 295.375565,
+          "cagrPct": 28.371608,
+          "sharpe": 1.331946,
+          "maxDrawdownPct": -26.07065,
+          "turnover": 254.295791,
+          "incrementalDailySumPct": 0.174915
+        }
+      },
+      "incrementalByYear": {
+        "2021": -4.002835,
+        "2022": 2.24433,
+        "2023": 2.294798,
+        "2024": 1.726667,
+        "2025": -3.567406,
+        "2026": 1.47936
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z1.5-s0.75-v1",
+      "lookbackSessions": 10,
+      "threshold": 1.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 25,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.250389,
+          "cagrPct": 19.255949,
+          "sharpe": 0.947888,
+          "maxDrawdownPct": -26.771466,
+          "turnover": 113.150851,
+          "incrementalDailySumPct": 1.789539
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.398688,
+          "cagrPct": 26.398688,
+          "sharpe": 1.327668,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 60.704799,
+          "incrementalDailySumPct": 0.350757
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.14681,
+          "cagrPct": 58.727771,
+          "sharpe": 2.232667,
+          "maxDrawdownPct": -16.632368,
+          "turnover": 49.361853,
+          "incrementalDailySumPct": -1.315228
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.167136,
+          "cagrPct": 37.5317,
+          "sharpe": 1.815916,
+          "maxDrawdownPct": -8.757977,
+          "turnover": 16.716998,
+          "incrementalDailySumPct": 0.675559
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 113.930271,
+          "cagrPct": 21.008125,
+          "sharpe": 1.036176,
+          "maxDrawdownPct": -26.771466,
+          "turnover": 173.85565,
+          "incrementalDailySumPct": 2.140296
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 299.787663,
+          "cagrPct": 28.6307,
+          "sharpe": 1.331494,
+          "maxDrawdownPct": -26.771466,
+          "turnover": 239.9345,
+          "incrementalDailySumPct": 1.500627
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.66687,
+        "2022": 2.22854,
+        "2023": 1.227869,
+        "2024": 0.350757,
+        "2025": -1.315228,
+        "2026": 0.675559
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z1.5-s0.5-v1",
+      "lookbackSessions": 3,
+      "threshold": 1.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 22,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 68.911179,
+          "cagrPct": 19.175907,
+          "sharpe": 0.945592,
+          "maxDrawdownPct": -27.414849,
+          "turnover": 115.013625,
+          "incrementalDailySumPct": 1.570715
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.44125,
+          "cagrPct": 26.44125,
+          "sharpe": 1.319018,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 61.261534,
+          "incrementalDailySumPct": 0.418593
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.259495,
+          "cagrPct": 59.85351,
+          "sharpe": 2.259586,
+          "maxDrawdownPct": -16.582638,
+          "turnover": 49.364729,
+          "incrementalDailySumPct": -0.60026
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.762504,
+          "cagrPct": 34.427558,
+          "sharpe": 1.689296,
+          "maxDrawdownPct": -9.383056,
+          "turnover": 17.684611,
+          "incrementalDailySumPct": -0.517917
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 113.573407,
+          "cagrPct": 20.957478,
+          "sharpe": 1.033273,
+          "maxDrawdownPct": -27.414849,
+          "turnover": 176.275159,
+          "incrementalDailySumPct": 1.989307
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 297.15123,
+          "cagrPct": 28.476163,
+          "sharpe": 1.323981,
+          "maxDrawdownPct": -27.414849,
+          "turnover": 243.3245,
+          "incrementalDailySumPct": 0.87113
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.626684,
+        "2022": 1.225793,
+        "2023": 0.971606,
+        "2024": 0.418593,
+        "2025": -0.60026,
+        "2026": -0.517917
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z1.5-s0.5-v1",
+      "lookbackSessions": 2,
+      "threshold": 1.5,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 23,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.787113,
+          "cagrPct": 19.382378,
+          "sharpe": 0.953019,
+          "maxDrawdownPct": -27.750695,
+          "turnover": 116.666836,
+          "incrementalDailySumPct": 2.103221
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.658162,
+          "cagrPct": 25.658162,
+          "sharpe": 1.289786,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.913702,
+          "incrementalDailySumPct": -0.213803
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 61.126792,
+          "cagrPct": 61.742854,
+          "sharpe": 2.312352,
+          "maxDrawdownPct": -16.582638,
+          "turnover": 50.213944,
+          "incrementalDailySumPct": 0.570397
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.445581,
+          "cagrPct": 38.151051,
+          "sharpe": 1.849442,
+          "maxDrawdownPct": -8.132808,
+          "turnover": 17.089397,
+          "incrementalDailySumPct": 0.901176
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 113.351365,
+          "cagrPct": 20.925934,
+          "sharpe": 1.031769,
+          "maxDrawdownPct": -27.750695,
+          "turnover": 177.580537,
+          "incrementalDailySumPct": 1.889418
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 307.175885,
+          "cagrPct": 29.059366,
+          "sharpe": 1.346307,
+          "maxDrawdownPct": -27.750695,
+          "turnover": 244.883879,
+          "incrementalDailySumPct": 3.360991
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.657155,
+        "2022": 0.751417,
+        "2023": 0.694649,
+        "2024": -0.213803,
+        "2025": 0.570397,
+        "2026": 0.901176
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l5-z0.5-s0.75-v1",
+      "lookbackSessions": 5,
+      "threshold": 0.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 102,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 71.056249,
+          "cagrPct": 19.68028,
+          "sharpe": 0.972043,
+          "maxDrawdownPct": -26.914238,
+          "turnover": 111.69446,
+          "incrementalDailySumPct": 2.728058
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 24.906109,
+          "cagrPct": 24.906109,
+          "sharpe": 1.288696,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 58.813026,
+          "incrementalDailySumPct": -0.913171
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.253485,
+          "cagrPct": 57.824012,
+          "sharpe": 2.255711,
+          "maxDrawdownPct": -16.632367,
+          "turnover": 48.442198,
+          "incrementalDailySumPct": -1.993817
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.736472,
+          "cagrPct": 36.576374,
+          "sharpe": 1.803944,
+          "maxDrawdownPct": -8.547615,
+          "turnover": 16.098483,
+          "incrementalDailySumPct": 0.28247
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 113.659705,
+          "cagrPct": 20.969732,
+          "sharpe": 1.044688,
+          "maxDrawdownPct": -26.914238,
+          "turnover": 170.507487,
+          "incrementalDailySumPct": 1.814888
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 295.579631,
+          "cagrPct": 28.383643,
+          "sharpe": 1.338841,
+          "maxDrawdownPct": -26.914238,
+          "turnover": 235.048167,
+          "incrementalDailySumPct": 0.103541
+        }
+      },
+      "incrementalByYear": {
+        "2021": 1.486665,
+        "2022": 1.647782,
+        "2023": -0.406389,
+        "2024": -0.913171,
+        "2025": -1.993817,
+        "2026": 0.28247
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z1-s0.75-v1",
+      "lookbackSessions": 2,
+      "threshold": 1,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 49,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 68.407278,
+          "cagrPct": 19.056807,
+          "sharpe": 0.938545,
+          "maxDrawdownPct": -27.560826,
+          "turnover": 115.435419,
+          "incrementalDailySumPct": 1.313161
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.517183,
+          "cagrPct": 26.517183,
+          "sharpe": 1.334146,
+          "maxDrawdownPct": -11.322652,
+          "turnover": 60.052738,
+          "incrementalDailySumPct": 0.439391
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.000154,
+          "cagrPct": 60.602893,
+          "sharpe": 2.277801,
+          "maxDrawdownPct": -16.632383,
+          "turnover": 50.643811,
+          "incrementalDailySumPct": -0.128095
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.891083,
+          "cagrPct": 36.918976,
+          "sharpe": 1.795965,
+          "maxDrawdownPct": -8.767467,
+          "turnover": 17.017737,
+          "incrementalDailySumPct": 0.436589
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 113.064144,
+          "cagrPct": 20.885093,
+          "sharpe": 1.030245,
+          "maxDrawdownPct": -27.560826,
+          "turnover": 175.488157,
+          "incrementalDailySumPct": 1.752551
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 301.894188,
+          "cagrPct": 28.753577,
+          "sharpe": 1.33441,
+          "maxDrawdownPct": -27.560826,
+          "turnover": 243.149705,
+          "incrementalDailySumPct": 2.061045
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.10685,
+        "2022": 0.852152,
+        "2023": 0.354158,
+        "2024": 0.439391,
+        "2025": -0.128095,
+        "2026": 0.436589
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l10-z2-s0.75-v1",
+      "lookbackSessions": 10,
+      "threshold": 2,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 9,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.930914,
+          "cagrPct": 18.706488,
+          "sharpe": 0.92141,
+          "maxDrawdownPct": -27.84652,
+          "turnover": 114.693351,
+          "incrementalDailySumPct": 0.490381
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.307624,
+          "cagrPct": 27.307624,
+          "sharpe": 1.363025,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 60.04894,
+          "incrementalDailySumPct": 1.075207
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.684587,
+          "cagrPct": 60.283606,
+          "sharpe": 2.260324,
+          "maxDrawdownPct": -16.939203,
+          "turnover": 49.366251,
+          "incrementalDailySumPct": -0.306797
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.167136,
+          "cagrPct": 37.5317,
+          "sharpe": 1.815916,
+          "maxDrawdownPct": -8.757977,
+          "turnover": 16.716998,
+          "incrementalDailySumPct": 0.675559
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 112.515781,
+          "cagrPct": 20.807005,
+          "sharpe": 1.02373,
+          "maxDrawdownPct": -27.84652,
+          "turnover": 174.74229,
+          "incrementalDailySumPct": 1.565588
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 301.006022,
+          "cagrPct": 28.701833,
+          "sharpe": 1.327982,
+          "maxDrawdownPct": -27.84652,
+          "turnover": 240.82554,
+          "incrementalDailySumPct": 1.934351
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.376845,
+        "2022": 0.670051,
+        "2023": 0.197175,
+        "2024": 1.075207,
+        "2025": -0.306797,
+        "2026": 0.675559
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z2-s0.5-v1",
+      "lookbackSessions": 2,
+      "threshold": 2,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 9,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 68.908705,
+          "cagrPct": 19.175323,
+          "sharpe": 0.940026,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 117.554521,
+          "incrementalDailySumPct": 1.671426
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.728168,
+          "cagrPct": 25.728168,
+          "sharpe": 1.288303,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.925273,
+          "incrementalDailySumPct": -0.143479
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.186974,
+          "cagrPct": 59.780136,
+          "sharpe": 2.24425,
+          "maxDrawdownPct": -17.19804,
+          "turnover": 49.363044,
+          "incrementalDailySumPct": -0.615449
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.833519,
+          "cagrPct": 34.583687,
+          "sharpe": 1.689255,
+          "maxDrawdownPct": -9.383134,
+          "turnover": 17.687179,
+          "incrementalDailySumPct": -0.449763
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 112.365821,
+          "cagrPct": 20.785624,
+          "sharpe": 1.021285,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 178.479794,
+          "incrementalDailySumPct": 1.527947
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 294.965904,
+          "cagrPct": 28.347431,
+          "sharpe": 1.312353,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 245.530017,
+          "incrementalDailySumPct": 0.462735
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.283635,
+        "2022": 0,
+        "2023": 1.387791,
+        "2024": -0.143479,
+        "2025": -0.615449,
+        "2026": -0.449763
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z1-s0.5-v1",
+      "lookbackSessions": 3,
+      "threshold": 1,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 43,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.934419,
+          "cagrPct": 18.707322,
+          "sharpe": 0.932967,
+          "maxDrawdownPct": -27.174111,
+          "turnover": 116.242345,
+          "incrementalDailySumPct": 0.278125
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.002315,
+          "cagrPct": 27.002315,
+          "sharpe": 1.341741,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 62.63825,
+          "incrementalDailySumPct": 0.862975
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.418356,
+          "cagrPct": 57.990806,
+          "sharpe": 2.215524,
+          "maxDrawdownPct": -16.582638,
+          "turnover": 51.864832,
+          "incrementalDailySumPct": -1.788284
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.276158,
+          "cagrPct": 37.774042,
+          "sharpe": 1.85987,
+          "maxDrawdownPct": -7.578197,
+          "turnover": 16.427356,
+          "incrementalDailySumPct": 0.731949
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 112.010577,
+          "cagrPct": 20.734929,
+          "sharpe": 1.029762,
+          "maxDrawdownPct": -27.174111,
+          "turnover": 178.880594,
+          "incrementalDailySumPct": 1.141101
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 294.739066,
+          "cagrPct": 28.334036,
+          "sharpe": 1.327037,
+          "maxDrawdownPct": -27.174111,
+          "turnover": 247.172783,
+          "incrementalDailySumPct": 0.084766
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.992047,
+        "2022": 1.118525,
+        "2023": 1.151648,
+        "2024": 0.862975,
+        "2025": -1.788284,
+        "2026": 0.731949
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z1.5-s0.75-v1",
+      "lookbackSessions": 3,
+      "threshold": 1.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 22,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 67.497041,
+          "cagrPct": 18.841064,
+          "sharpe": 0.929157,
+          "maxDrawdownPct": -27.873683,
+          "turnover": 114.688993,
+          "incrementalDailySumPct": 0.783843
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.174418,
+          "cagrPct": 26.174418,
+          "sharpe": 1.307438,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.74935,
+          "incrementalDailySumPct": 0.208967
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.719486,
+          "cagrPct": 60.318916,
+          "sharpe": 2.268489,
+          "maxDrawdownPct": -16.632383,
+          "turnover": 49.367758,
+          "incrementalDailySumPct": -0.301285
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.060197,
+          "cagrPct": 35.082622,
+          "sharpe": 1.712389,
+          "maxDrawdownPct": -9.383023,
+          "turnover": 17.349482,
+          "incrementalDailySumPct": -0.259263
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 111.338417,
+          "cagrPct": 20.638835,
+          "sharpe": 1.017683,
+          "maxDrawdownPct": -27.873683,
+          "turnover": 175.438343,
+          "incrementalDailySumPct": 0.99281
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 295.135097,
+          "cagrPct": 28.357419,
+          "sharpe": 1.316146,
+          "maxDrawdownPct": -27.873683,
+          "turnover": 242.155584,
+          "incrementalDailySumPct": 0.432263
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.314728,
+        "2022": 0.612118,
+        "2023": 0.486453,
+        "2024": 0.208967,
+        "2025": -0.301285,
+        "2026": -0.259263
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z1.5-s0.75-v1",
+      "lookbackSessions": 2,
+      "threshold": 1.5,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 23,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 67.943287,
+          "cagrPct": 18.94693,
+          "sharpe": 0.932843,
+          "maxDrawdownPct": -28.040746,
+          "turnover": 115.532894,
+          "incrementalDailySumPct": 1.060018
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.785598,
+          "cagrPct": 25.785598,
+          "sharpe": 1.293184,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.570299,
+          "incrementalDailySumPct": -0.106057
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.658131,
+          "cagrPct": 61.268643,
+          "sharpe": 2.295314,
+          "maxDrawdownPct": -16.632383,
+          "turnover": 49.794218,
+          "incrementalDailySumPct": 0.286384
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.90335,
+          "cagrPct": 36.946177,
+          "sharpe": 1.794617,
+          "maxDrawdownPct": -8.757974,
+          "turnover": 17.052482,
+          "incrementalDailySumPct": 0.449727
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 111.248469,
+          "cagrPct": 20.625958,
+          "sharpe": 1.016965,
+          "maxDrawdownPct": -28.040746,
+          "turnover": 176.103192,
+          "incrementalDailySumPct": 0.953962
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 300.149634,
+          "cagrPct": 28.651852,
+          "sharpe": 1.327479,
+          "maxDrawdownPct": -28.040746,
+          "turnover": 242.949893,
+          "incrementalDailySumPct": 1.690073
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.336888,
+        "2022": 0.375163,
+        "2023": 0.347968,
+        "2024": -0.106057,
+        "2025": 0.286384,
+        "2026": 0.449727
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l2-z2-s0.75-v1",
+      "lookbackSessions": 2,
+      "threshold": 2,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 9,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 67.493253,
+          "cagrPct": 18.840165,
+          "sharpe": 0.925712,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 115.980885,
+          "incrementalDailySumPct": 0.846055
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.820069,
+          "cagrPct": 25.820069,
+          "sharpe": 1.292151,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.581467,
+          "incrementalDailySumPct": -0.070471
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.684587,
+          "cagrPct": 60.283606,
+          "sharpe": 2.260324,
+          "maxDrawdownPct": -16.939203,
+          "turnover": 49.366251,
+          "incrementalDailySumPct": -0.306797
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.095512,
+          "cagrPct": 35.16043,
+          "sharpe": 1.712646,
+          "maxDrawdownPct": -9.383137,
+          "turnover": 17.352367,
+          "incrementalDailySumPct": -0.225832
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 110.740126,
+          "cagrPct": 20.553108,
+          "sharpe": 1.011117,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 176.562352,
+          "incrementalDailySumPct": 0.775584
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 294.04923,
+          "cagrPct": 28.293259,
+          "sharpe": 1.309713,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 243.28097,
+          "incrementalDailySumPct": 0.242956
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.1523,
+        "2022": 0,
+        "2023": 0.693755,
+        "2024": -0.070471,
+        "2025": -0.306797,
+        "2026": -0.225832
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z1-s0.75-v1",
+      "lookbackSessions": 3,
+      "threshold": 1,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 43,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.545906,
+          "cagrPct": 18.614793,
+          "sharpe": 0.923601,
+          "maxDrawdownPct": -27.748773,
+          "turnover": 115.162829,
+          "incrementalDailySumPct": 0.1475
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.460104,
+          "cagrPct": 26.460104,
+          "sharpe": 1.31935,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 61.442674,
+          "incrementalDailySumPct": 0.43493
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.807467,
+          "cagrPct": 59.396171,
+          "sharpe": 2.248349,
+          "maxDrawdownPct": -16.632383,
+          "turnover": 50.499405,
+          "incrementalDailySumPct": -0.889715
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.819612,
+          "cagrPct": 36.760553,
+          "sharpe": 1.800518,
+          "maxDrawdownPct": -8.483036,
+          "turnover": 16.669277,
+          "incrementalDailySumPct": 0.364368
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 110.614126,
+          "cagrPct": 20.535031,
+          "sharpe": 1.016648,
+          "maxDrawdownPct": -27.748773,
+          "turnover": 176.605503,
+          "incrementalDailySumPct": 0.582431
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 294.072385,
+          "cagrPct": 28.294628,
+          "sharpe": 1.318744,
+          "maxDrawdownPct": -27.748773,
+          "turnover": 243.774185,
+          "incrementalDailySumPct": 0.057084
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.985609,
+        "2022": 0.559121,
+        "2023": 0.573988,
+        "2024": 0.43493,
+        "2025": -0.889715,
+        "2026": 0.364368
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z2-s0.75-v1",
+      "lookbackSessions": 3,
+      "threshold": 2,
+      "exhaustedScale": 0.75,
+      "changedTargetCount": 8,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 65.27574,
+          "cagrPct": 18.311281,
+          "sharpe": 0.904185,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 114.987115,
+          "incrementalDailySumPct": -0.481418
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.820069,
+          "cagrPct": 25.820069,
+          "sharpe": 1.292151,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.581467,
+          "incrementalDailySumPct": -0.070471
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.684587,
+          "cagrPct": 60.283606,
+          "sharpe": 2.260324,
+          "maxDrawdownPct": -16.939203,
+          "turnover": 49.366251,
+          "incrementalDailySumPct": -0.306797
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.32749,
+          "cagrPct": 35.672082,
+          "sharpe": 1.737928,
+          "maxDrawdownPct": -9.383023,
+          "turnover": 17.351856,
+          "incrementalDailySumPct": -0.033152
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 107.950049,
+          "cagrPct": 20.150903,
+          "sharpe": 0.994588,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 175.568581,
+          "incrementalDailySumPct": -0.551889
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 289.602564,
+          "cagrPct": 28.029002,
+          "sharpe": 1.299686,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 242.286688,
+          "incrementalDailySumPct": -0.891837
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.122503,
+        "2022": 0,
+        "2023": -0.358915,
+        "2024": -0.070471,
+        "2025": -0.306797,
+        "2026": -0.033152
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z2-s0.5-v1",
+      "lookbackSessions": 3,
+      "threshold": 2,
+      "exhaustedScale": 0.5,
+      "changedTargetCount": 8,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 64.486265,
+          "cagrPct": 18.121849,
+          "sharpe": 0.896998,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 115.675498,
+          "incrementalDailySumPct": -0.96892
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.728168,
+          "cagrPct": 25.728168,
+          "sharpe": 1.288303,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 60.925273,
+          "incrementalDailySumPct": -0.143479
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.186974,
+          "cagrPct": 59.780136,
+          "sharpe": 2.24425,
+          "maxDrawdownPct": -17.19804,
+          "turnover": 49.363044,
+          "incrementalDailySumPct": -0.615449
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.297209,
+          "cagrPct": 35.605242,
+          "sharpe": 1.73901,
+          "maxDrawdownPct": -9.383056,
+          "turnover": 17.688983,
+          "incrementalDailySumPct": -0.063181
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 106.805568,
+          "cagrPct": 19.98475,
+          "sharpe": 0.98824,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 176.600771,
+          "incrementalDailySumPct": -1.112399
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 286.15124,
+          "cagrPct": 27.82219,
+          "sharpe": 1.292249,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 243.652798,
+          "incrementalDailySumPct": -1.791028
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.245756,
+        "2022": 0,
+        "2023": -0.723163,
+        "2024": -0.143479,
+        "2025": -0.615449,
+        "2026": -0.063181
+      }
+    },
+    {
+      "candidateId": "price-exhaustion-ung-l3-z2-s0-v1",
+      "lookbackSessions": 3,
+      "threshold": 2,
+      "exhaustedScale": 0,
+      "changedTargetCount": 8,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 62.880002,
+          "cagrPct": 17.734557,
+          "sharpe": 0.881434,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 117.054528,
+          "incrementalDailySumPct": -1.952192
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.544367,
+          "cagrPct": 25.544367,
+          "sharpe": 1.280457,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 61.613605,
+          "incrementalDailySumPct": -0.289168
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.19232,
+          "cagrPct": 58.773814,
+          "sharpe": 2.211082,
+          "maxDrawdownPct": -17.715414,
+          "turnover": 49.353141,
+          "incrementalDailySumPct": -1.232877
+        },
+        "observed2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.236449,
+          "cagrPct": 35.471171,
+          "sharpe": 1.732292,
+          "maxDrawdownPct": -9.383123,
+          "turnover": 18.363503,
+          "incrementalDailySumPct": -0.113471
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 104.486668,
+          "cagrPct": 19.645974,
+          "sharpe": 0.97451,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 178.668133,
+          "incrementalDailySumPct": -2.24136
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 279.239047,
+          "cagrPct": 27.403403,
+          "sharpe": 1.275824,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 246.384777,
+          "incrementalDailySumPct": -3.587708
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.491779,
+        "2022": 0,
+        "2023": -1.460413,
+        "2024": -0.289168,
+        "2025": -1.232877,
+        "2026": -0.113471
+      }
+    }
+  ],
+  "evaluationDigestSha256": "d2e1609b8242255011ead497bc5f025f6ff74ceab097708bfc9de2445b44c738"
+}

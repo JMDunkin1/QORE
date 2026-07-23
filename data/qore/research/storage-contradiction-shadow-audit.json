@@ -1,0 +1,5204 @@
+{
+  "schemaVersion": 1,
+  "evaluationId": "ngas-all-year-storage-contradiction-shadow-audit-v1",
+  "contractId": "ngas-all-year-storage-contradiction-shadow-v1",
+  "contractDigestSha256": "424cac8cd568e0e19c3d3248b1989541b2ae674368653b55ae2e72d4cbfc0d7a",
+  "candidateFamilyDigestSha256": "7807e44a04a4650a93dd5b8737f90b7d144c87f2cbd7ded21b7519ffd38bff1b",
+  "evaluatedThrough": "2026-07-14",
+  "historicalEvidenceStatus": "development-contaminated",
+  "status": "research-only-not-promotion-eligible",
+  "executionEligible": false,
+  "promotionEligible": false,
+  "activeStrategyChanged": false,
+  "decision": {
+    "outcome": "retain-active-strategy-and-run-storage-rule-as-a-separately-sealed-shadow",
+    "reasons": [
+      "The selected rule improves the 2021-2024 tuning prefix but loses incremental return in 2025.",
+      "The focused-family block-bootstrap result is not strong enough for promotion and is a lower bound on lifetime search multiplicity.",
+      "The apparent gain is concentrated in far fewer independent episodes than the production evidence policy requires.",
+      "Every historical session was already development-visible, so none is a pristine holdout.",
+      "EIA release timing is causal, but the checked storage values are current-vintage and cannot exclude historical revisions.",
+      "No trusted pre-open writer, external chronology anchor, or outcome-independent terminal evaluation date exists."
+    ],
+    "prospectiveStart": null,
+    "prospectiveCollectionStatus": "blocked-no-trusted-writer-terminal-date-or-external-seal"
+  },
+  "inputBindings": {
+    "implementationManifest": {
+      "path": "config/qore-storage-contradiction-shadow-implementation.json",
+      "digestSha256": "4be37f6ff377d8ec94f5f969a42417cc63923fd0c7041a5745c50e0a33cec8aa",
+      "files": [
+        {
+          "path": "scripts/evaluate-qore-storage-contradiction-shadow.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "8cc82fcd8a67282b21b1516e269dac70dfc8646f2507b94d8b28ae93663e513a"
+        },
+        {
+          "path": "scripts/lib/qore-storage-contradiction-shadow.mjs",
+          "digestMode": "storage-shadow-source-projection-v1",
+          "digestSha256": "5fb356f6edece2799683e7d6dfd45a1b0a14fa9275d4dbc751e829a74aaef1b6"
+        },
+        {
+          "path": "scripts/lib/qore-research-execution.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "403474428891a2444e5edd59fc8d9569b4bc629b272c367b311b3b0c281235c7"
+        },
+        {
+          "path": "scripts/lib/qore-rebalance-deadband.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "5638cdd9f45e6225ae6b027fa815212d1bb1ab72e6d4b0b914b8b34e64986eb6"
+        },
+        {
+          "path": "scripts/lib/eia-release-time.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "4ee4e51102f847e57dd7cca5738c1b26769717616369d9227702f6c4ac339449"
+        },
+        {
+          "path": "scripts/lib/qore-signal-availability.mjs",
+          "digestMode": "sha256",
+          "digestSha256": "22898f07b104896e54bb7f26bb28adc693a90540aa64aaee74a45d3fcaf4fd23"
+        },
+        {
+          "path": "package.json",
+          "digestMode": "sha256",
+          "digestSha256": "ce63bee4d25a40fed7397ce89b4785c95159d5b3b778b3d09a503c64da3756bc"
+        },
+        {
+          "path": "package-lock.json",
+          "digestMode": "sha256",
+          "digestSha256": "c6d59cea55c6d9d3599ff63592255db9ced4653cff34d12eb02a47bbba27950e"
+        },
+        {
+          "path": "config/qore-research-execution.json",
+          "digestMode": "sha256",
+          "digestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d"
+        },
+        {
+          "path": "data/qore/market/index-basket-config.json",
+          "digestMode": "sha256",
+          "digestSha256": "7119fbd61803add8a7bb2773e0fe28b5cda11ae294b1efed7937c600869553cc"
+        },
+        {
+          "path": "data/qore/market/yahoo/UNG-daily.csv",
+          "digestMode": "sha256",
+          "digestSha256": "780fc8edcf1e3d15444028f8febfe2ecb64c8693f8e63d135787aa4172b3b064"
+        },
+        {
+          "path": "data/qore/market/yahoo/VOO-daily.csv",
+          "digestMode": "sha256",
+          "digestSha256": "6ae956abeb1c71c51f6bfc98fbb39c4469eb8070674c660c999cb79c0c58381a"
+        },
+        {
+          "path": "data/qore/market/yahoo/QQQM-daily.csv",
+          "digestMode": "sha256",
+          "digestSha256": "f4995f0bce53c5b4023d287296e37895af4e3ba2806293e8645add7e953ecebf"
+        },
+        {
+          "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+          "digestMode": "sha256",
+          "digestSha256": "ff39c0755c4777550113419e32a000e41a625612b30cedefa6103f2f8c2f04ea"
+        },
+        {
+          "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json",
+          "digestMode": "sha256",
+          "digestSha256": "c1542dd264c8e3e342d4a63d5e4973864ac1e4bb0bf4109fd22bb2fdf4d1d7b8"
+        },
+        {
+          "path": "data/qore/fundamentals/eia/working-gas-storage-lower48-weekly.csv",
+          "digestMode": "sha256",
+          "digestSha256": "25681096bb9a2e76cb74fd80ce41ff0e4b0987f16d068e9d16dc1fb5f237d6ed"
+        },
+        {
+          "path": "data/qore/fundamentals/eia/working-gas-storage-release-calendar.json",
+          "digestMode": "sha256",
+          "digestSha256": "29e0bead968edcadb20e3ca90d337ff74a2e1f00983c6e449a93dc13b809c3e7"
+        }
+      ]
+    },
+    "selectedTrades": {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+      "digestSha256": "ff39c0755c4777550113419e32a000e41a625612b30cedefa6103f2f8c2f04ea"
+    },
+    "executionContract": {
+      "path": "config/qore-research-execution.json",
+      "digestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d"
+    },
+    "sealedStrategyContractDigestSha256": "07ae468c936b65c141ae2d52d0088c13e185495bcfe9a9b897892d3b83c99285",
+    "storage": {
+      "path": "data/qore/fundamentals/eia/working-gas-storage-lower48-weekly.csv",
+      "digestSha256": "25681096bb9a2e76cb74fd80ce41ff0e4b0987f16d068e9d16dc1fb5f237d6ed"
+    },
+    "releaseCalendar": {
+      "path": "data/qore/fundamentals/eia/working-gas-storage-release-calendar.json",
+      "digestSha256": "29e0bead968edcadb20e3ca90d337ff74a2e1f00983c6e449a93dc13b809c3e7"
+    }
+  },
+  "baselineTieOut": {
+    "sessionCount": 1387,
+    "maximumDailyNetReturnDifferencePct": 0.000049976,
+    "pass": true
+  },
+  "storageAvailability": {
+    "availableSessions": 1382,
+    "unavailableSessions": 5,
+    "unavailableObservations": [
+      {
+        "date": "2022-01-07",
+        "reason": "insufficient-seasonal-peers",
+        "storageDate": "2021-12-31",
+        "peerCount": 1
+      },
+      {
+        "date": "2022-01-10",
+        "reason": "insufficient-seasonal-peers",
+        "storageDate": "2021-12-31",
+        "peerCount": 1
+      },
+      {
+        "date": "2022-01-11",
+        "reason": "insufficient-seasonal-peers",
+        "storageDate": "2021-12-31",
+        "peerCount": 1
+      },
+      {
+        "date": "2022-01-12",
+        "reason": "insufficient-seasonal-peers",
+        "storageDate": "2021-12-31",
+        "peerCount": 1
+      },
+      {
+        "date": "2022-01-13",
+        "reason": "insufficient-seasonal-peers",
+        "storageDate": "2021-12-31",
+        "peerCount": 1
+      }
+    ]
+  },
+  "comparator": {
+    "development2021To2023": {
+      "sessions": 753,
+      "totalReturnPct": 66.050551,
+      "cagrPct": 18.496609,
+      "sharpe": 0.910917,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 114.4114,
+      "incrementalDailySumPct": 0
+    },
+    "selectionAndTuning2024": {
+      "sessions": 252,
+      "totalReturnPct": 25.908697,
+      "cagrPct": 25.908697,
+      "sharpe": 1.295827,
+      "maxDrawdownPct": -11.46421,
+      "turnover": 60.240129,
+      "incrementalDailySumPct": 0
+    },
+    "reportOnly2025": {
+      "sessions": 250,
+      "totalReturnPct": 60.179467,
+      "cagrPct": 60.784322,
+      "sharpe": 2.275956,
+      "maxDrawdownPct": -16.681789,
+      "turnover": 49.369597,
+      "incrementalDailySumPct": 0
+    },
+    "reportOnly2026": {
+      "sessions": 132,
+      "totalReturnPct": 17.357491,
+      "cagrPct": 35.738318,
+      "sharpe": 1.733889,
+      "maxDrawdownPct": -9.38314,
+      "turnover": 17.016883,
+      "incrementalDailySumPct": 0
+    },
+    "selectionPrefix": {
+      "sessions": 1005,
+      "totalReturnPct": 109.072085,
+      "cagrPct": 20.313134,
+      "sharpe": 1.000517,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 174.651529,
+      "incrementalDailySumPct": 0
+    },
+    "full": {
+      "sessions": 1387,
+      "totalReturnPct": 293.019148,
+      "cagrPct": 28.232261,
+      "sharpe": 1.30653,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 241.038008,
+      "incrementalDailySumPct": 0
+    }
+  },
+  "selectedShadow": {
+    "candidateId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+    "historicalSelectionRank": 1,
+    "tiedSelectionWinnerIds": [
+      "storage-contradiction-veto-threshold-10-scale-0-v1",
+      "storage-contradiction-veto-threshold-9-scale-0-v1"
+    ],
+    "selectionStatus": "The 10% rule ties the 9% rule on the 2021-2024 tuning prefix; its round threshold is frozen as the research hypothesis, not claimed as a unique winner.",
+    "thresholdPct": 10,
+    "contradictedScale": 0,
+    "changedTargetCount": 90,
+    "periods": {
+      "development2021To2023": {
+        "sessions": 753,
+        "totalReturnPct": 82.804663,
+        "cagrPct": 22.370579,
+        "sharpe": 1.07559,
+        "maxDrawdownPct": -24.486066,
+        "turnover": 93.404256,
+        "incrementalDailySumPct": 9.440602
+      },
+      "selectionAndTuning2024": {
+        "sessions": 252,
+        "totalReturnPct": 37.139563,
+        "cagrPct": 37.139563,
+        "sharpe": 1.8088,
+        "maxDrawdownPct": -9.08462,
+        "turnover": 46.21802,
+        "incrementalDailySumPct": 8.40352
+      },
+      "reportOnly2025": {
+        "sessions": 250,
+        "totalReturnPct": 54.570127,
+        "cagrPct": 55.109561,
+        "sharpe": 2.116445,
+        "maxDrawdownPct": -19.599517,
+        "turnover": 45.051929,
+        "incrementalDailySumPct": -3.58241
+      },
+      "reportOnly2026": {
+        "sessions": 132,
+        "totalReturnPct": 17.357491,
+        "cagrPct": 35.738318,
+        "sharpe": 1.733889,
+        "maxDrawdownPct": -9.38314,
+        "turnover": 17.016883,
+        "incrementalDailySumPct": 0
+      },
+      "selectionPrefix": {
+        "sessions": 1005,
+        "totalReturnPct": 150.697515,
+        "cagrPct": 25.917294,
+        "sharpe": 1.241977,
+        "maxDrawdownPct": -24.486066,
+        "turnover": 139.622275,
+        "incrementalDailySumPct": 17.844123
+      },
+      "full": {
+        "sessions": 1387,
+        "totalReturnPct": 354.764347,
+        "cagrPct": 31.677418,
+        "sharpe": 1.453497,
+        "maxDrawdownPct": -24.486066,
+        "turnover": 201.691087,
+        "incrementalDailySumPct": 14.261713
+      }
+    },
+    "incrementalByYear": {
+      "2021": 0.598399,
+      "2022": 5.313391,
+      "2023": 3.528812,
+      "2024": 8.40352,
+      "2025": -3.58241,
+      "2026": 0
+    }
+  },
+  "multipleTesting": {
+    "familyCandidateCount": 60,
+    "selectionPeriod": "through-2024-12-31",
+    "scopeCaveat": "Focused-family lower bound only: the adjustment covers 60 storage rows, not the recorded but unversioned original 327 other overlays, a later unversioned 480-row cross-market pass with some overlapping configurations, the active comparator, or the wider lifetime QORE search.",
+    "fixedSelectedCandidateCircularBlockBootstrap": [
+      {
+        "blockLength": 1,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.078192
+      },
+      {
+        "blockLength": 5,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.069193
+      },
+      {
+        "blockLength": 10,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.063294
+      },
+      {
+        "blockLength": 20,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.053295
+      },
+      {
+        "blockLength": 60,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.042296
+      }
+    ],
+    "familyAdjustedCircularBlockBootstrap": [
+      {
+        "candidateCount": 60,
+        "blockLength": 1,
+        "iterations": 10000,
+        "observedWinnerId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.190081
+      },
+      {
+        "candidateCount": 60,
+        "blockLength": 5,
+        "iterations": 10000,
+        "observedWinnerId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.175782
+      },
+      {
+        "candidateCount": 60,
+        "blockLength": 10,
+        "iterations": 10000,
+        "observedWinnerId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.160884
+      },
+      {
+        "candidateCount": 60,
+        "blockLength": 20,
+        "iterations": 10000,
+        "observedWinnerId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.159684
+      },
+      {
+        "candidateCount": 60,
+        "blockLength": 60,
+        "iterations": 10000,
+        "observedWinnerId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+        "observedWinnerAverageDailyIncrementPct": 0.01775535,
+        "pValue": 0.122988
+      }
+    ],
+    "combinatoriallySymmetricCrossValidation": {
+      "method": "10-block combinatorially symmetric cross-validation with a 10-session embargo",
+      "interpretationWarning": "This diagnostic is not a calibrated posterior probability that the selected rule is overfit.",
+      "candidateCount": 61,
+      "splitCount": 252,
+      "pboDiagnostic": 0.281746,
+      "medianSelectedTestPercentile": 0.762295,
+      "mostFrequentTrainWinners": [
+        {
+          "candidateId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+          "selections": 122
+        },
+        {
+          "candidateId": "storage-contradiction-veto-threshold-15-scale-0-v1",
+          "selections": 55
+        },
+        {
+          "candidateId": "storage-contradiction-veto-threshold-12.5-scale-0-v1",
+          "selections": 25
+        },
+        {
+          "candidateId": "storage-contradiction-veto-threshold-8-scale-0-v1",
+          "selections": 20
+        },
+        {
+          "candidateId": "storage-contradiction-veto-threshold-17.5-scale-0-v1",
+          "selections": 13
+        },
+        {
+          "candidateId": "storage-contradiction-veto-threshold-22.5-scale-0-v1",
+          "selections": 9
+        },
+        {
+          "candidateId": "active-all-year-comparator",
+          "selections": 7
+        },
+        {
+          "candidateId": "storage-contradiction-veto-threshold-15-scale-0.25-v1",
+          "selections": 1
+        }
+      ]
+    }
+  },
+  "episodeRobustness": {
+    "selectionPrefix": {
+      "method": "Current-or-prior changed target, with the production 10-session embargo and prior-close effect.",
+      "embargoSessions": 10,
+      "changedTargetCount": 85,
+      "independentEpisodeCount": 12,
+      "episodesByComponent": {
+        "ngas-winter-alpha": 6,
+        "ngas-summer-alpha": 6
+      },
+      "productionForwardPolicyScaleReference": {
+        "minimumIndependentEpisodes": 60,
+        "minimumEpisodesPerComponent": 15,
+        "applicability": "Scale reference only. This shadow counts changed-target interventions and is not evaluated by the production exposure gate."
+      },
+      "positiveEpisodes": 8,
+      "negativeEpisodes": 4,
+      "topEpisodePositiveContributionShare": 0.26067,
+      "incrementalSumAfterRemovingBestEpisodePct": 12.193169,
+      "incrementalSumAfterRemovingBestThreeEpisodesPct": 3.297139,
+      "episodes": [
+        {
+          "startDate": "2024-01-12",
+          "endDate": "2024-01-24",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 4,
+          "incrementalDailySumPct": 5.650954
+        },
+        {
+          "startDate": "2022-02-16",
+          "endDate": "2022-03-23",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 14,
+          "incrementalDailySumPct": 5.311744
+        },
+        {
+          "startDate": "2023-05-26",
+          "endDate": "2023-06-01",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 3.584286
+        },
+        {
+          "startDate": "2024-07-08",
+          "endDate": "2024-07-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 6,
+          "incrementalDailySumPct": 3.190517
+        },
+        {
+          "startDate": "2023-06-20",
+          "endDate": "2023-08-31",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 24,
+          "incrementalDailySumPct": 1.680557
+        },
+        {
+          "startDate": "2024-02-09",
+          "endDate": "2024-02-16",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 1.001846
+        },
+        {
+          "startDate": "2024-08-19",
+          "endDate": "2024-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 6,
+          "incrementalDailySumPct": 0.66035
+        },
+        {
+          "startDate": "2021-02-01",
+          "endDate": "2021-02-11",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 8,
+          "incrementalDailySumPct": 0.598362
+        },
+        {
+          "startDate": "2023-03-23",
+          "endDate": "2023-03-24",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.244175
+        },
+        {
+          "startDate": "2024-03-28",
+          "endDate": "2024-04-01",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.932685
+        },
+        {
+          "startDate": "2024-04-25",
+          "endDate": "2024-06-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 12,
+          "incrementalDailySumPct": -1.165779
+        },
+        {
+          "startDate": "2023-05-04",
+          "endDate": "2023-05-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": -1.491843
+        }
+      ]
+    },
+    "fullCalendar": {
+      "method": "Current-or-prior changed target, with the production 10-session embargo and prior-close effect.",
+      "embargoSessions": 10,
+      "changedTargetCount": 90,
+      "independentEpisodeCount": 13,
+      "episodesByComponent": {
+        "ngas-winter-alpha": 7,
+        "ngas-summer-alpha": 6
+      },
+      "productionForwardPolicyScaleReference": {
+        "minimumIndependentEpisodes": 60,
+        "minimumEpisodesPerComponent": 15,
+        "applicability": "Scale reference only. This shadow counts changed-target interventions and is not evaluated by the production exposure gate."
+      },
+      "positiveEpisodes": 8,
+      "negativeEpisodes": 5,
+      "topEpisodePositiveContributionShare": 0.26067,
+      "incrementalSumAfterRemovingBestEpisodePct": 8.610759,
+      "incrementalSumAfterRemovingBestThreeEpisodesPct": -0.285271,
+      "episodes": [
+        {
+          "startDate": "2024-01-12",
+          "endDate": "2024-01-24",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 4,
+          "incrementalDailySumPct": 5.650954
+        },
+        {
+          "startDate": "2022-02-16",
+          "endDate": "2022-03-23",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 14,
+          "incrementalDailySumPct": 5.311744
+        },
+        {
+          "startDate": "2023-05-26",
+          "endDate": "2023-06-01",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 3.584286
+        },
+        {
+          "startDate": "2024-07-08",
+          "endDate": "2024-07-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 6,
+          "incrementalDailySumPct": 3.190517
+        },
+        {
+          "startDate": "2023-06-20",
+          "endDate": "2023-08-31",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 24,
+          "incrementalDailySumPct": 1.680557
+        },
+        {
+          "startDate": "2024-02-09",
+          "endDate": "2024-02-16",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 1.001846
+        },
+        {
+          "startDate": "2024-08-19",
+          "endDate": "2024-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 6,
+          "incrementalDailySumPct": 0.66035
+        },
+        {
+          "startDate": "2021-02-01",
+          "endDate": "2021-02-11",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 8,
+          "incrementalDailySumPct": 0.598362
+        },
+        {
+          "startDate": "2023-03-23",
+          "endDate": "2023-03-24",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.244175
+        },
+        {
+          "startDate": "2024-03-28",
+          "endDate": "2024-04-01",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.932685
+        },
+        {
+          "startDate": "2024-04-25",
+          "endDate": "2024-06-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 12,
+          "incrementalDailySumPct": -1.165779
+        },
+        {
+          "startDate": "2023-05-04",
+          "endDate": "2023-05-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": -1.491843
+        },
+        {
+          "startDate": "2025-03-06",
+          "endDate": "2025-03-21",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 5,
+          "incrementalDailySumPct": -3.584934
+        }
+      ]
+    }
+  },
+  "seasonalDefinitionSensitivity": {
+    "selectedDefinition": "jan1-anchored-seven-day-bucket",
+    "alternativeDefinition": "nearest-period-end-within-eight-seasonal-days",
+    "purpose": "Tests leap/calendar drift and the year-end bucket cliff without tuning the frozen threshold or scale.",
+    "selectedDefinitionAvailability": {
+      "availableSessions": 1382,
+      "unavailableSessions": 5,
+      "unavailableObservations": [
+        {
+          "date": "2022-01-07",
+          "reason": "insufficient-seasonal-peers",
+          "storageDate": "2021-12-31",
+          "peerCount": 1
+        },
+        {
+          "date": "2022-01-10",
+          "reason": "insufficient-seasonal-peers",
+          "storageDate": "2021-12-31",
+          "peerCount": 1
+        },
+        {
+          "date": "2022-01-11",
+          "reason": "insufficient-seasonal-peers",
+          "storageDate": "2021-12-31",
+          "peerCount": 1
+        },
+        {
+          "date": "2022-01-12",
+          "reason": "insufficient-seasonal-peers",
+          "storageDate": "2021-12-31",
+          "peerCount": 1
+        },
+        {
+          "date": "2022-01-13",
+          "reason": "insufficient-seasonal-peers",
+          "storageDate": "2021-12-31",
+          "peerCount": 1
+        }
+      ]
+    },
+    "alternativeDefinitionAvailability": {
+      "availableSessions": 1387,
+      "unavailableSessions": 0,
+      "unavailableObservations": []
+    },
+    "alternativeSelectedShadowPeriods": {
+      "development2021To2023": {
+        "sessions": 753,
+        "totalReturnPct": 77.234853,
+        "cagrPct": 21.10994,
+        "sharpe": 1.019009,
+        "maxDrawdownPct": -25.377278,
+        "turnover": 97.505643,
+        "incrementalDailySumPct": 6.449497
+      },
+      "selectionAndTuning2024": {
+        "sessions": 252,
+        "totalReturnPct": 37.139563,
+        "cagrPct": 37.139563,
+        "sharpe": 1.8088,
+        "maxDrawdownPct": -9.08462,
+        "turnover": 46.21802,
+        "incrementalDailySumPct": 8.40352
+      },
+      "reportOnly2025": {
+        "sessions": 250,
+        "totalReturnPct": 55.214395,
+        "cagrPct": 55.76126,
+        "sharpe": 2.132516,
+        "maxDrawdownPct": -19.264398,
+        "turnover": 44.080986,
+        "incrementalDailySumPct": -3.158085
+      },
+      "reportOnly2026": {
+        "sessions": 132,
+        "totalReturnPct": 17.357491,
+        "cagrPct": 35.738318,
+        "sharpe": 1.733889,
+        "maxDrawdownPct": -9.38314,
+        "turnover": 17.016883,
+        "incrementalDailySumPct": 0
+      },
+      "selectionPrefix": {
+        "sessions": 1005,
+        "totalReturnPct": 143.059103,
+        "cagrPct": 24.944119,
+        "sharpe": 1.196991,
+        "maxDrawdownPct": -25.377278,
+        "turnover": 143.723662,
+        "incrementalDailySumPct": 14.853017
+      },
+      "full": {
+        "sessions": 1387,
+        "totalReturnPct": 342.746057,
+        "cagrPct": 31.038216,
+        "sharpe": 1.423387,
+        "maxDrawdownPct": -25.377278,
+        "turnover": 204.821531,
+        "incrementalDailySumPct": 11.694932
+      }
+    },
+    "alternativeEpisodeRobustness": {
+      "method": "Current-or-prior changed target, with the production 10-session embargo and prior-close effect.",
+      "embargoSessions": 10,
+      "changedTargetCount": 78,
+      "independentEpisodeCount": 12,
+      "episodesByComponent": {
+        "ngas-winter-alpha": 6,
+        "ngas-summer-alpha": 6
+      },
+      "productionForwardPolicyScaleReference": {
+        "minimumIndependentEpisodes": 60,
+        "minimumEpisodesPerComponent": 15,
+        "applicability": "Scale reference only. This shadow counts changed-target interventions and is not evaluated by the production exposure gate."
+      },
+      "positiveEpisodes": 7,
+      "negativeEpisodes": 5,
+      "topEpisodePositiveContributionShare": 0.302497,
+      "incrementalSumAfterRemovingBestEpisodePct": 6.043978,
+      "incrementalSumAfterRemovingBestThreeEpisodesPct": -1.672134,
+      "episodes": [
+        {
+          "startDate": "2024-01-12",
+          "endDate": "2024-01-24",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 4,
+          "incrementalDailySumPct": 5.650954
+        },
+        {
+          "startDate": "2022-02-18",
+          "endDate": "2022-03-23",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 12,
+          "incrementalDailySumPct": 4.131826
+        },
+        {
+          "startDate": "2023-05-26",
+          "endDate": "2023-06-01",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 3.584286
+        },
+        {
+          "startDate": "2024-07-08",
+          "endDate": "2024-07-29",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 6,
+          "incrementalDailySumPct": 3.190517
+        },
+        {
+          "startDate": "2024-02-09",
+          "endDate": "2024-02-16",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": 1.001846
+        },
+        {
+          "startDate": "2024-08-19",
+          "endDate": "2024-09-10",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 6,
+          "incrementalDailySumPct": 0.66035
+        },
+        {
+          "startDate": "2023-06-20",
+          "endDate": "2023-08-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 21,
+          "incrementalDailySumPct": 0.461228
+        },
+        {
+          "startDate": "2023-03-23",
+          "endDate": "2023-03-24",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.244175
+        },
+        {
+          "startDate": "2024-03-28",
+          "endDate": "2024-04-01",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 1,
+          "incrementalDailySumPct": -0.932685
+        },
+        {
+          "startDate": "2024-04-25",
+          "endDate": "2024-06-14",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 12,
+          "incrementalDailySumPct": -1.165779
+        },
+        {
+          "startDate": "2023-05-04",
+          "endDate": "2023-05-09",
+          "componentStrategyId": "ngas-summer-alpha",
+          "changedTargetCount": 3,
+          "incrementalDailySumPct": -1.491843
+        },
+        {
+          "startDate": "2025-03-06",
+          "endDate": "2025-03-24",
+          "componentStrategyId": "ngas-winter-alpha",
+          "changedTargetCount": 6,
+          "incrementalDailySumPct": -3.158379
+        }
+      ]
+    }
+  },
+  "frictionScenarios": {
+    "baseline": {
+      "selectionEligible": true,
+      "comparator": {
+        "sessions": 1387,
+        "totalReturnPct": 293.019148,
+        "cagrPct": 28.232261,
+        "sharpe": 1.30653,
+        "maxDrawdownPct": -28.339707,
+        "turnover": 241.038008,
+        "incrementalDailySumPct": 0
+      },
+      "shadow": {
+        "sessions": 1387,
+        "totalReturnPct": 354.764347,
+        "cagrPct": 31.677418,
+        "sharpe": 1.453497,
+        "maxDrawdownPct": -24.486066,
+        "turnover": 201.691087,
+        "incrementalDailySumPct": 14.261713
+      },
+      "incrementalByYear": {
+        "2021": 0.598399,
+        "2022": 5.313391,
+        "2023": 3.528812,
+        "2024": 8.40352,
+        "2025": -3.58241,
+        "2026": 0
+      }
+    },
+    "elevated": {
+      "selectionEligible": false,
+      "comparator": {
+        "sessions": 1387,
+        "totalReturnPct": 279.758443,
+        "cagrPct": 27.435088,
+        "sharpe": 1.27631,
+        "maxDrawdownPct": -28.64151,
+        "turnover": 241.050444,
+        "incrementalDailySumPct": 0
+      },
+      "shadow": {
+        "sessions": 1387,
+        "totalReturnPct": 341.991776,
+        "cagrPct": 30.997627,
+        "sharpe": 1.428129,
+        "maxDrawdownPct": -24.70068,
+        "turnover": 201.70145,
+        "incrementalDailySumPct": 14.843427
+      },
+      "incrementalByYear": {
+        "2021": 0.618893,
+        "2022": 5.450114,
+        "2023": 3.68378,
+        "2024": 8.612089,
+        "2025": -3.521449,
+        "2026": 0
+      }
+    },
+    "stress": {
+      "selectionEligible": false,
+      "comparator": {
+        "sessions": 1387,
+        "totalReturnPct": 234.994042,
+        "cagrPct": 24.563976,
+        "sharpe": 1.166002,
+        "maxDrawdownPct": -29.720703,
+        "turnover": 241.089429,
+        "incrementalDailySumPct": 0
+      },
+      "shadow": {
+        "sessions": 1387,
+        "totalReturnPct": 297.696848,
+        "cagrPct": 28.508214,
+        "sharpe": 1.334267,
+        "maxDrawdownPct": -25.379286,
+        "turnover": 201.735443,
+        "incrementalDailySumPct": 16.81714
+      },
+      "incrementalByYear": {
+        "2021": 0.675285,
+        "2022": 6.065342,
+        "2023": 4.123664,
+        "2024": 9.199651,
+        "2025": -3.246801,
+        "2026": 0
+      }
+    }
+  },
+  "matchedFallbackRealityCheck": {
+    "comparator": "98%-deployed VOO/QQQM basket replayed through the same execution simulator",
+    "activeAllYearSelectionPrefix": {
+      "sessions": 1005,
+      "totalReturnPct": 109.072085,
+      "cagrPct": 20.313134,
+      "sharpe": 1.000517,
+      "maxDrawdownPct": -28.339707,
+      "turnover": 174.651529,
+      "incrementalDailySumPct": 26.047046
+    },
+    "matchedFallbackFull": {
+      "sessions": 1387,
+      "totalReturnPct": 118.768714,
+      "cagrPct": 15.284501,
+      "sharpe": 0.912392,
+      "maxDrawdownPct": -26.002879,
+      "turnover": 0.733825,
+      "incrementalDailySumPct": 0
+    },
+    "circularBlockBootstrap": [
+      {
+        "blockLength": 1,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.178782
+      },
+      {
+        "blockLength": 5,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.157384
+      },
+      {
+        "blockLength": 10,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.139086
+      },
+      {
+        "blockLength": 20,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.134487
+      },
+      {
+        "blockLength": 60,
+        "iterations": 10000,
+        "observedAverageDailyIncrementPct": 0.02591746,
+        "pValue": 0.114989
+      }
+    ]
+  },
+  "candidateSummaries": [
+    {
+      "candidateId": "storage-contradiction-veto-threshold-10-scale-0-v1",
+      "thresholdPct": 10,
+      "contradictedScale": 0,
+      "changedTargetCount": 90,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 82.804663,
+          "cagrPct": 22.370579,
+          "sharpe": 1.07559,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 93.404256,
+          "incrementalDailySumPct": 9.440602
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 37.139563,
+          "cagrPct": 37.139563,
+          "sharpe": 1.8088,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 46.21802,
+          "incrementalDailySumPct": 8.40352
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 54.570127,
+          "cagrPct": 55.109561,
+          "sharpe": 2.116445,
+          "maxDrawdownPct": -19.599517,
+          "turnover": 45.051929,
+          "incrementalDailySumPct": -3.58241
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 150.697515,
+          "cagrPct": 25.917294,
+          "sharpe": 1.241977,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 139.622275,
+          "incrementalDailySumPct": 17.844123
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 354.764347,
+          "cagrPct": 31.677418,
+          "sharpe": 1.453497,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 201.691087,
+          "incrementalDailySumPct": 14.261713
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.598399,
+        "2022": 5.313391,
+        "2023": 3.528812,
+        "2024": 8.40352,
+        "2025": -3.58241,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-9-scale-0-v1",
+      "thresholdPct": 9,
+      "contradictedScale": 0,
+      "changedTargetCount": 91,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 82.804663,
+          "cagrPct": 22.370579,
+          "sharpe": 1.07559,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 93.404256,
+          "incrementalDailySumPct": 9.440602
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 37.139563,
+          "cagrPct": 37.139563,
+          "sharpe": 1.8088,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 46.21802,
+          "incrementalDailySumPct": 8.40352
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 55.214395,
+          "cagrPct": 55.76126,
+          "sharpe": 2.132516,
+          "maxDrawdownPct": -19.264398,
+          "turnover": 44.080986,
+          "incrementalDailySumPct": -3.158085
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 150.697515,
+          "cagrPct": 25.917294,
+          "sharpe": 1.241977,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 139.622275,
+          "incrementalDailySumPct": 17.844123
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 356.659862,
+          "cagrPct": 31.776967,
+          "sharpe": 1.456771,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 200.720144,
+          "incrementalDailySumPct": 14.686037
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.598399,
+        "2022": 5.313391,
+        "2023": 3.528812,
+        "2024": 8.40352,
+        "2025": -3.158085,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-8-scale-0-v1",
+      "thresholdPct": 8,
+      "contradictedScale": 0,
+      "changedTargetCount": 101,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 78.885813,
+          "cagrPct": 21.486324,
+          "sharpe": 1.041898,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 92.814562,
+          "incrementalDailySumPct": 7.253151
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 36.391183,
+          "cagrPct": 36.391183,
+          "sharpe": 1.783265,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 45.525567,
+          "incrementalDailySumPct": 7.846764
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 55.214395,
+          "cagrPct": 55.76126,
+          "sharpe": 2.132516,
+          "maxDrawdownPct": -19.264398,
+          "turnover": 44.080986,
+          "incrementalDailySumPct": -3.158085
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 20.215922,
+          "cagrPct": 42.119839,
+          "sharpe": 2.039137,
+          "maxDrawdownPct": -6.653531,
+          "turnover": 16.137316,
+          "incrementalDailySumPct": 2.354116
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 143.984476,
+          "cagrPct": 25.063225,
+          "sharpe": 1.20999,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 138.340129,
+          "incrementalDailySumPct": 15.099915
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 355.256527,
+          "cagrPct": 31.703299,
+          "sharpe": 1.458566,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 198.558431,
+          "incrementalDailySumPct": 14.295946
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.598399,
+        "2022": 3.017395,
+        "2023": 3.637357,
+        "2024": 7.846764,
+        "2025": -3.158085,
+        "2026": 2.354116
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-7.5-scale-0-v1",
+      "thresholdPct": 7.5,
+      "contradictedScale": 0,
+      "changedTargetCount": 102,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 78.734282,
+          "cagrPct": 21.451875,
+          "sharpe": 1.040727,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 91.440709,
+          "incrementalDailySumPct": 7.165253
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 36.391183,
+          "cagrPct": 36.391183,
+          "sharpe": 1.783265,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 45.525567,
+          "incrementalDailySumPct": 7.846764
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 55.214395,
+          "cagrPct": 55.76126,
+          "sharpe": 2.132516,
+          "maxDrawdownPct": -19.264398,
+          "turnover": 44.080986,
+          "incrementalDailySumPct": -3.158085
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 20.215922,
+          "cagrPct": 42.119839,
+          "sharpe": 2.039137,
+          "maxDrawdownPct": -6.653531,
+          "turnover": 16.137316,
+          "incrementalDailySumPct": 2.354116
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 143.777802,
+          "cagrPct": 25.036653,
+          "sharpe": 1.209124,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 136.966276,
+          "incrementalDailySumPct": 15.012016
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 354.870888,
+          "cagrPct": 31.683022,
+          "sharpe": 1.457973,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 197.184578,
+          "incrementalDailySumPct": 14.208048
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.598399,
+        "2022": 3.017395,
+        "2023": 3.549458,
+        "2024": 7.846764,
+        "2025": -3.158085,
+        "2026": 2.354116
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-10-scale-0.25-v1",
+      "thresholdPct": 10,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 87,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 78.667489,
+          "cagrPct": 21.436684,
+          "sharpe": 1.041393,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 98.391904,
+          "incrementalDailySumPct": 7.108029
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 34.306348,
+          "cagrPct": 34.306348,
+          "sharpe": 1.70393,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 49.620934,
+          "incrementalDailySumPct": 6.294174
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.007394,
+          "cagrPct": 56.563436,
+          "sharpe": 2.162093,
+          "maxDrawdownPct": -18.851915,
+          "turnover": 45.963162,
+          "incrementalDailySumPct": -2.662421
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 139.96178,
+          "cagrPct": 24.542967,
+          "sharpe": 1.191347,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 148.012839,
+          "incrementalDailySumPct": 13.402203
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 339.337295,
+          "cagrPct": 30.854335,
+          "sharpe": 1.426262,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 210.992884,
+          "incrementalDailySumPct": 10.739782
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.450993,
+        "2022": 4.010822,
+        "2023": 2.646214,
+        "2024": 6.294174,
+        "2025": -2.662421,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-9-scale-0.25-v1",
+      "thresholdPct": 9,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 88,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 78.667489,
+          "cagrPct": 21.436684,
+          "sharpe": 1.041393,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 98.391904,
+          "incrementalDailySumPct": 7.108029
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 34.306348,
+          "cagrPct": 34.306348,
+          "sharpe": 1.70393,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 49.620934,
+          "incrementalDailySumPct": 6.294174
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.48908,
+          "cagrPct": 57.050712,
+          "sharpe": 2.174111,
+          "maxDrawdownPct": -18.601363,
+          "turnover": 45.234912,
+          "incrementalDailySumPct": -2.348256
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 139.96178,
+          "cagrPct": 24.542967,
+          "sharpe": 1.191347,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 148.012839,
+          "incrementalDailySumPct": 13.402203
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 340.693786,
+          "cagrPct": 30.927648,
+          "sharpe": 1.428719,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 210.264633,
+          "incrementalDailySumPct": 11.053947
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.450993,
+        "2022": 4.010822,
+        "2023": 2.646214,
+        "2024": 6.294174,
+        "2025": -2.348256,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-11-scale-0-v1",
+      "thresholdPct": 11,
+      "contradictedScale": 0,
+      "changedTargetCount": 71,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 79.09022,
+          "cagrPct": 21.532764,
+          "sharpe": 1.038342,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 95.095281,
+          "incrementalDailySumPct": 7.450545
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 33.531328,
+          "cagrPct": 33.531328,
+          "sharpe": 1.660522,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 50.708234,
+          "incrementalDailySumPct": 5.741092
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.760507,
+          "cagrPct": 59.34866,
+          "sharpe": 2.234809,
+          "maxDrawdownPct": -17.419869,
+          "turnover": 49.354054,
+          "incrementalDailySumPct": -0.891157
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 139.141549,
+          "cagrPct": 24.436085,
+          "sharpe": 1.179072,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 145.803515,
+          "incrementalDailySumPct": 13.191637
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 345.562189,
+          "cagrPct": 31.189256,
+          "sharpe": 1.430596,
+          "maxDrawdownPct": -24.486066,
+          "turnover": 212.174452,
+          "incrementalDailySumPct": 12.30048
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.17887,
+        "2022": 5.313391,
+        "2023": 2.316024,
+        "2024": 5.741092,
+        "2025": -0.891157,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12.5-scale-0-v1",
+      "thresholdPct": 12.5,
+      "contradictedScale": 0,
+      "changedTargetCount": 56,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 82.470963,
+          "cagrPct": 22.295777,
+          "sharpe": 1.061523,
+          "maxDrawdownPct": -25.377278,
+          "turnover": 98.986541,
+          "incrementalDailySumPct": 9.42498
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 29.166727,
+          "cagrPct": 29.166727,
+          "sharpe": 1.46528,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 51.486183,
+          "incrementalDailySumPct": 2.454861
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 135.691771,
+          "cagrPct": 23.983523,
+          "sharpe": 1.152868,
+          "maxDrawdownPct": -25.377278,
+          "turnover": 150.472724,
+          "incrementalDailySumPct": 11.879841
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 343.059526,
+          "cagrPct": 31.055067,
+          "sharpe": 1.418031,
+          "maxDrawdownPct": -25.377278,
+          "turnover": 216.859203,
+          "incrementalDailySumPct": 11.879841
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 4.133473,
+        "2023": 5.291507,
+        "2024": 2.454861,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-15-scale-0-v1",
+      "thresholdPct": 15,
+      "contradictedScale": 0,
+      "changedTargetCount": 45,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 84.151709,
+          "cagrPct": 22.671613,
+          "sharpe": 1.074871,
+          "maxDrawdownPct": -25.440548,
+          "turnover": 103.619321,
+          "incrementalDailySumPct": 10.361569
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.414135,
+          "cagrPct": 27.414135,
+          "sharpe": 1.390633,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 52.172027,
+          "incrementalDailySumPct": 1.091168
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 134.635307,
+          "cagrPct": 23.843938,
+          "sharpe": 1.146086,
+          "maxDrawdownPct": -25.440548,
+          "turnover": 155.791348,
+          "incrementalDailySumPct": 11.452737
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 341.073559,
+          "cagrPct": 30.94814,
+          "sharpe": 1.41288,
+          "maxDrawdownPct": -25.440548,
+          "turnover": 222.177828,
+          "incrementalDailySumPct": 11.452737
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 4.056346,
+        "2023": 6.305223,
+        "2024": 1.091168,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-8-scale-0.25-v1",
+      "thresholdPct": 8,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 97,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.798974,
+          "cagrPct": 20.780688,
+          "sharpe": 1.016296,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 97.909455,
+          "incrementalDailySumPct": 5.471636
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 33.755461,
+          "cagrPct": 33.755461,
+          "sharpe": 1.685248,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 49.100055,
+          "incrementalDailySumPct": 5.874296
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.48908,
+          "cagrPct": 57.050712,
+          "sharpe": 2.174111,
+          "maxDrawdownPct": -18.601363,
+          "turnover": 45.234912,
+          "incrementalDailySumPct": -2.348256
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 19.503819,
+          "cagrPct": 40.516998,
+          "sharpe": 1.97468,
+          "maxDrawdownPct": -6.697296,
+          "turnover": 16.234523,
+          "incrementalDailySumPct": 1.760584
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 135.140728,
+          "cagrPct": 23.910776,
+          "sharpe": 1.16756,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 147.009511,
+          "incrementalDailySumPct": 11.345932
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 339.737681,
+          "cagrPct": 30.875993,
+          "sharpe": 1.431044,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 208.478945,
+          "incrementalDailySumPct": 10.75826
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.450993,
+        "2022": 2.291412,
+        "2023": 2.729231,
+        "2024": 5.874296,
+        "2025": -2.348256,
+        "2026": 1.760584
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-7.5-scale-0.25-v1",
+      "thresholdPct": 7.5,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 98,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.687859,
+          "cagrPct": 20.755134,
+          "sharpe": 1.015423,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 96.874936,
+          "incrementalDailySumPct": 5.405942
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 33.755461,
+          "cagrPct": 33.755461,
+          "sharpe": 1.685248,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 49.100055,
+          "incrementalDailySumPct": 5.874296
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.48908,
+          "cagrPct": 57.050712,
+          "sharpe": 2.174111,
+          "maxDrawdownPct": -18.601363,
+          "turnover": 45.234912,
+          "incrementalDailySumPct": -2.348256
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 19.503819,
+          "cagrPct": 40.516998,
+          "sharpe": 1.97468,
+          "maxDrawdownPct": -6.697296,
+          "turnover": 16.234523,
+          "incrementalDailySumPct": 1.760584
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 134.992105,
+          "cagrPct": 23.891133,
+          "sharpe": 1.166913,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 145.974992,
+          "incrementalDailySumPct": 11.280239
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 339.459741,
+          "cagrPct": 30.86096,
+          "sharpe": 1.430605,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 207.444426,
+          "incrementalDailySumPct": 10.692567
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.450993,
+        "2022": 2.291412,
+        "2023": 2.663538,
+        "2024": 5.874296,
+        "2025": -2.348256,
+        "2026": 1.760584
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-5-scale-0-v1",
+      "thresholdPct": 5,
+      "contradictedScale": 0,
+      "changedTargetCount": 132,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 70.719456,
+          "cagrPct": 19.601369,
+          "sharpe": 0.96542,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 87.589627,
+          "incrementalDailySumPct": 2.594912
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 36.391183,
+          "cagrPct": 36.391183,
+          "sharpe": 1.783265,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 45.525567,
+          "incrementalDailySumPct": 7.846764
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 53.231358,
+          "cagrPct": 53.755419,
+          "sharpe": 2.154451,
+          "maxDrawdownPct": -19.264398,
+          "turnover": 34.752566,
+          "incrementalDailySumPct": -4.639825
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 20.215922,
+          "cagrPct": 42.119839,
+          "sharpe": 2.039137,
+          "maxDrawdownPct": -6.653531,
+          "turnover": 16.137316,
+          "incrementalDailySumPct": 2.354116
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 132.846286,
+          "cagrPct": 23.606486,
+          "sharpe": 1.15076,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 133.115195,
+          "incrementalDailySumPct": 10.441676
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 328.922623,
+          "cagrPct": 30.285203,
+          "sharpe": 1.414611,
+          "maxDrawdownPct": -26.183261,
+          "turnover": 184.005077,
+          "incrementalDailySumPct": 8.155967
+        }
+      },
+      "incrementalByYear": {
+        "2021": -2.248559,
+        "2022": 3.017395,
+        "2023": 1.826076,
+        "2024": 7.846764,
+        "2025": -4.639825,
+        "2026": 2.354116
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-11-scale-0.25-v1",
+      "thresholdPct": 11,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 71,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.935378,
+          "cagrPct": 20.812043,
+          "sharpe": 1.012758,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 99.692447,
+          "incrementalDailySumPct": 5.624735
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.634103,
+          "cagrPct": 31.634103,
+          "sharpe": 1.586729,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 52.984272,
+          "incrementalDailySumPct": 4.299185
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.116572,
+          "cagrPct": 59.708907,
+          "sharpe": 2.245373,
+          "maxDrawdownPct": -17.23466,
+          "turnover": 49.353859,
+          "incrementalDailySumPct": -0.667274
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 131.590956,
+          "cagrPct": 23.439052,
+          "sharpe": 1.142652,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 152.67672,
+          "incrementalDailySumPct": 9.92392
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 332.461872,
+          "cagrPct": 30.479869,
+          "sharpe": 1.406997,
+          "maxDrawdownPct": -25.430649,
+          "turnover": 219.047462,
+          "incrementalDailySumPct": 9.256646
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.124314,
+        "2022": 4.010822,
+        "2023": 1.738227,
+        "2024": 4.299185,
+        "2025": -0.667274,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-10-scale-0.5-v1",
+      "thresholdPct": 10,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 86,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 74.497103,
+          "cagrPct": 20.480614,
+          "sharpe": 1.002202,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 103.446313,
+          "incrementalDailySumPct": 4.760345
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.492408,
+          "cagrPct": 31.492408,
+          "sharpe": 1.580276,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 53.0691,
+          "incrementalDailySumPct": 4.192793
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.420233,
+          "cagrPct": 57.992706,
+          "sharpe": 2.20392,
+          "maxDrawdownPct": -18.117019,
+          "turnover": 47.100228,
+          "incrementalDailySumPct": -1.759669
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 129.450442,
+          "cagrPct": 23.151979,
+          "sharpe": 1.133512,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 156.515413,
+          "incrementalDailySumPct": 8.953138
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 323.896924,
+          "cagrPct": 30.006509,
+          "sharpe": 1.39234,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 220.632524,
+          "incrementalDailySumPct": 7.193469
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.316067,
+        "2022": 2.682421,
+        "2023": 1.761856,
+        "2024": 4.192793,
+        "2025": -1.759669,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-9-scale-0.5-v1",
+      "thresholdPct": 9,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 87,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 74.497103,
+          "cagrPct": 20.480614,
+          "sharpe": 1.002202,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 103.446313,
+          "incrementalDailySumPct": 4.760345
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.492408,
+          "cagrPct": 31.492408,
+          "sharpe": 1.580276,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 53.0691,
+          "incrementalDailySumPct": 4.192793
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.745514,
+          "cagrPct": 58.321783,
+          "sharpe": 2.212072,
+          "maxDrawdownPct": -17.947823,
+          "turnover": 46.621821,
+          "incrementalDailySumPct": -1.549612
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 129.450442,
+          "cagrPct": 23.151979,
+          "sharpe": 1.133512,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 156.515413,
+          "incrementalDailySumPct": 8.953138
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 324.77283,
+          "cagrPct": 30.055275,
+          "sharpe": 1.394005,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 220.154117,
+          "incrementalDailySumPct": 7.403526
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.316067,
+        "2022": 2.682421,
+        "2023": 1.761856,
+        "2024": 4.192793,
+        "2025": -1.549612,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12.5-scale-0.25-v1",
+      "thresholdPct": 12.5,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 56,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 78.371394,
+          "cagrPct": 21.369296,
+          "sharpe": 1.028271,
+          "maxDrawdownPct": -26.089664,
+          "turnover": 102.634453,
+          "incrementalDailySumPct": 7.104253
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.370152,
+          "cagrPct": 28.370152,
+          "sharpe": 1.431345,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 53.575631,
+          "incrementalDailySumPct": 1.837684
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 128.97563,
+          "cagrPct": 23.088028,
+          "sharpe": 1.119878,
+          "maxDrawdownPct": -26.089664,
+          "turnover": 156.210084,
+          "incrementalDailySumPct": 8.941938
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 330.43435,
+          "cagrPct": 30.368511,
+          "sharpe": 1.394717,
+          "maxDrawdownPct": -26.089664,
+          "turnover": 222.596563,
+          "incrementalDailySumPct": 8.941938
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 3.132163,
+        "2023": 3.97209,
+        "2024": 1.837684,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12-scale-0-v1",
+      "thresholdPct": 12,
+      "contradictedScale": 0,
+      "changedTargetCount": 62,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 78.699645,
+          "cagrPct": 21.443998,
+          "sharpe": 1.032096,
+          "maxDrawdownPct": -25.377278,
+          "turnover": 98.882718,
+          "incrementalDailySumPct": 7.274335
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.849093,
+          "cagrPct": 27.849093,
+          "sharpe": 1.410618,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 51.473017,
+          "incrementalDailySumPct": 1.427456
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 128.465875,
+          "cagrPct": 23.019261,
+          "sharpe": 1.118093,
+          "maxDrawdownPct": -25.377278,
+          "turnover": 150.355734,
+          "incrementalDailySumPct": 8.701791
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 329.4761,
+          "cagrPct": 30.315732,
+          "sharpe": 1.393628,
+          "maxDrawdownPct": -25.377278,
+          "turnover": 216.742214,
+          "incrementalDailySumPct": 8.701791
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 4.133473,
+        "2023": 3.140862,
+        "2024": 1.427456,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-15-scale-0.25-v1",
+      "thresholdPct": 15,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 45,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 79.574143,
+          "cagrPct": 21.642567,
+          "sharpe": 1.037695,
+          "maxDrawdownPct": -26.141873,
+          "turnover": 106.158535,
+          "incrementalDailySumPct": 7.797644
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.058925,
+          "cagrPct": 27.058925,
+          "sharpe": 1.374839,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 54.090017,
+          "incrementalDailySumPct": 0.814174
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 128.164976,
+          "cagrPct": 22.978614,
+          "sharpe": 1.114161,
+          "maxDrawdownPct": -26.141873,
+          "turnover": 160.248553,
+          "incrementalDailySumPct": 8.611818
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 328.910461,
+          "cagrPct": 30.284532,
+          "sharpe": 1.390304,
+          "maxDrawdownPct": -26.141873,
+          "turnover": 226.635032,
+          "incrementalDailySumPct": 8.611818
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 3.070359,
+        "2023": 4.727285,
+        "2024": 0.814174,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-5-scale-0.25-v1",
+      "thresholdPct": 5,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 126,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.74146,
+          "cagrPct": 19.371635,
+          "sharpe": 0.95923,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 93.970246,
+          "incrementalDailySumPct": 1.967453
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 33.755461,
+          "cagrPct": 33.755461,
+          "sharpe": 1.685248,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 49.100055,
+          "incrementalDailySumPct": 5.874296
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 55.080996,
+          "cagrPct": 55.626321,
+          "sharpe": 2.221158,
+          "maxDrawdownPct": -18.601363,
+          "turnover": 38.233957,
+          "incrementalDailySumPct": -3.45734
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 19.503819,
+          "cagrPct": 40.516998,
+          "sharpe": 1.97468,
+          "maxDrawdownPct": -6.697296,
+          "turnover": 16.234523,
+          "incrementalDailySumPct": 1.760584
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 127.038472,
+          "cagrPct": 22.826085,
+          "sharpe": 1.12346,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 143.070301,
+          "incrementalDailySumPct": 7.841749
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 320.765208,
+          "cagrPct": 29.831472,
+          "sharpe": 1.402056,
+          "maxDrawdownPct": -26.687542,
+          "turnover": 197.538781,
+          "incrementalDailySumPct": 6.144993
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.692937,
+        "2022": 2.291412,
+        "2023": 1.368978,
+        "2024": 5.874296,
+        "2025": -3.45734,
+        "2026": 1.760584
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-17.5-scale-0-v1",
+      "thresholdPct": 17.5,
+      "contradictedScale": 0,
+      "changedTargetCount": 29,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 80.281957,
+          "cagrPct": 21.802817,
+          "sharpe": 1.040633,
+          "maxDrawdownPct": -23.64862,
+          "turnover": 106.624638,
+          "incrementalDailySumPct": 8.243894
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.291104,
+          "cagrPct": 25.291104,
+          "sharpe": 1.301597,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 53.542086,
+          "incrementalDailySumPct": -0.594018
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 125.877256,
+          "cagrPct": 22.668261,
+          "sharpe": 1.099258,
+          "maxDrawdownPct": -23.64862,
+          "turnover": 160.166725,
+          "incrementalDailySumPct": 7.649876
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 324.609945,
+          "cagrPct": 30.046212,
+          "sharpe": 1.378993,
+          "maxDrawdownPct": -23.64862,
+          "turnover": 226.553204,
+          "incrementalDailySumPct": 7.649876
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 6.39568,
+        "2023": 1.848214,
+        "2024": -0.594018,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-8-scale-0.5-v1",
+      "thresholdPct": 8,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 96,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 72.633084,
+          "cagrPct": 20.048365,
+          "sharpe": 0.985656,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 103.074306,
+          "incrementalDailySumPct": 3.672748
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.133755,
+          "cagrPct": 31.133755,
+          "sharpe": 1.568192,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 52.725473,
+          "incrementalDailySumPct": 3.912667
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.745514,
+          "cagrPct": 58.321783,
+          "sharpe": 2.212072,
+          "maxDrawdownPct": -17.947823,
+          "turnover": 46.621821,
+          "incrementalDailySumPct": -1.549612
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.792204,
+          "cagrPct": 38.923903,
+          "sharpe": 1.901581,
+          "maxDrawdownPct": -7.578191,
+          "turnover": 16.339045,
+          "incrementalDailySumPct": 1.172213
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 126.380247,
+          "cagrPct": 22.736699,
+          "sharpe": 1.117873,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 155.799779,
+          "incrementalDailySumPct": 7.585415
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 324.212523,
+          "cagrPct": 30.024089,
+          "sharpe": 1.396171,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 218.760644,
+          "incrementalDailySumPct": 7.208016
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.316067,
+        "2022": 1.538826,
+        "2023": 1.817854,
+        "2024": 3.912667,
+        "2025": -1.549612,
+        "2026": 1.172213
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-7.5-scale-0.5-v1",
+      "thresholdPct": 7.5,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 97,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 72.559482,
+          "cagrPct": 20.031234,
+          "sharpe": 0.985065,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 102.387787,
+          "incrementalDailySumPct": 3.628427
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.133755,
+          "cagrPct": 31.133755,
+          "sharpe": 1.568192,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 52.725473,
+          "incrementalDailySumPct": 3.912667
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.745514,
+          "cagrPct": 58.321783,
+          "sharpe": 2.212072,
+          "maxDrawdownPct": -17.947823,
+          "turnover": 46.621821,
+          "incrementalDailySumPct": -1.549612
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.792204,
+          "cagrPct": 38.923903,
+          "sharpe": 1.901581,
+          "maxDrawdownPct": -7.578191,
+          "turnover": 16.339045,
+          "incrementalDailySumPct": 1.172213
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 126.283729,
+          "cagrPct": 22.723575,
+          "sharpe": 1.117434,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 155.113259,
+          "incrementalDailySumPct": 7.541094
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 324.03166,
+          "cagrPct": 30.014015,
+          "sharpe": 1.395874,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 218.074125,
+          "incrementalDailySumPct": 7.163695
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.316067,
+        "2022": 1.538826,
+        "2023": 1.773533,
+        "2024": 3.912667,
+        "2025": -1.549612,
+        "2026": 1.172213
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-11-scale-0.5-v1",
+      "thresholdPct": 11,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 71,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 72.688707,
+          "cagrPct": 20.061308,
+          "sharpe": 0.982573,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 104.336214,
+          "incrementalDailySumPct": 3.764039
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 29.735968,
+          "cagrPct": 29.735968,
+          "sharpe": 1.499583,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 55.305921,
+          "incrementalDailySumPct": 2.865804
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.473423,
+          "cagrPct": 60.069955,
+          "sharpe": 2.255799,
+          "maxDrawdownPct": -17.049041,
+          "turnover": 49.354205,
+          "incrementalDailySumPct": -0.443068
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 124.039366,
+          "cagrPct": 22.417222,
+          "sharpe": 1.100189,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 159.642135,
+          "incrementalDailySumPct": 6.629843
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 319.298653,
+          "cagrPct": 29.749138,
+          "sharpe": 1.378156,
+          "maxDrawdownPct": -26.394685,
+          "turnover": 226.013223,
+          "incrementalDailySumPct": 6.186775
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.076591,
+        "2022": 2.682421,
+        "2023": 1.158209,
+        "2024": 2.865804,
+        "2025": -0.443068,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12-scale-0.25-v1",
+      "thresholdPct": 12,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 62,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.624283,
+          "cagrPct": 20.740509,
+          "sharpe": 1.00713,
+          "maxDrawdownPct": -26.089664,
+          "turnover": 102.567233,
+          "incrementalDailySumPct": 5.491644
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.388013,
+          "cagrPct": 27.388013,
+          "sharpe": 1.390719,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 53.557852,
+          "incrementalDailySumPct": 1.067275
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 123.724284,
+          "cagrPct": 22.37403,
+          "sharpe": 1.094656,
+          "maxDrawdownPct": -26.089664,
+          "turnover": 156.125084,
+          "incrementalDailySumPct": 6.558919
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 320.562733,
+          "cagrPct": 29.820119,
+          "sharpe": 1.377239,
+          "maxDrawdownPct": -26.089664,
+          "turnover": 222.511564,
+          "incrementalDailySumPct": 6.558919
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 3.132163,
+        "2023": 2.35948,
+        "2024": 1.067275,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12.5-scale-0.5-v1",
+      "thresholdPct": 12.5,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 56,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 74.239051,
+          "cagrPct": 20.420958,
+          "sharpe": 0.991668,
+          "maxDrawdownPct": -26.829483,
+          "turnover": 106.317884,
+          "incrementalDailySumPct": 4.744875
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.566456,
+          "cagrPct": 27.566456,
+          "sharpe": 1.391467,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 55.709805,
+          "incrementalDailySumPct": 1.226847
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 122.270582,
+          "cagrPct": 22.174161,
+          "sharpe": 1.083122,
+          "maxDrawdownPct": -26.829483,
+          "turnover": 162.027689,
+          "incrementalDailySumPct": 5.971723
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 317.830026,
+          "cagrPct": 29.66645,
+          "sharpe": 1.36814,
+          "maxDrawdownPct": -26.829483,
+          "turnover": 228.414169,
+          "incrementalDailySumPct": 5.971723
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 2.098394,
+        "2023": 2.646481,
+        "2024": 1.226847,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-17.5-scale-0.25-v1",
+      "thresholdPct": 17.5,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 29,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 76.693053,
+          "cagrPct": 20.985913,
+          "sharpe": 1.010278,
+          "maxDrawdownPct": -24.822838,
+          "turnover": 108.46422,
+          "incrementalDailySumPct": 6.206046
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.464324,
+          "cagrPct": 25.464324,
+          "sharpe": 1.307212,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 55.124104,
+          "incrementalDailySumPct": -0.45008
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 121.686745,
+          "cagrPct": 22.093613,
+          "sharpe": 1.0774,
+          "maxDrawdownPct": -24.822838,
+          "turnover": 163.588324,
+          "incrementalDailySumPct": 5.755966
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 316.732513,
+          "cagrPct": 29.604502,
+          "sharpe": 1.363442,
+          "maxDrawdownPct": -24.822838,
+          "turnover": 229.974804,
+          "incrementalDailySumPct": 5.755966
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 4.819521,
+        "2023": 1.386525,
+        "2024": -0.45008,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-15-scale-0.5-v1",
+      "thresholdPct": 15,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 45,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 75.0088,
+          "cagrPct": 20.598735,
+          "sharpe": 0.997628,
+          "maxDrawdownPct": -26.864312,
+          "turnover": 108.734552,
+          "incrementalDailySumPct": 5.204195
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.694829,
+          "cagrPct": 26.694829,
+          "sharpe": 1.353654,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 56.052728,
+          "incrementalDailySumPct": 0.544261
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 121.727099,
+          "cagrPct": 22.099186,
+          "sharpe": 1.078974,
+          "maxDrawdownPct": -26.864312,
+          "turnover": 164.78728,
+          "incrementalDailySumPct": 5.748456
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 316.808373,
+          "cagrPct": 29.608788,
+          "sharpe": 1.364887,
+          "maxDrawdownPct": -26.864312,
+          "turnover": 231.17376,
+          "incrementalDailySumPct": 5.748456
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 2.05866,
+        "2023": 3.145535,
+        "2024": 0.544261,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-5-scale-0.5-v1",
+      "thresholdPct": 5,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 125,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 68.653878,
+          "cagrPct": 19.115122,
+          "sharpe": 0.948086,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 100.455186,
+          "incrementalDailySumPct": 1.336772
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 31.133755,
+          "cagrPct": 31.133755,
+          "sharpe": 1.568192,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 52.725473,
+          "incrementalDailySumPct": 3.912667
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 56.86054,
+          "cagrPct": 57.426491,
+          "sharpe": 2.263563,
+          "maxDrawdownPct": -17.947823,
+          "turnover": 41.936925,
+          "incrementalDailySumPct": -2.287582
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.792204,
+          "cagrPct": 38.923903,
+          "sharpe": 1.901581,
+          "maxDrawdownPct": -7.578191,
+          "turnover": 16.339045,
+          "incrementalDailySumPct": 1.172213
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 121.162164,
+          "cagrPct": 22.021105,
+          "sharpe": 1.088931,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 153.180659,
+          "incrementalDailySumPct": 5.249439
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 312.109356,
+          "cagrPct": 29.342077,
+          "sharpe": 1.379464,
+          "maxDrawdownPct": -27.221009,
+          "turnover": 211.456628,
+          "incrementalDailySumPct": 4.134071
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.114197,
+        "2022": 1.538826,
+        "2023": 0.912144,
+        "2024": 3.912667,
+        "2025": -2.287582,
+        "2026": 1.172213
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-10-scale-0.75-v1",
+      "thresholdPct": 10,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 12,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 70.298206,
+          "cagrPct": 19.502524,
+          "sharpe": 0.958553,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 108.77242,
+          "incrementalDailySumPct": 2.396468
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.690492,
+          "cagrPct": 28.690492,
+          "sharpe": 1.442281,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 56.635974,
+          "incrementalDailySumPct": 2.092838
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.815365,
+          "cagrPct": 59.404162,
+          "sharpe": 2.242065,
+          "maxDrawdownPct": -17.391334,
+          "turnover": 48.230409,
+          "incrementalDailySumPct": -0.869612
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 119.157599,
+          "cagrPct": 21.74284,
+          "sharpe": 1.069488,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 165.408393,
+          "incrementalDailySumPct": 4.489306
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 308.469718,
+          "cagrPct": 29.133779,
+          "sharpe": 1.352242,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 230.655686,
+          "incrementalDailySumPct": 3.619693
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.163957,
+        "2022": 1.347057,
+        "2023": 0.885454,
+        "2024": 2.092838,
+        "2025": -0.869612,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-9-scale-0.75-v1",
+      "thresholdPct": 9,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 12,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 70.298206,
+          "cagrPct": 19.502524,
+          "sharpe": 0.958553,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 108.77242,
+          "incrementalDailySumPct": 2.396468
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.690492,
+          "cagrPct": 28.690492,
+          "sharpe": 1.442281,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 56.635974,
+          "incrementalDailySumPct": 2.092838
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.975509,
+          "cagrPct": 59.566186,
+          "sharpe": 2.246081,
+          "maxDrawdownPct": -17.308034,
+          "turnover": 47.997902,
+          "incrementalDailySumPct": -0.767164
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 119.157599,
+          "cagrPct": 21.74284,
+          "sharpe": 1.069488,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 165.408393,
+          "incrementalDailySumPct": 4.489306
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 308.881604,
+          "cagrPct": 29.157427,
+          "sharpe": 1.35306,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 230.423179,
+          "incrementalDailySumPct": 3.722142
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.163957,
+        "2022": 1.347057,
+        "2023": 0.885454,
+        "2024": 2.092838,
+        "2025": -0.767164,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12-scale-0.5-v1",
+      "thresholdPct": 12,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 62,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 72.46167,
+          "cagrPct": 20.00846,
+          "sharpe": 0.978171,
+          "maxDrawdownPct": -26.829483,
+          "turnover": 106.279989,
+          "incrementalDailySumPct": 3.67002
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.915737,
+          "cagrPct": 26.915737,
+          "sharpe": 1.364735,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 55.688302,
+          "incrementalDailySumPct": 0.713296
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 118.880998,
+          "cagrPct": 21.704294,
+          "sharpe": 1.066878,
+          "maxDrawdownPct": -26.829483,
+          "turnover": 161.968292,
+          "incrementalDailySumPct": 4.383316
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 311.458198,
+          "cagrPct": 29.304922,
+          "sharpe": 1.357033,
+          "maxDrawdownPct": -26.829483,
+          "turnover": 228.354771,
+          "incrementalDailySumPct": 4.383316
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 2.098394,
+        "2023": 1.571626,
+        "2024": 0.713296,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-17.5-scale-0.5-v1",
+      "thresholdPct": 17.5,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 29,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 73.10658,
+          "cagrPct": 20.158457,
+          "sharpe": 0.978319,
+          "maxDrawdownPct": -26.002364,
+          "turnover": 110.343563,
+          "incrementalDailySumPct": 4.142704
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.633847,
+          "cagrPct": 25.633847,
+          "sharpe": 1.308331,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 56.739024,
+          "incrementalDailySumPct": -0.295916
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.480456,
+          "cagrPct": 21.508557,
+          "sharpe": 1.053533,
+          "maxDrawdownPct": -26.002364,
+          "turnover": 167.082586,
+          "incrementalDailySumPct": 3.846789
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 308.825423,
+          "cagrPct": 29.154203,
+          "sharpe": 1.346107,
+          "maxDrawdownPct": -26.002364,
+          "turnover": 233.469066,
+          "incrementalDailySumPct": 3.846789
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 3.220134,
+        "2023": 0.922571,
+        "2024": -0.295916,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-8-scale-0.75-v1",
+      "thresholdPct": 8,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 12,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.391915,
+          "cagrPct": 19.289312,
+          "sharpe": 0.950411,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 108.514606,
+          "incrementalDailySumPct": 1.855239
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.514801,
+          "cagrPct": 28.514801,
+          "sharpe": 1.43639,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 56.46355,
+          "incrementalDailySumPct": 1.952163
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.975509,
+          "cagrPct": 59.566186,
+          "sharpe": 2.246081,
+          "maxDrawdownPct": -17.308034,
+          "turnover": 47.997902,
+          "incrementalDailySumPct": -0.767164
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.078324,
+          "cagrPct": 37.334432,
+          "sharpe": 1.82091,
+          "maxDrawdownPct": -8.483035,
+          "turnover": 16.532937,
+          "incrementalDailySumPct": 0.586707
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.693683,
+          "cagrPct": 21.538418,
+          "sharpe": 1.061809,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 164.978156,
+          "incrementalDailySumPct": 3.807402
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 308.645039,
+          "cagrPct": 29.143847,
+          "sharpe": 1.354418,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 229.508996,
+          "incrementalDailySumPct": 3.626946
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.163957,
+        "2022": 0.777667,
+        "2023": 0.913615,
+        "2024": 1.952163,
+        "2025": -0.767164,
+        "2026": 0.586707
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-7.5-scale-0.75-v1",
+      "thresholdPct": 7.5,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 12,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.355806,
+          "cagrPct": 19.280801,
+          "sharpe": 0.950116,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 108.171396,
+          "incrementalDailySumPct": 1.833055
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.514801,
+          "cagrPct": 28.514801,
+          "sharpe": 1.43639,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 56.46355,
+          "incrementalDailySumPct": 1.952163
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.975509,
+          "cagrPct": 59.566186,
+          "sharpe": 2.246081,
+          "maxDrawdownPct": -17.308034,
+          "turnover": 47.997902,
+          "incrementalDailySumPct": -0.767164
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.078324,
+          "cagrPct": 37.334432,
+          "sharpe": 1.82091,
+          "maxDrawdownPct": -8.483035,
+          "turnover": 16.532937,
+          "incrementalDailySumPct": 0.586707
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 117.647278,
+          "cagrPct": 21.531922,
+          "sharpe": 1.061589,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 164.634945,
+          "incrementalDailySumPct": 3.785218
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 308.557929,
+          "cagrPct": 29.138845,
+          "sharpe": 1.35427,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 229.165785,
+          "incrementalDailySumPct": 3.604761
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0.163957,
+        "2022": 0.777667,
+        "2023": 0.89143,
+        "2024": 1.952163,
+        "2025": -0.767164,
+        "2026": 0.586707
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-11-scale-0.75-v1",
+      "thresholdPct": 11,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 8,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.406873,
+          "cagrPct": 19.292837,
+          "sharpe": 0.948599,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 109.274819,
+          "incrementalDailySumPct": 1.897951
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.825102,
+          "cagrPct": 27.825102,
+          "sharpe": 1.401405,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 57.746392,
+          "incrementalDailySumPct": 1.431098
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 59.830275,
+          "cagrPct": 60.431011,
+          "sharpe": 2.266063,
+          "maxDrawdownPct": -16.863423,
+          "turnover": 49.355091,
+          "incrementalDailySumPct": -0.219037
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 116.544508,
+          "cagrPct": 21.377224,
+          "sharpe": 1.052601,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 167.02121,
+          "incrementalDailySumPct": 3.329048
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 306.178597,
+          "cagrPct": 29.001877,
+          "sharpe": 1.34458,
+          "maxDrawdownPct": -27.363367,
+          "turnover": 233.393184,
+          "incrementalDailySumPct": 3.110012
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.033574,
+        "2022": 1.347057,
+        "2023": 0.584468,
+        "2024": 1.431098,
+        "2025": -0.219037,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12.5-scale-0.75-v1",
+      "thresholdPct": 12.5,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 5,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 70.142336,
+          "cagrPct": 19.465908,
+          "sharpe": 0.952544,
+          "maxDrawdownPct": -27.578467,
+          "turnover": 110.296255,
+          "incrementalDailySumPct": 2.383416
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.743838,
+          "cagrPct": 26.743838,
+          "sharpe": 1.345919,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 57.961924,
+          "incrementalDailySumPct": 0.612684
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 115.644926,
+          "cagrPct": 21.250593,
+          "sharpe": 1.043257,
+          "maxDrawdownPct": -27.578467,
+          "turnover": 168.258179,
+          "incrementalDailySumPct": 2.996101
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 305.374945,
+          "cagrPct": 28.955466,
+          "sharpe": 1.338711,
+          "maxDrawdownPct": -27.578467,
+          "turnover": 234.644659,
+          "incrementalDailySumPct": 2.996101
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 1.055921,
+        "2023": 1.327496,
+        "2024": 0.612684,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-15-scale-0.75-v1",
+      "thresholdPct": 15,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 4,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 70.522294,
+          "cagrPct": 19.555125,
+          "sharpe": 0.955474,
+          "maxDrawdownPct": -27.594458,
+          "turnover": 111.449499,
+          "incrementalDailySumPct": 2.61784
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.309376,
+          "cagrPct": 26.309376,
+          "sharpe": 1.32704,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 58.133385,
+          "incrementalDailySumPct": 0.27128
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 115.385646,
+          "cagrPct": 21.214021,
+          "sharpe": 1.041116,
+          "maxDrawdownPct": -27.594458,
+          "turnover": 169.582884,
+          "incrementalDailySumPct": 2.88912
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 304.887543,
+          "cagrPct": 28.927281,
+          "sharpe": 1.336999,
+          "maxDrawdownPct": -27.594458,
+          "turnover": 235.969363,
+          "incrementalDailySumPct": 2.88912
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 1.038735,
+        "2023": 1.579105,
+        "2024": 0.27128,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-5-scale-0.75-v1",
+      "thresholdPct": 5,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 15,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 67.432315,
+          "cagrPct": 18.825693,
+          "sharpe": 0.931935,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 107.206011,
+          "incrementalDailySumPct": 0.686887
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.514801,
+          "cagrPct": 28.514801,
+          "sharpe": 1.43639,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 56.46355,
+          "incrementalDailySumPct": 1.952163
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 58.564729,
+          "cagrPct": 59.150587,
+          "sharpe": 2.281344,
+          "maxDrawdownPct": -17.308034,
+          "turnover": 45.617876,
+          "incrementalDailySumPct": -1.132682
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 18.078324,
+          "cagrPct": 37.334432,
+          "sharpe": 1.82091,
+          "maxDrawdownPct": -8.483035,
+          "turnover": 16.532937,
+          "incrementalDailySumPct": 0.586707
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 115.175306,
+          "cagrPct": 21.184328,
+          "sharpe": 1.047632,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 163.669561,
+          "incrementalDailySumPct": 2.639049
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 302.873963,
+          "cagrPct": 28.81055,
+          "sharpe": 1.347281,
+          "maxDrawdownPct": -27.769949,
+          "turnover": 225.820374,
+          "incrementalDailySumPct": 2.093075
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.551527,
+        "2022": 0.777667,
+        "2023": 0.460747,
+        "2024": 1.952163,
+        "2025": -1.132682,
+        "2026": 0.586707
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-2.5-scale-0-v1",
+      "thresholdPct": 2.5,
+      "contradictedScale": 0,
+      "changedTargetCount": 162,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 65.912074,
+          "cagrPct": 18.463529,
+          "sharpe": 0.92496,
+          "maxDrawdownPct": -26.474201,
+          "turnover": 81.19637,
+          "incrementalDailySumPct": -0.366221
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 29.526489,
+          "cagrPct": 29.526489,
+          "sharpe": 1.520756,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 44.469767,
+          "incrementalDailySumPct": 2.63057
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 48.664722,
+          "cagrPct": 49.137064,
+          "sharpe": 2.025335,
+          "maxDrawdownPct": -19.264398,
+          "turnover": 28.181318,
+          "incrementalDailySumPct": -7.708633
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 15.15702,
+          "cagrPct": 30.920899,
+          "sharpe": 1.667641,
+          "maxDrawdownPct": -6.35635,
+          "turnover": 12.322003,
+          "incrementalDailySumPct": -2.040325
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 114.900084,
+          "cagrPct": 21.145443,
+          "sharpe": 1.058993,
+          "maxDrawdownPct": -26.474201,
+          "turnover": 125.666137,
+          "incrementalDailySumPct": 2.264349
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 267.904354,
+          "cagrPct": 26.702953,
+          "sharpe": 1.289922,
+          "maxDrawdownPct": -26.474201,
+          "turnover": 166.169458,
+          "incrementalDailySumPct": -7.484609
+        }
+      },
+      "incrementalByYear": {
+        "2021": -2.936872,
+        "2022": 0.744574,
+        "2023": 1.826076,
+        "2024": 2.63057,
+        "2025": -7.708633,
+        "2026": -2.040325
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-12-scale-0.75-v1",
+      "thresholdPct": 12,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 5,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.2813,
+          "cagrPct": 19.263237,
+          "sharpe": 0.946087,
+          "maxDrawdownPct": -27.578467,
+          "turnover": 110.28075,
+          "incrementalDailySumPct": 1.846719
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.420488,
+          "cagrPct": 26.420488,
+          "sharpe": 1.332774,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 57.93758,
+          "incrementalDailySumPct": 0.35589
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 114.006246,
+          "cagrPct": 21.018899,
+          "sharpe": 1.035421,
+          "maxDrawdownPct": -27.578467,
+          "turnover": 168.21833,
+          "incrementalDailySumPct": 2.202609
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 302.294512,
+          "cagrPct": 28.776869,
+          "sharpe": 1.333428,
+          "maxDrawdownPct": -27.578467,
+          "turnover": 234.60481,
+          "incrementalDailySumPct": 2.202609
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 1.055921,
+        "2023": 0.790798,
+        "2024": 0.35589,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-17.5-scale-0.75-v1",
+      "thresholdPct": 17.5,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 4,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 69.577932,
+          "cagrPct": 19.333136,
+          "sharpe": 0.945339,
+          "maxDrawdownPct": -27.172999,
+          "turnover": 112.359797,
+          "incrementalDailySumPct": 2.085257
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.778769,
+          "cagrPct": 25.778769,
+          "sharpe": 1.304311,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 58.476509,
+          "incrementalDailySumPct": -0.148483
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 113.293035,
+          "cagrPct": 20.917643,
+          "sharpe": 1.027962,
+          "maxDrawdownPct": -27.172999,
+          "turnover": 170.836306,
+          "incrementalDailySumPct": 1.936774
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 300.9538,
+          "cagrPct": 28.698788,
+          "sharpe": 1.327186,
+          "maxDrawdownPct": -27.172999,
+          "turnover": 237.222786,
+          "incrementalDailySumPct": 1.936774
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 1.615928,
+        "2023": 0.469328,
+        "2024": -0.148483,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-2.5-scale-0.25-v1",
+      "thresholdPct": 2.5,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 155,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.176107,
+          "cagrPct": 18.526587,
+          "sharpe": 0.9312,
+          "maxDrawdownPct": -26.904644,
+          "turnover": 89.158546,
+          "incrementalDailySumPct": -0.269898
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.704929,
+          "cagrPct": 28.704929,
+          "sharpe": 1.497099,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 48.313861,
+          "incrementalDailySumPct": 1.965196
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 51.612236,
+          "cagrPct": 52.117832,
+          "sharpe": 2.133794,
+          "maxDrawdownPct": -18.601363,
+          "turnover": 33.290185,
+          "incrementalDailySumPct": -5.771395
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 15.724678,
+          "cagrPct": 32.155719,
+          "sharpe": 1.708866,
+          "maxDrawdownPct": -6.606782,
+          "turnover": 13.417916,
+          "incrementalDailySumPct": -1.534534
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 113.876841,
+          "cagrPct": 21.000546,
+          "sharpe": 1.057994,
+          "maxDrawdownPct": -26.904644,
+          "turnover": 137.472407,
+          "incrementalDailySumPct": 1.695299
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 275.252845,
+          "cagrPct": 27.159045,
+          "sharpe": 1.313468,
+          "maxDrawdownPct": -26.904644,
+          "turnover": 184.180508,
+          "incrementalDailySumPct": -5.61063
+        }
+      },
+      "incrementalByYear": {
+        "2021": -2.210071,
+        "2022": 0.571196,
+        "2023": 1.368978,
+        "2024": 1.965196,
+        "2025": -5.771395,
+        "2026": -1.534534
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-2.5-scale-0.5-v1",
+      "thresholdPct": 2.5,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 151,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.307465,
+          "cagrPct": 18.557934,
+          "sharpe": 0.931003,
+          "maxDrawdownPct": -27.36547,
+          "turnover": 97.235555,
+          "incrementalDailySumPct": -0.164574
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.82876,
+          "cagrPct": 27.82876,
+          "sharpe": 1.449111,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 52.204936,
+          "incrementalDailySumPct": 1.306173
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 54.526846,
+          "cagrPct": 55.065781,
+          "sharpe": 2.212583,
+          "maxDrawdownPct": -17.947823,
+          "turnover": 38.649096,
+          "incrementalDailySumPct": -3.834075
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.284277,
+          "cagrPct": 33.378411,
+          "sharpe": 1.733035,
+          "maxDrawdownPct": -7.518332,
+          "turnover": 14.531608,
+          "incrementalDailySumPct": -1.02283
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 112.58877,
+          "cagrPct": 20.817408,
+          "sharpe": 1.047655,
+          "maxDrawdownPct": -27.36547,
+          "turnover": 149.440491,
+          "incrementalDailySumPct": 1.141598
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 282.001665,
+          "cagrPct": 27.571524,
+          "sharpe": 1.324027,
+          "maxDrawdownPct": -27.36547,
+          "turnover": 202.621195,
+          "incrementalDailySumPct": -3.715307
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.459528,
+        "2022": 0.38281,
+        "2023": 0.912144,
+        "2024": 1.306173,
+        "2025": -3.834075,
+        "2026": -1.02283
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-2.5-scale-0.75-v1",
+      "thresholdPct": 2.5,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 19,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.268253,
+          "cagrPct": 18.548578,
+          "sharpe": 0.924109,
+          "maxDrawdownPct": -27.842779,
+          "turnover": 105.665011,
+          "incrementalDailySumPct": -0.073099
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.891758,
+          "cagrPct": 26.891758,
+          "sharpe": 1.379925,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 56.205068,
+          "incrementalDailySumPct": 0.647427
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.389071,
+          "cagrPct": 57.96118,
+          "sharpe": 2.259472,
+          "maxDrawdownPct": -17.308034,
+          "turnover": 43.977389,
+          "incrementalDailySumPct": -1.907086
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.827841,
+          "cagrPct": 34.5712,
+          "sharpe": 1.740564,
+          "maxDrawdownPct": -8.453397,
+          "turnover": 15.723064,
+          "incrementalDailySumPct": -0.51199
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 110.980709,
+          "cagrPct": 20.587602,
+          "sharpe": 1.028105,
+          "maxDrawdownPct": -27.842779,
+          "turnover": 161.870079,
+          "incrementalDailySumPct": 0.574329
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 287.939205,
+          "cagrPct": 27.929517,
+          "sharpe": 1.321328,
+          "maxDrawdownPct": -27.842779,
+          "turnover": 221.570532,
+          "incrementalDailySumPct": -1.844747
+        }
+      },
+      "incrementalByYear": {
+        "2021": -0.724479,
+        "2022": 0.190633,
+        "2023": 0.460747,
+        "2024": 0.647427,
+        "2025": -1.907086,
+        "2026": -0.51199
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-22.5-scale-0.75-v1",
+      "thresholdPct": 22.5,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 0,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.201197,
+          "cagrPct": 18.532576,
+          "sharpe": 0.912634,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 114.203919,
+          "incrementalDailySumPct": 0.085537
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.301853,
+          "cagrPct": 25.301853,
+          "sharpe": 1.283762,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 58.82079,
+          "incrementalDailySumPct": -0.52708
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 108.25318,
+          "cagrPct": 20.194796,
+          "sharpe": 0.998042,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 173.024708,
+          "incrementalDailySumPct": -0.441543
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 291.479749,
+          "cagrPct": 28.140859,
+          "sharpe": 1.305369,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 239.411188,
+          "incrementalDailySumPct": -0.441543
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0.085537,
+        "2024": -0.52708,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-25-scale-0.75-v1",
+      "thresholdPct": 25,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 0,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.050551,
+          "cagrPct": 18.496609,
+          "sharpe": 0.910917,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 114.4114,
+          "incrementalDailySumPct": 0
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.301853,
+          "cagrPct": 25.301853,
+          "sharpe": 1.283762,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 58.82079,
+          "incrementalDailySumPct": -0.52708
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 108.064418,
+          "cagrPct": 20.167469,
+          "sharpe": 0.99669,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 173.232189,
+          "incrementalDailySumPct": -0.52708
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 291.124908,
+          "cagrPct": 28.119749,
+          "sharpe": 1.304324,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 239.618669,
+          "incrementalDailySumPct": -0.52708
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0,
+        "2024": -0.52708,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-0-scale-0.75-v1",
+      "thresholdPct": 0,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 26,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 64.317725,
+          "cagrPct": 18.08133,
+          "sharpe": 0.906701,
+          "maxDrawdownPct": -27.842779,
+          "turnover": 104.775957,
+          "incrementalDailySumPct": -1.28353
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 26.891758,
+          "cagrPct": 26.891758,
+          "sharpe": 1.379925,
+          "maxDrawdownPct": -10.480519,
+          "turnover": 56.205068,
+          "incrementalDailySumPct": 0.647427
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 57.648153,
+          "cagrPct": 58.223285,
+          "sharpe": 2.269118,
+          "maxDrawdownPct": -17.308034,
+          "turnover": 43.655699,
+          "incrementalDailySumPct": -1.74622
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 16.427645,
+          "cagrPct": 33.692525,
+          "sharpe": 1.730854,
+          "maxDrawdownPct": -8.730039,
+          "turnover": 14.854206,
+          "incrementalDailySumPct": -0.8844
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 108.50565,
+          "cagrPct": 20.231317,
+          "sharpe": 1.014946,
+          "maxDrawdownPct": -27.842779,
+          "turnover": 160.981025,
+          "incrementalDailySumPct": -0.636103
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 282.703848,
+          "cagrPct": 27.614098,
+          "sharpe": 1.312177,
+          "maxDrawdownPct": -27.842779,
+          "turnover": 219.49093,
+          "incrementalDailySumPct": -3.266723
+        }
+      },
+      "incrementalByYear": {
+        "2021": -1.014877,
+        "2022": 0.190633,
+        "2023": -0.459286,
+        "2024": 0.647427,
+        "2025": -1.74622,
+        "2026": -0.8844
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-22.5-scale-0.5-v1",
+      "thresholdPct": 22.5,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 15,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.351542,
+          "cagrPct": 18.568449,
+          "sharpe": 0.914308,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 113.995783,
+          "incrementalDailySumPct": 0.171579
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 24.685371,
+          "cagrPct": 24.685371,
+          "sharpe": 1.267154,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 57.433015,
+          "incrementalDailySumPct": -1.051744
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 107.416037,
+          "cagrPct": 20.073462,
+          "sharpe": 0.9948,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 171.428799,
+          "incrementalDailySumPct": -0.880165
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 289.906065,
+          "cagrPct": 28.047117,
+          "sharpe": 1.303486,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 237.815279,
+          "incrementalDailySumPct": -0.880165
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0.171579,
+        "2024": -1.051744,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-20-scale-0.75-v1",
+      "thresholdPct": 20,
+      "contradictedScale": 0.75,
+      "changedTargetCount": 0,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 65.347826,
+          "cagrPct": 18.328548,
+          "sharpe": 0.904794,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 113.856929,
+          "incrementalDailySumPct": -0.436046
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 25.301853,
+          "cagrPct": 25.301853,
+          "sharpe": 1.283762,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 58.82079,
+          "incrementalDailySumPct": -0.52708
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 107.18389,
+          "cagrPct": 20.03975,
+          "sharpe": 0.992062,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 172.677719,
+          "incrementalDailySumPct": -0.963126
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 289.469669,
+          "cagrPct": 28.021066,
+          "sharpe": 1.30113,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 239.064199,
+          "incrementalDailySumPct": -0.963126
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": -0.436046,
+        "2024": -0.52708,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-25-scale-0.5-v1",
+      "thresholdPct": 25,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 13,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.050551,
+          "cagrPct": 18.496609,
+          "sharpe": 0.910917,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 114.4114,
+          "incrementalDailySumPct": 0
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 24.685371,
+          "cagrPct": 24.685371,
+          "sharpe": 1.267154,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 57.433015,
+          "incrementalDailySumPct": -1.051744
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 107.040745,
+          "cagrPct": 20.018949,
+          "sharpe": 0.99213,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 171.844415,
+          "incrementalDailySumPct": -1.051744
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 289.200582,
+          "cagrPct": 28.004991,
+          "sharpe": 1.301432,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 238.230895,
+          "incrementalDailySumPct": -1.051744
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0,
+        "2024": -1.051744,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-0-scale-0.5-v1",
+      "thresholdPct": 0,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 164,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 62.385367,
+          "cagrPct": 17.614782,
+          "sharpe": 0.89476,
+          "maxDrawdownPct": -27.36547,
+          "turnover": 95.482386,
+          "incrementalDailySumPct": -2.600135
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 27.82876,
+          "cagrPct": 27.82876,
+          "sharpe": 1.449111,
+          "maxDrawdownPct": -9.496828,
+          "turnover": 52.204936,
+          "incrementalDailySumPct": 1.306173
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 55.034975,
+          "cagrPct": 55.579769,
+          "sharpe": 2.231611,
+          "maxDrawdownPct": -17.947823,
+          "turnover": 38.006296,
+          "incrementalDailySumPct": -3.511678
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 15.478732,
+          "cagrPct": 31.620037,
+          "sharpe": 1.707964,
+          "maxDrawdownPct": -8.084136,
+          "turnover": 12.809439,
+          "incrementalDailySumPct": -1.770883
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 107.575201,
+          "cagrPct": 20.096559,
+          "sharpe": 1.020125,
+          "maxDrawdownPct": -27.36547,
+          "turnover": 147.687322,
+          "incrementalDailySumPct": -1.293963
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 271.626912,
+          "cagrPct": 26.93492,
+          "sharpe": 1.304223,
+          "maxDrawdownPct": -27.36547,
+          "turnover": 198.503058,
+          "incrementalDailySumPct": -6.576523
+        }
+      },
+      "incrementalByYear": {
+        "2021": -2.048264,
+        "2022": 0.38281,
+        "2023": -0.934682,
+        "2024": 1.306173,
+        "2025": -3.511678,
+        "2026": -1.770883
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-22.5-scale-0.25-v1",
+      "thresholdPct": 22.5,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 15,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.501585,
+          "cagrPct": 18.604228,
+          "sharpe": 0.915938,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 113.786997,
+          "incrementalDailySumPct": 0.258123
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 24.04897,
+          "cagrPct": 24.04897,
+          "sharpe": 1.245526,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 56.161775,
+          "incrementalDailySumPct": -1.582499
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 106.5435,
+          "cagrPct": 19.946607,
+          "sharpe": 0.990691,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 169.948772,
+          "incrementalDailySumPct": -1.324376
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 288.265847,
+          "cagrPct": 27.949081,
+          "sharpe": 1.300808,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 236.335252,
+          "incrementalDailySumPct": -1.324376
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0.258123,
+        "2024": -1.582499,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-25-scale-0.25-v1",
+      "thresholdPct": 25,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 13,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.050551,
+          "cagrPct": 18.496609,
+          "sharpe": 0.910917,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 114.4114,
+          "incrementalDailySumPct": 0
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 24.04897,
+          "cagrPct": 24.04897,
+          "sharpe": 1.245526,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 56.161775,
+          "incrementalDailySumPct": -1.582499
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 105.983997,
+          "cagrPct": 19.865051,
+          "sharpe": 0.986743,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 170.573175,
+          "incrementalDailySumPct": -1.582499
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 287.21408,
+          "cagrPct": 27.886038,
+          "sharpe": 1.297783,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 236.959655,
+          "incrementalDailySumPct": -1.582499
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0,
+        "2024": -1.582499,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-22.5-scale-0-v1",
+      "thresholdPct": 22.5,
+      "contradictedScale": 0,
+      "changedTargetCount": 15,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.653094,
+          "cagrPct": 18.640336,
+          "sharpe": 0.917541,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 113.583682,
+          "incrementalDailySumPct": 0.346223
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 23.417926,
+          "cagrPct": 23.417926,
+          "sharpe": 1.219948,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 54.924049,
+          "incrementalDailySumPct": -2.098773
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 105.679792,
+          "cagrPct": 19.820639,
+          "sharpe": 0.985965,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 168.507731,
+          "incrementalDailySumPct": -1.752551
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 286.642226,
+          "cagrPct": 27.851703,
+          "sharpe": 1.297509,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 234.894211,
+          "incrementalDailySumPct": -1.752551
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0.346223,
+        "2024": -2.098773,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-20-scale-0.5-v1",
+      "thresholdPct": 20,
+      "contradictedScale": 0.5,
+      "changedTargetCount": 17,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 64.626293,
+          "cagrPct": 18.155493,
+          "sharpe": 0.898275,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 113.335799,
+          "incrementalDailySumPct": -0.882035
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 24.685371,
+          "cagrPct": 24.685371,
+          "sharpe": 1.267154,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 57.433015,
+          "incrementalDailySumPct": -1.051744
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 105.264904,
+          "cagrPct": 19.759989,
+          "sharpe": 0.982529,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 170.768814,
+          "incrementalDailySumPct": -1.933779
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 285.862309,
+          "cagrPct": 27.804808,
+          "sharpe": 1.294757,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 237.155294,
+          "incrementalDailySumPct": -1.933779
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": -0.882035,
+        "2024": -1.051744,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-0-scale-0.25-v1",
+      "thresholdPct": 0,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 171,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 60.290409,
+          "cagrPct": 17.104783,
+          "sharpe": 0.875215,
+          "maxDrawdownPct": -26.904644,
+          "turnover": 86.541358,
+          "incrementalDailySumPct": -3.931436
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 28.704929,
+          "cagrPct": 28.704929,
+          "sharpe": 1.497099,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 48.313861,
+          "incrementalDailySumPct": 1.965196
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 52.359154,
+          "cagrPct": 52.873251,
+          "sharpe": 2.161415,
+          "maxDrawdownPct": -18.601363,
+          "turnover": 32.32685,
+          "incrementalDailySumPct": -5.2868
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 14.505258,
+          "cagrPct": 29.509936,
+          "sharpe": 1.660002,
+          "maxDrawdownPct": -7.47672,
+          "turnover": 10.838301,
+          "incrementalDailySumPct": -2.664705
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 106.301658,
+          "cagrPct": 19.911375,
+          "sharpe": 1.015276,
+          "maxDrawdownPct": -26.904644,
+          "turnover": 134.855219,
+          "incrementalDailySumPct": -1.96624
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 259.912309,
+          "cagrPct": 26.198375,
+          "sharpe": 1.281641,
+          "maxDrawdownPct": -26.904644,
+          "turnover": 178.02037,
+          "incrementalDailySumPct": -9.917746
+        }
+      },
+      "incrementalByYear": {
+        "2021": -3.104436,
+        "2022": 0.571196,
+        "2023": -1.398196,
+        "2024": 1.965196,
+        "2025": -5.2868,
+        "2026": -2.664705
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-25-scale-0-v1",
+      "thresholdPct": 25,
+      "contradictedScale": 0,
+      "changedTargetCount": 13,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 66.050551,
+          "cagrPct": 18.496609,
+          "sharpe": 0.910917,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 114.4114,
+          "incrementalDailySumPct": 0
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 23.417926,
+          "cagrPct": 23.417926,
+          "sharpe": 1.219948,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 54.924049,
+          "incrementalDailySumPct": -2.098773
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 104.936146,
+          "cagrPct": 19.711864,
+          "sharpe": 0.980769,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 169.335449,
+          "incrementalDailySumPct": -2.098773
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 285.244301,
+          "cagrPct": 27.767593,
+          "sharpe": 1.293543,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 235.721929,
+          "incrementalDailySumPct": -2.098773
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": 0,
+        "2024": -2.098773,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-0-scale-0-v1",
+      "thresholdPct": 0,
+      "contradictedScale": 0,
+      "changedTargetCount": 179,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 58.065429,
+          "cagrPct": 16.558252,
+          "sharpe": 0.848678,
+          "maxDrawdownPct": -26.474201,
+          "turnover": 77.725377,
+          "incrementalDailySumPct": -5.260934
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 29.526489,
+          "cagrPct": 29.526489,
+          "sharpe": 1.520756,
+          "maxDrawdownPct": -9.08462,
+          "turnover": 44.469767,
+          "incrementalDailySumPct": 2.63057
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 49.637651,
+          "cagrPct": 50.120917,
+          "sharpe": 2.060306,
+          "maxDrawdownPct": -19.264398,
+          "turnover": 26.898493,
+          "incrementalDailySumPct": -7.062801
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 13.52375,
+          "cagrPct": 27.39887,
+          "sharpe": 1.585896,
+          "maxDrawdownPct": -7.53253,
+          "turnover": 8.881583,
+          "incrementalDailySumPct": -3.551901
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 104.7366,
+          "cagrPct": 19.682625,
+          "sharpe": 1.000585,
+          "maxDrawdownPct": -26.474201,
+          "turnover": 122.195144,
+          "incrementalDailySumPct": -2.630364
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 247.794811,
+          "cagrPct": 25.41556,
+          "sharpe": 1.244992,
+          "maxDrawdownPct": -26.474201,
+          "turnover": 157.975221,
+          "incrementalDailySumPct": -13.245067
+        }
+      },
+      "incrementalByYear": {
+        "2021": -4.144283,
+        "2022": 0.744574,
+        "2023": -1.861225,
+        "2024": 2.63057,
+        "2025": -7.062801,
+        "2026": -3.551901
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-20-scale-0.25-v1",
+      "thresholdPct": 20,
+      "contradictedScale": 0.25,
+      "changedTargetCount": 17,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 63.929516,
+          "cagrPct": 17.987895,
+          "sharpe": 0.891769,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 112.954215,
+          "incrementalDailySumPct": -1.311248
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 24.04897,
+          "cagrPct": 24.04897,
+          "sharpe": 1.245526,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 56.161775,
+          "incrementalDailySumPct": -1.582499
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 103.352875,
+          "cagrPct": 19.479286,
+          "sharpe": 0.972145,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 169.11599,
+          "incrementalDailySumPct": -2.893747
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 282.268028,
+          "cagrPct": 27.587681,
+          "sharpe": 1.287565,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 235.50247,
+          "incrementalDailySumPct": -2.893747
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": -1.311248,
+        "2024": -1.582499,
+        "2025": 0,
+        "2026": 0
+      }
+    },
+    {
+      "candidateId": "storage-contradiction-veto-threshold-20-scale-0-v1",
+      "thresholdPct": 20,
+      "contradictedScale": 0,
+      "changedTargetCount": 17,
+      "periods": {
+        "development2021To2023": {
+          "sessions": 753,
+          "totalReturnPct": 63.237208,
+          "cagrPct": 17.820903,
+          "sharpe": 0.885102,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 112.576983,
+          "incrementalDailySumPct": -1.736198
+        },
+        "selectionAndTuning2024": {
+          "sessions": 252,
+          "totalReturnPct": 23.417926,
+          "cagrPct": 23.417926,
+          "sharpe": 1.219948,
+          "maxDrawdownPct": -11.46421,
+          "turnover": 54.924049,
+          "incrementalDailySumPct": -2.098773
+        },
+        "reportOnly2025": {
+          "sessions": 250,
+          "totalReturnPct": 60.179467,
+          "cagrPct": 60.784322,
+          "sharpe": 2.275956,
+          "maxDrawdownPct": -16.681789,
+          "turnover": 49.369597,
+          "incrementalDailySumPct": 0
+        },
+        "reportOnly2026": {
+          "sessions": 132,
+          "totalReturnPct": 17.357491,
+          "cagrPct": 35.738318,
+          "sharpe": 1.733889,
+          "maxDrawdownPct": -9.38314,
+          "turnover": 17.016883,
+          "incrementalDailySumPct": 0
+        },
+        "selectionPrefix": {
+          "sessions": 1005,
+          "totalReturnPct": 101.463976,
+          "cagrPct": 19.20003,
+          "sharpe": 0.961029,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 167.501032,
+          "incrementalDailySumPct": -3.834971
+        },
+        "full": {
+          "sessions": 1387,
+          "totalReturnPct": 278.717227,
+          "cagrPct": 27.371535,
+          "sharpe": 1.279635,
+          "maxDrawdownPct": -28.339707,
+          "turnover": 233.887512,
+          "incrementalDailySumPct": -3.834971
+        }
+      },
+      "incrementalByYear": {
+        "2021": 0,
+        "2022": 0,
+        "2023": -1.736198,
+        "2024": -2.098773,
+        "2025": 0,
+        "2026": 0
+      }
+    }
+  ],
+  "evaluationDigestSha256": "f133712be24db75533eb9e36f162ae8d21273fc9c0c01d89e8c3525bba1c7fb8"
+}

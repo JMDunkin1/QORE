@@ -63,6 +63,16 @@ node scripts/test-qore-gefs-v12-reforecast.mjs
 
 The separate local manifest binds the feature, rule, one-candidate registry, reference strategy/artifact core, collector/settlement/evaluator implementations, research execution contract, selected reference ledgers, and every retained normal payload. The append-only writer records before 09:30 New York time, forbids target-day/provisional market bars and backfills, and reproduces valid features and decisions from retained raw atoms before accepting a record. Before each new target, it settles the preceding reviewed target with payload-bound adjusted `UNG`/`VOO`/`QQQM` OHLC; the evaluator replays the complete contiguous prefix against a persistent matched index fallback under all three frozen cost scenarios. The seal still lacks an external chronology anchor, so results remain non-pristine local research. See `docs/spatial-demand-revision-shadow.md` for the exact contract and commands.
 
+### Price-exhaustion and storage-contradiction shadows
+
+The price-exhaustion and storage-contradiction studies are separately sealed, historical research shadows bound to the legacy active all-year ledger. Price exhaustion tests whether a same-direction five-session `UNG` move greater than one normalized volatility unit should suppress gas exposure; storage contradiction tests whether a selected gas direction conflicts with a causally available EIA storage deviation greater than 10%. Both return released exposure to the index basket, include the full frozen sensitivity families and cost scenarios, and are explicitly ineligible for execution, promotion, live inference, broker handoffs, dashboard telemetry, and the public strategy.
+
+Their historical improvements remain development-contaminated and fail important robustness checks: both lose incremental return in 2025, the storage result is concentrated in only 13 independent episodes, and the price rule fails its one-session-lag negative control. The versioned audits therefore retain the active legacy strategy and require a separately reviewed contract plus genuinely prospective evidence before either idea can be reconsidered.
+
+### Overnight return decomposition
+
+The overnight decomposition separates each legacy all-year session into close-to-next-open and open-to-close contributions, reconciles both legs to the selected-trades ledger, attributes them between `UNG` and the index basket, and compares fixed overnight-retention levels with the deployed `carry-100` policy. On the legacy baseline, reducing overnight exposure monotonically lowers full-period CAGR after the modeled extra turnover and costs; the selected adaptive challenger also fails all frozen holdout Sharpe, drawdown, and CAGR gates. This is reporting-only research and does not change the deployed policy.
+
 ## Validation integrity seal
 
 `config/qore-validation-integrity.json` is the reviewed, versioned anti-overfit boundary. It records that all evidence from 2021 through the currently observed 2026 data is development-contaminated: strategy development began on 2026-06-11, data was observed through 2026-07-14, and untouched prospective collection starts on 2026-07-23. Historical train, validation, and holdout labels remain useful for reproducible diagnostics, but none is claimed as pristine out-of-sample evidence.

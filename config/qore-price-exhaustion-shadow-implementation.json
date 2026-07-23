@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "ngas-all-year-price-exhaustion-shadow-implementation-v1",
+  "purpose": "Bind every checked-in implementation and input that produces the versioned price-exhaustion shadow metrics.",
+  "files": [
+    {
+      "path": "scripts/evaluate-qore-price-exhaustion-shadow.mjs",
+      "digestMode": "sha256",
+      "digestSha256": "93697022db979a14372f052da740511b30e77c63e86294862fbc47a1e2842098"
+    },
+    {
+      "path": "scripts/lib/qore-price-exhaustion-shadow.mjs",
+      "digestMode": "price-exhaustion-shadow-source-projection-v1",
+      "digestSha256": "7dc467936047b6bd7e6fefa60c455d0407d986d84a1026ccef836de0171055f7"
+    },
+    {
+      "path": "scripts/lib/qore-research-execution.mjs",
+      "digestMode": "sha256",
+      "digestSha256": "403474428891a2444e5edd59fc8d9569b4bc629b272c367b311b3b0c281235c7"
+    },
+    {
+      "path": "scripts/lib/qore-rebalance-deadband.mjs",
+      "digestMode": "sha256",
+      "digestSha256": "5638cdd9f45e6225ae6b027fa815212d1bb1ab72e6d4b0b914b8b34e64986eb6"
+    },
+    {
+      "path": "package.json",
+      "digestMode": "sha256",
+      "digestSha256": "ce63bee4d25a40fed7397ce89b4785c95159d5b3b778b3d09a503c64da3756bc"
+    },
+    {
+      "path": "package-lock.json",
+      "digestMode": "sha256",
+      "digestSha256": "c6d59cea55c6d9d3599ff63592255db9ced4653cff34d12eb02a47bbba27950e"
+    },
+    {
+      "path": "config/qore-research-execution.json",
+      "digestMode": "sha256",
+      "digestSha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d"
+    },
+    {
+      "path": "data/qore/market/index-basket-config.json",
+      "digestMode": "sha256",
+      "digestSha256": "7119fbd61803add8a7bb2773e0fe28b5cda11ae294b1efed7937c600869553cc"
+    },
+    {
+      "path": "data/qore/market/yahoo/UNG-daily.csv",
+      "digestMode": "sha256",
+      "digestSha256": "780fc8edcf1e3d15444028f8febfe2ecb64c8693f8e63d135787aa4172b3b064"
+    },
+    {
+      "path": "data/qore/market/yahoo/VOO-daily.csv",
+      "digestMode": "sha256",
+      "digestSha256": "6ae956abeb1c71c51f6bfc98fbb39c4469eb8070674c660c999cb79c0c58381a"
+    },
+    {
+      "path": "data/qore/market/yahoo/QQQM-daily.csv",
+      "digestMode": "sha256",
+      "digestSha256": "f4995f0bce53c5b4023d287296e37895af4e3ba2806293e8645add7e953ecebf"
+    },
+    {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+      "digestMode": "sha256",
+      "digestSha256": "ff39c0755c4777550113419e32a000e41a625612b30cedefa6103f2f8c2f04ea"
+    },
+    {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json",
+      "digestMode": "sha256",
+      "digestSha256": "c1542dd264c8e3e342d4a63d5e4973864ac1e4bb0bf4109fd22bb2fdf4d1d7b8"
+    }
+  ]
+}

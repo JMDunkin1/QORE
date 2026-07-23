@@ -1,0 +1,887 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "deterministic-from-versioned-inputs",
+  "strategyId": "ngas-all-year-beta",
+  "researchOnly": true,
+  "sessionCount": 1387,
+  "startDate": "2021-01-04",
+  "endDate": "2026-07-14",
+  "splitContract": {
+    "trainStartDate": "2021-01-01",
+    "trainEndDate": "2023-12-31",
+    "validationStartDate": "2024-01-01",
+    "validationEndDate": "2024-12-31",
+    "holdoutStartDate": "2025-01-01"
+  },
+  "executionInterpretation": {
+    "closeToOpen": "priorCloseReturnContributionPct: prior-close holdings earn the overnight move and accrue borrow cost.",
+    "openToClose": "currentSessionReturnContributionPct: current-open holdings earn the intraday move, including the overnight/intraday interaction and open trading costs.",
+    "additiveIdentity": "closeToOpenNetContributionPct + openToCloseNetContributionPct = additiveNetReturnPct before the selected-trades four-decimal display rounding.",
+    "priceConvention": "Yahoo daily split-and-distribution-adjusted open and close",
+    "auctionExecutionEvidence": false
+  },
+  "inputBindings": {
+    "selectedTrades": {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/selected-trades.csv",
+      "sha256": "ff39c0755c4777550113419e32a000e41a625612b30cedefa6103f2f8c2f04ea"
+    },
+    "overnightRiskSummary": {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-summary.json",
+      "sha256": "37ed642f2feed6aa8e486a28017b00ceccbea0cc2ed0b027ff8b2ba6f18833cc"
+    },
+    "overnightRiskCandidateSummary": {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-risk-candidate-summary.csv",
+      "sha256": "6253c795ea79a2158a8b21593b54fa3690584842aeb9ddc84c0ad2a7cc2560e8"
+    },
+    "allYearRunSummary": {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/run-summary.json",
+      "sha256": "c1542dd264c8e3e342d4a63d5e4973864ac1e4bb0bf4109fd22bb2fdf4d1d7b8"
+    },
+    "overnightRiskPolicyConfig": {
+      "path": "config/qore-overnight-risk-policy.json",
+      "sha256": "6ba02387ce9ff2eaada0dfbcf429e426b0310eee71d5d82fddeb7a1bc06c72f0"
+    },
+    "researchExecutionConfig": {
+      "path": "config/qore-research-execution.json",
+      "sha256": "c18dea27526796dd6ad06ecffaa5cb1a32ac34fc587bc0cf79e0a007626e106d"
+    },
+    "marketData": {
+      "UNG": {
+        "path": "data/qore/market/yahoo/UNG-daily.csv",
+        "sha256": "780fc8edcf1e3d15444028f8febfe2ecb64c8693f8e63d135787aa4172b3b064"
+      },
+      "VOO": {
+        "path": "data/qore/market/yahoo/VOO-daily.csv",
+        "sha256": "6ae956abeb1c71c51f6bfc98fbb39c4469eb8070674c660c999cb79c0c58381a"
+      },
+      "QQQM": {
+        "path": "data/qore/market/yahoo/QQQM-daily.csv",
+        "sha256": "f4995f0bce53c5b4023d287296e37895af4e3ba2806293e8645add7e953ecebf"
+      }
+    },
+    "generator": {
+      "path": "scripts/summarize-qore-overnight-return-decomposition.mjs",
+      "sha256": "9671822455613be24677ec15e5d5fd6a6f20a6e3a373be13a46f77bc5e46e60e"
+    }
+  },
+  "reconciliation": {
+    "maxAbsoluteReportedNetResidualPct": 0.00004997,
+    "maxAbsoluteReportedGrossResidualPct": 0.00004997,
+    "maxAbsoluteCloseToOpenLegResidualPct": 0,
+    "maxAbsoluteOpenToCloseLegResidualPct": 2e-8
+  },
+  "aggregates": {
+    "byRiskSplit": {
+      "train": {
+        "sessions": 753,
+        "startDate": "2021-01-04",
+        "endDate": "2023-12-29",
+        "ledgerNet": {
+          "closeToOpenContributionPct": 20.88506239,
+          "openToCloseContributionPct": 36.47726011,
+          "additiveContributionPct": 57.3623225
+        },
+        "grossPortfolio": {
+          "closeToOpenContributionPct": 20.88506239,
+          "openToCloseContributionPctOnOpenEquity": 38.92125094,
+          "openToCloseInteractionContributionPct": 0.02875468,
+          "openToCloseContributionPctOnPriorCloseEquity": 38.95000562
+        },
+        "grossUng": {
+          "closeToOpenContributionPct": 7.81705034,
+          "openToCloseContributionPctOnOpenEquity": 19.74821349,
+          "openToCloseInteractionContributionPct": -0.0793989,
+          "openToCloseContributionPctOnPriorCloseEquity": 19.6688147
+        },
+        "netUng": {
+          "closeToOpenContributionPct": 7.81705034,
+          "openToCloseContributionPct": 17.73533296,
+          "additiveContributionPct": 25.55238324
+        },
+        "netIndex": {
+          "closeToOpenContributionPct": 13.06801205,
+          "openToCloseContributionPct": 18.74192732,
+          "additiveContributionPct": 31.80993943
+        },
+        "activeOverlay": {
+          "priorCloseSessions": 199,
+          "currentSessionSessions": 199,
+          "eitherSessionCount": 267,
+          "priorCloseLongSessions": 127,
+          "priorCloseShortSessions": 72,
+          "currentSessionLongSessions": 127,
+          "currentSessionShortSessions": 72,
+          "meanAbsoluteUngOvernightReturnPct": 2.33954228
+        },
+        "costs": {
+          "openTradingCostPct": 2.47274537,
+          "gasTradingCostPct": 1.93348174,
+          "indexTradingCostPct": 0.53926363,
+          "borrowCostPct": 0
+        }
+      },
+      "validation": {
+        "sessions": 252,
+        "startDate": "2024-01-02",
+        "endDate": "2024-12-31",
+        "ledgerNet": {
+          "closeToOpenContributionPct": 18.00745269,
+          "openToCloseContributionPct": 6.8768137,
+          "additiveContributionPct": 24.88426639
+        },
+        "grossPortfolio": {
+          "closeToOpenContributionPct": 18.00745269,
+          "openToCloseContributionPctOnOpenEquity": 8.1203399,
+          "openToCloseInteractionContributionPct": 0.06708828,
+          "openToCloseContributionPctOnPriorCloseEquity": 8.18742818
+        },
+        "grossUng": {
+          "closeToOpenContributionPct": -3.24893943,
+          "openToCloseContributionPctOnOpenEquity": 10.08850621,
+          "openToCloseInteractionContributionPct": 0.03025198,
+          "openToCloseContributionPctOnPriorCloseEquity": 10.11875822
+        },
+        "netUng": {
+          "closeToOpenContributionPct": -3.24893943,
+          "openToCloseContributionPct": 9.08822699,
+          "additiveContributionPct": 5.83928752
+        },
+        "netIndex": {
+          "closeToOpenContributionPct": 21.25639212,
+          "openToCloseContributionPct": -2.21141324,
+          "additiveContributionPct": 19.04497881
+        },
+        "activeOverlay": {
+          "priorCloseSessions": 84,
+          "currentSessionSessions": 85,
+          "eitherSessionCount": 118,
+          "priorCloseLongSessions": 37,
+          "priorCloseShortSessions": 47,
+          "currentSessionLongSessions": 37,
+          "currentSessionShortSessions": 48,
+          "meanAbsoluteUngOvernightReturnPct": 2.24954956
+        },
+        "costs": {
+          "openTradingCostPct": 1.31061446,
+          "gasTradingCostPct": 1.03053123,
+          "indexTradingCostPct": 0.28008323,
+          "borrowCostPct": 0
+        }
+      },
+      "holdout": {
+        "sessions": 382,
+        "startDate": "2025-01-02",
+        "endDate": "2026-07-14",
+        "ledgerNet": {
+          "closeToOpenContributionPct": 40.32475289,
+          "openToCloseContributionPct": 26.10323601,
+          "additiveContributionPct": 66.4279889
+        },
+        "grossPortfolio": {
+          "closeToOpenContributionPct": 40.32475289,
+          "openToCloseContributionPctOnOpenEquity": 27.84419271,
+          "openToCloseInteractionContributionPct": -0.29312966,
+          "openToCloseContributionPctOnPriorCloseEquity": 27.55106305
+        },
+        "grossUng": {
+          "closeToOpenContributionPct": 27.1024704,
+          "openToCloseContributionPctOnOpenEquity": 17.56160501,
+          "openToCloseInteractionContributionPct": 0.00904582,
+          "openToCloseContributionPctOnPriorCloseEquity": 17.57065075
+        },
+        "netUng": {
+          "closeToOpenContributionPct": 27.1024704,
+          "openToCloseContributionPct": 16.43163567,
+          "additiveContributionPct": 43.5341061
+        },
+        "netIndex": {
+          "closeToOpenContributionPct": 13.22228249,
+          "openToCloseContributionPct": 9.67160042,
+          "additiveContributionPct": 22.89388297
+        },
+        "activeOverlay": {
+          "priorCloseSessions": 114,
+          "currentSessionSessions": 113,
+          "eitherSessionCount": 152,
+          "priorCloseLongSessions": 66,
+          "priorCloseShortSessions": 48,
+          "currentSessionLongSessions": 66,
+          "currentSessionShortSessions": 47,
+          "meanAbsoluteUngOvernightReturnPct": 2.18872762
+        },
+        "costs": {
+          "openTradingCostPct": 1.44782702,
+          "gasTradingCostPct": 1.13901508,
+          "indexTradingCostPct": 0.30881194,
+          "borrowCostPct": 0
+        }
+      },
+      "all": {
+        "sessions": 1387,
+        "startDate": "2021-01-04",
+        "endDate": "2026-07-14",
+        "ledgerNet": {
+          "closeToOpenContributionPct": 79.21726797,
+          "openToCloseContributionPct": 69.45730982,
+          "additiveContributionPct": 148.67457779
+        },
+        "grossPortfolio": {
+          "closeToOpenContributionPct": 79.21726797,
+          "openToCloseContributionPctOnOpenEquity": 74.88578355,
+          "openToCloseInteractionContributionPct": -0.1972867,
+          "openToCloseContributionPctOnPriorCloseEquity": 74.68849685
+        },
+        "grossUng": {
+          "closeToOpenContributionPct": 31.67058131,
+          "openToCloseContributionPctOnOpenEquity": 47.39832471,
+          "openToCloseInteractionContributionPct": -0.0401011,
+          "openToCloseContributionPctOnPriorCloseEquity": 47.35822367
+        },
+        "netUng": {
+          "closeToOpenContributionPct": 31.67058131,
+          "openToCloseContributionPct": 43.25519562,
+          "additiveContributionPct": 74.92577686
+        },
+        "netIndex": {
+          "closeToOpenContributionPct": 47.54668666,
+          "openToCloseContributionPct": 26.2021145,
+          "additiveContributionPct": 73.74880121
+        },
+        "activeOverlay": {
+          "priorCloseSessions": 397,
+          "currentSessionSessions": 397,
+          "eitherSessionCount": 537,
+          "priorCloseLongSessions": 230,
+          "priorCloseShortSessions": 167,
+          "currentSessionLongSessions": 230,
+          "currentSessionShortSessions": 167,
+          "meanAbsoluteUngOvernightReturnPct": 2.27719402
+        },
+        "costs": {
+          "openTradingCostPct": 5.23118685,
+          "gasTradingCostPct": 4.10302805,
+          "indexTradingCostPct": 1.1281588,
+          "borrowCostPct": 0
+        }
+      }
+    },
+    "ungOverlayBySeason": {
+      "summer": {
+        "train": {
+          "priorCloseActiveSessions": 107,
+          "currentSessionActiveSessions": 107,
+          "grossUngCloseToOpenContributionPct": 8.30736751,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": 7.54493543,
+          "grossUngOpenToCloseInteractionContributionPct": 0.07530084,
+          "netUngCloseToOpenContributionPct": 8.30736751,
+          "netUngOpenToCloseContributionPct": 7.0795688,
+          "netUngAdditiveContributionPct": 15.38693631
+        },
+        "validation": {
+          "priorCloseActiveSessions": 45,
+          "currentSessionActiveSessions": 45,
+          "grossUngCloseToOpenContributionPct": -3.42138823,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": 10.40238621,
+          "grossUngOpenToCloseInteractionContributionPct": 0.04613487,
+          "netUngCloseToOpenContributionPct": -3.42138823,
+          "netUngOpenToCloseContributionPct": 10.15452477,
+          "netUngAdditiveContributionPct": 6.73313654
+        },
+        "holdout": {
+          "priorCloseActiveSessions": 45,
+          "currentSessionActiveSessions": 45,
+          "grossUngCloseToOpenContributionPct": 15.54146245,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": 3.74300169,
+          "grossUngOpenToCloseInteractionContributionPct": 0.09279492,
+          "netUngCloseToOpenContributionPct": 15.54146245,
+          "netUngOpenToCloseContributionPct": 3.58984359,
+          "netUngAdditiveContributionPct": 19.13130604
+        },
+        "all": {
+          "priorCloseActiveSessions": 197,
+          "currentSessionActiveSessions": 197,
+          "grossUngCloseToOpenContributionPct": 20.42744173,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": 21.69032333,
+          "grossUngOpenToCloseInteractionContributionPct": 0.21423063,
+          "netUngCloseToOpenContributionPct": 20.42744173,
+          "netUngOpenToCloseContributionPct": 20.82393716,
+          "netUngAdditiveContributionPct": 41.25137889
+        }
+      },
+      "winter": {
+        "train": {
+          "priorCloseActiveSessions": 92,
+          "currentSessionActiveSessions": 92,
+          "grossUngCloseToOpenContributionPct": -0.49031717,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": 12.20327806,
+          "grossUngOpenToCloseInteractionContributionPct": -0.15469974,
+          "netUngCloseToOpenContributionPct": -0.49031717,
+          "netUngOpenToCloseContributionPct": 11.39064707,
+          "netUngAdditiveContributionPct": 10.9003299
+        },
+        "validation": {
+          "priorCloseActiveSessions": 39,
+          "currentSessionActiveSessions": 40,
+          "grossUngCloseToOpenContributionPct": 0.1724488,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": -0.31388,
+          "grossUngOpenToCloseInteractionContributionPct": -0.01588289,
+          "netUngCloseToOpenContributionPct": 0.1724488,
+          "netUngOpenToCloseContributionPct": -0.67176046,
+          "netUngAdditiveContributionPct": -0.49931166
+        },
+        "holdout": {
+          "priorCloseActiveSessions": 69,
+          "currentSessionActiveSessions": 68,
+          "grossUngCloseToOpenContributionPct": 11.56100795,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": 13.81860332,
+          "grossUngOpenToCloseInteractionContributionPct": -0.0837491,
+          "netUngCloseToOpenContributionPct": 11.56100795,
+          "netUngOpenToCloseContributionPct": 13.26285964,
+          "netUngAdditiveContributionPct": 24.82386759
+        },
+        "all": {
+          "priorCloseActiveSessions": 200,
+          "currentSessionActiveSessions": 200,
+          "grossUngCloseToOpenContributionPct": 11.24313958,
+          "grossUngOpenToCloseContributionPctOnOpenEquity": 25.70800138,
+          "grossUngOpenToCloseInteractionContributionPct": -0.25433173,
+          "netUngCloseToOpenContributionPct": 11.24313958,
+          "netUngOpenToCloseContributionPct": 23.98174625,
+          "netUngAdditiveContributionPct": 35.22488583
+        }
+      }
+    }
+  },
+  "fixedRetentionComparison": {
+    "scenarioId": "baseline",
+    "policies": [
+      {
+        "policyId": "carry-100",
+        "retentionFraction": 1,
+        "scenarioId": "baseline",
+        "metrics": {
+          "train": {
+            "sessions": 753,
+            "totalReturnPct": 66.05055087,
+            "cagrPct": 18.54097151,
+            "sharpe": 0.91091707,
+            "maxDrawdownPct": -28.33970707,
+            "totalTurnover": 114.41139994,
+            "gasTurnover": 60.4759641,
+            "closeGasTurnover": 0,
+            "tradingCostPct": 2.47274538
+          },
+          "validation": {
+            "sessions": 252,
+            "totalReturnPct": 25.90869718,
+            "cagrPct": 26.00835097,
+            "sharpe": 1.29582675,
+            "maxDrawdownPct": -11.46420986,
+            "totalTurnover": 60.24012861,
+            "gasTurnover": 32.24402964,
+            "closeGasTurnover": 0,
+            "tradingCostPct": 1.31061452
+          },
+          "holdout": {
+            "sessions": 382,
+            "totalReturnPct": 87.98260304,
+            "cagrPct": 51.15731419,
+            "sharpe": 2.1039588,
+            "maxDrawdownPct": -16.68178888,
+            "totalTurnover": 66.38647965,
+            "gasTurnover": 35.55153293,
+            "closeGasTurnover": 0,
+            "tradingCostPct": 1.44782703
+          },
+          "all": {
+            "sessions": 1387,
+            "totalReturnPct": 293.01914809,
+            "cagrPct": 28.12676615,
+            "sharpe": 1.30652971,
+            "maxDrawdownPct": -28.33970707,
+            "totalTurnover": 241.03800821,
+            "gasTurnover": 128.27152667,
+            "closeGasTurnover": 0,
+            "tradingCostPct": 5.23118693
+          },
+          "preHoldout": {
+            "sessions": 1005,
+            "totalReturnPct": 109.07208526,
+            "cagrPct": 20.30781665,
+            "sharpe": 1.00051745,
+            "maxDrawdownPct": -28.33970707,
+            "totalTurnover": 174.65152856,
+            "gasTurnover": 92.71999374,
+            "closeGasTurnover": 0,
+            "tradingCostPct": 3.7833599
+          }
+        },
+        "deltaVsCarry": {
+          "train": {
+            "totalReturnPct": 0,
+            "cagrPct": 0,
+            "sharpe": 0,
+            "maxDrawdownPct": 0,
+            "tradingCostPct": 0
+          },
+          "validation": {
+            "totalReturnPct": 0,
+            "cagrPct": 0,
+            "sharpe": 0,
+            "maxDrawdownPct": 0,
+            "tradingCostPct": 0
+          },
+          "holdout": {
+            "totalReturnPct": 0,
+            "cagrPct": 0,
+            "sharpe": 0,
+            "maxDrawdownPct": 0,
+            "tradingCostPct": 0
+          },
+          "all": {
+            "totalReturnPct": 0,
+            "cagrPct": 0,
+            "sharpe": 0,
+            "maxDrawdownPct": 0,
+            "tradingCostPct": 0
+          },
+          "preHoldout": {
+            "totalReturnPct": 0,
+            "cagrPct": 0,
+            "sharpe": 0,
+            "maxDrawdownPct": 0,
+            "tradingCostPct": 0
+          }
+        }
+      },
+      {
+        "policyId": "cash-retain-75",
+        "retentionFraction": 0.75,
+        "scenarioId": "baseline",
+        "metrics": {
+          "train": {
+            "sessions": 753,
+            "totalReturnPct": 62.73946499,
+            "cagrPct": 17.74286435,
+            "sharpe": 0.9097557,
+            "maxDrawdownPct": -26.10527782,
+            "totalTurnover": 134.64596298,
+            "gasTurnover": 80.7506947,
+            "closeGasTurnover": 18.75919097,
+            "tradingCostPct": 3.12406795
+          },
+          "validation": {
+            "sessions": 252,
+            "totalReturnPct": 27.00537208,
+            "cagrPct": 27.10967933,
+            "sharpe": 1.45152835,
+            "maxDrawdownPct": -9.50936439,
+            "totalTurnover": 67.70645764,
+            "gasTurnover": 39.74534069,
+            "closeGasTurnover": 8.1478137,
+            "tradingCostPct": 1.55092578
+          },
+          "holdout": {
+            "sessions": 382,
+            "totalReturnPct": 75.59956146,
+            "cagrPct": 44.56317345,
+            "sharpe": 1.97280072,
+            "maxDrawdownPct": -16.58373876,
+            "totalTurnover": 77.37296805,
+            "gasTurnover": 46.60666086,
+            "closeGasTurnover": 10.50106052,
+            "tradingCostPct": 1.80233447
+          },
+          "all": {
+            "sessions": 1387,
+            "totalReturnPct": 262.94298109,
+            "cagrPct": 26.29285138,
+            "sharpe": 1.29301979,
+            "maxDrawdownPct": -26.10527782,
+            "totalTurnover": 279.72538867,
+            "gasTurnover": 167.10269626,
+            "closeGasTurnover": 37.40806519,
+            "tradingCostPct": 6.4773282
+          },
+          "preHoldout": {
+            "sessions": 1005,
+            "totalReturnPct": 106.68786304,
+            "cagrPct": 19.96240327,
+            "sharpe": 1.03058664,
+            "maxDrawdownPct": -26.10527782,
+            "totalTurnover": 202.35242062,
+            "gasTurnover": 120.4960354,
+            "closeGasTurnover": 26.90700467,
+            "tradingCostPct": 4.67499373
+          }
+        },
+        "deltaVsCarry": {
+          "train": {
+            "totalReturnPct": -3.31108588,
+            "cagrPct": -0.79810716,
+            "sharpe": -0.00116137,
+            "maxDrawdownPct": 2.23442925,
+            "tradingCostPct": 0.65132257
+          },
+          "validation": {
+            "totalReturnPct": 1.0966749,
+            "cagrPct": 1.10132836,
+            "sharpe": 0.1557016,
+            "maxDrawdownPct": 1.95484547,
+            "tradingCostPct": 0.24031126
+          },
+          "holdout": {
+            "totalReturnPct": -12.38304158,
+            "cagrPct": -6.59414074,
+            "sharpe": -0.13115808,
+            "maxDrawdownPct": 0.09805012,
+            "tradingCostPct": 0.35450744
+          },
+          "all": {
+            "totalReturnPct": -30.076167,
+            "cagrPct": -1.83391477,
+            "sharpe": -0.01350992,
+            "maxDrawdownPct": 2.23442925,
+            "tradingCostPct": 1.24614127
+          },
+          "preHoldout": {
+            "totalReturnPct": -2.38422222,
+            "cagrPct": -0.34541338,
+            "sharpe": 0.03006919,
+            "maxDrawdownPct": 2.23442925,
+            "tradingCostPct": 0.89163383
+          }
+        }
+      },
+      {
+        "policyId": "cash-retain-50",
+        "retentionFraction": 0.5,
+        "scenarioId": "baseline",
+        "metrics": {
+          "train": {
+            "sessions": 753,
+            "totalReturnPct": 59.10857454,
+            "cagrPct": 16.85516615,
+            "sharpe": 0.8961253,
+            "maxDrawdownPct": -23.92713583,
+            "totalTurnover": 156.7299443,
+            "gasTurnover": 102.88305276,
+            "closeGasTurnover": 37.51913347,
+            "tradingCostPct": 3.83383648
+          },
+          "validation": {
+            "sessions": 252,
+            "totalReturnPct": 27.97876104,
+            "cagrPct": 28.08722596,
+            "sharpe": 1.60124616,
+            "maxDrawdownPct": -8.58794234,
+            "totalTurnover": 75.64773229,
+            "gasTurnover": 47.72841542,
+            "closeGasTurnover": 16.29584486,
+            "tradingCostPct": 1.80668904
+          },
+          "holdout": {
+            "sessions": 382,
+            "totalReturnPct": 63.80798318,
+            "cagrPct": 38.13294762,
+            "sharpe": 1.80267656,
+            "maxDrawdownPct": -16.495143,
+            "totalTurnover": 89.56866731,
+            "gasTurnover": 58.85672345,
+            "closeGasTurnover": 21.00248092,
+            "tradingCostPct": 2.19468718
+          },
+          "all": {
+            "sessions": 1387,
+            "totalReturnPct": 233.55430454,
+            "cagrPct": 24.37641023,
+            "sharpe": 1.25854536,
+            "maxDrawdownPct": -23.92713583,
+            "totalTurnover": 321.94634391,
+            "gasTurnover": 209.46819163,
+            "closeGasTurnover": 74.81745926,
+            "tradingCostPct": 7.8352127
+          },
+          "preHoldout": {
+            "sessions": 1005,
+            "totalReturnPct": 103.6251824,
+            "cagrPct": 19.51428993,
+            "sharpe": 1.04743596,
+            "maxDrawdownPct": -23.92713583,
+            "totalTurnover": 232.3776766,
+            "gasTurnover": 150.61146818,
+            "closeGasTurnover": 53.81497833,
+            "tradingCostPct": 5.64052552
+          }
+        },
+        "deltaVsCarry": {
+          "train": {
+            "totalReturnPct": -6.94197633,
+            "cagrPct": -1.68580536,
+            "sharpe": -0.01479177,
+            "maxDrawdownPct": 4.41257124,
+            "tradingCostPct": 1.3610911
+          },
+          "validation": {
+            "totalReturnPct": 2.07006386,
+            "cagrPct": 2.07887499,
+            "sharpe": 0.30541941,
+            "maxDrawdownPct": 2.87626752,
+            "tradingCostPct": 0.49607452
+          },
+          "holdout": {
+            "totalReturnPct": -24.17461986,
+            "cagrPct": -13.02436657,
+            "sharpe": -0.30128224,
+            "maxDrawdownPct": 0.18664588,
+            "tradingCostPct": 0.74686015
+          },
+          "all": {
+            "totalReturnPct": -59.46484355,
+            "cagrPct": -3.75035592,
+            "sharpe": -0.04798435,
+            "maxDrawdownPct": 4.41257124,
+            "tradingCostPct": 2.60402577
+          },
+          "preHoldout": {
+            "totalReturnPct": -5.44690286,
+            "cagrPct": -0.79352672,
+            "sharpe": 0.04691851,
+            "maxDrawdownPct": 4.41257124,
+            "tradingCostPct": 1.85716562
+          }
+        }
+      },
+      {
+        "policyId": "cash-retain-25",
+        "retentionFraction": 0.25,
+        "scenarioId": "baseline",
+        "metrics": {
+          "train": {
+            "sessions": 753,
+            "totalReturnPct": 55.23302828,
+            "cagrPct": 15.89267091,
+            "sharpe": 0.86853215,
+            "maxDrawdownPct": -22.12589344,
+            "totalTurnover": 180.30683869,
+            "gasTurnover": 126.48799752,
+            "closeGasTurnover": 56.27976,
+            "tradingCostPct": 4.58983682
+          },
+          "validation": {
+            "sessions": 252,
+            "totalReturnPct": 28.81455295,
+            "cagrPct": 28.92660822,
+            "sharpe": 1.72135059,
+            "maxDrawdownPct": -8.56322898,
+            "totalTurnover": 84.38988373,
+            "gasTurnover": 56.4914911,
+            "closeGasTurnover": 24.44413808,
+            "tradingCostPct": 2.08794494
+          },
+          "holdout": {
+            "sessions": 382,
+            "totalReturnPct": 52.66168558,
+            "cagrPct": 31.90588169,
+            "sharpe": 1.5940183,
+            "maxDrawdownPct": -16.41351657,
+            "totalTurnover": 102.15427058,
+            "gasTurnover": 71.4705658,
+            "closeGasTurnover": 31.50426559,
+            "tradingCostPct": 2.59842428
+          },
+          "all": {
+            "sessions": 1387,
+            "totalReturnPct": 205.26647631,
+            "cagrPct": 22.3963568,
+            "sharpe": 1.20006372,
+            "maxDrawdownPct": -22.12589344,
+            "totalTurnover": 366.850993,
+            "gasTurnover": 254.45005441,
+            "closeGasTurnover": 112.22816367,
+            "tradingCostPct": 9.27620604
+          },
+          "preHoldout": {
+            "sessions": 1005,
+            "totalReturnPct": 99.96273141,
+            "cagrPct": 18.97174156,
+            "sharpe": 1.0466699,
+            "maxDrawdownPct": -22.12589344,
+            "totalTurnover": 264.69672242,
+            "gasTurnover": 182.97948862,
+            "closeGasTurnover": 80.72389808,
+            "tradingCostPct": 6.67778176
+          }
+        },
+        "deltaVsCarry": {
+          "train": {
+            "totalReturnPct": -10.81752259,
+            "cagrPct": -2.6483006,
+            "sharpe": -0.04238492,
+            "maxDrawdownPct": 6.21381363,
+            "tradingCostPct": 2.11709144
+          },
+          "validation": {
+            "totalReturnPct": 2.90585577,
+            "cagrPct": 2.91825725,
+            "sharpe": 0.42552384,
+            "maxDrawdownPct": 2.90098088,
+            "tradingCostPct": 0.77733042
+          },
+          "holdout": {
+            "totalReturnPct": -35.32091746,
+            "cagrPct": -19.2514325,
+            "sharpe": -0.5099405,
+            "maxDrawdownPct": 0.26827231,
+            "tradingCostPct": 1.15059725
+          },
+          "all": {
+            "totalReturnPct": -87.75267178,
+            "cagrPct": -5.73040935,
+            "sharpe": -0.10646599,
+            "maxDrawdownPct": 6.21381363,
+            "tradingCostPct": 4.04501911
+          },
+          "preHoldout": {
+            "totalReturnPct": -9.10935385,
+            "cagrPct": -1.33607509,
+            "sharpe": 0.04615245,
+            "maxDrawdownPct": 6.21381363,
+            "tradingCostPct": 2.89442186
+          }
+        }
+      },
+      {
+        "policyId": "cash-retain-0",
+        "retentionFraction": 0,
+        "scenarioId": "baseline",
+        "metrics": {
+          "train": {
+            "sessions": 753,
+            "totalReturnPct": 51.19344196,
+            "cagrPct": 14.87228338,
+            "sharpe": 0.82712019,
+            "maxDrawdownPct": -20.29864371,
+            "totalTurnover": 204.15384726,
+            "gasTurnover": 150.33846483,
+            "closeGasTurnover": 75.04104683,
+            "tradingCostPct": 5.35282778
+          },
+          "validation": {
+            "sessions": 252,
+            "totalReturnPct": 29.53715805,
+            "cagrPct": 29.65233252,
+            "sharpe": 1.78773862,
+            "maxDrawdownPct": -9.66023546,
+            "totalTurnover": 93.17965819,
+            "gasTurnover": 65.29333584,
+            "closeGasTurnover": 32.59269584,
+            "tradingCostPct": 2.37052401
+          },
+          "holdout": {
+            "sessions": 382,
+            "totalReturnPct": 42.15866468,
+            "cagrPct": 25.89278054,
+            "sharpe": 1.35224948,
+            "maxDrawdownPct": -16.33734423,
+            "totalTurnover": 114.82471367,
+            "gasTurnover": 84.15896908,
+            "closeGasTurnover": 42.00642508,
+            "tradingCostPct": 3.00412937
+          },
+          "all": {
+            "sessions": 1387,
+            "totalReturnPct": 178.42014423,
+            "cagrPct": 20.37296575,
+            "sharpe": 1.11771237,
+            "maxDrawdownPct": -20.29864371,
+            "totalTurnover": 412.15821912,
+            "gasTurnover": 299.79076974,
+            "closeGasTurnover": 149.64016774,
+            "tradingCostPct": 10.72748116
+          },
+          "preHoldout": {
+            "sessions": 1005,
+            "totalReturnPct": 95.85168788,
+            "cagrPct": 18.35379596,
+            "sharpe": 1.02616869,
+            "maxDrawdownPct": -20.29864371,
+            "totalTurnover": 297.33350545,
+            "gasTurnover": 215.63180067,
+            "closeGasTurnover": 107.63374267,
+            "tradingCostPct": 7.72335179
+          }
+        },
+        "deltaVsCarry": {
+          "train": {
+            "totalReturnPct": -14.85710891,
+            "cagrPct": -3.66868813,
+            "sharpe": -0.08379688,
+            "maxDrawdownPct": 8.04106336,
+            "tradingCostPct": 2.8800824
+          },
+          "validation": {
+            "totalReturnPct": 3.62846087,
+            "cagrPct": 3.64398155,
+            "sharpe": 0.49191187,
+            "maxDrawdownPct": 1.8039744,
+            "tradingCostPct": 1.05990949
+          },
+          "holdout": {
+            "totalReturnPct": -45.82393836,
+            "cagrPct": -25.26453365,
+            "sharpe": -0.75170932,
+            "maxDrawdownPct": 0.34444465,
+            "tradingCostPct": 1.55630234
+          },
+          "all": {
+            "totalReturnPct": -114.59900386,
+            "cagrPct": -7.7538004,
+            "sharpe": -0.18881734,
+            "maxDrawdownPct": 8.04106336,
+            "tradingCostPct": 5.49629423
+          },
+          "preHoldout": {
+            "totalReturnPct": -13.22039738,
+            "cagrPct": -1.95402069,
+            "sharpe": 0.02565124,
+            "maxDrawdownPct": 8.04106336,
+            "tradingCostPct": 3.93999189
+          }
+        }
+      }
+    ],
+    "allCagrStrictlyDeclinesAsRetentionFalls": true
+  },
+  "regimeDiagnostic": {
+    "preHoldoutGrossUngCloseToOpenContributionPct": 4.56811091,
+    "holdoutGrossUngCloseToOpenContributionPct": 27.1024704,
+    "grossUngCloseToOpenSignReversed": false
+  },
+  "decision": {
+    "deploymentPolicyId": "carry-100",
+    "promotionEligible": false,
+    "selectedChallengerPolicyId": "gap-ma10-threshold2p25-cash-flat",
+    "selectedChallengerHoldoutComparisons": {
+      "sharpe": false,
+      "maxDrawdown": false,
+      "cagr": false
+    },
+    "selectedChallengerFailsAllHoldoutGates": true,
+    "reasons": [
+      "gross-ung-close-to-open-contribution-does-not-show-a-negative-pre-holdout-to-positive-holdout-reversal",
+      "selected-challenger-fails-sharpe-max-drawdown-and-cagr-holdout-reference-gates",
+      "fixed-retention-all-period-cagr-declines-as-overnight-retention-is-reduced",
+      "daily-adjusted-bars-do-not-provide-auction-fill-evidence"
+    ]
+  },
+  "artifacts": {
+    "ledger": {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-return-decomposition.csv",
+      "sha256": "da9a3506771694e513c72cef01ed6526ccb478fc314a525003d03ee28939c27d"
+    },
+    "summary": {
+      "path": "data/qore/research/strategy-agent-runs/ngas-all-year-beta/overnight-return-decomposition.json"
+    }
+  }
+}
