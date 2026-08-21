@@ -355,6 +355,7 @@ export function CommandView() {
   const performance = useMemo(() => livePerformance(telemetry), [telemetry])
   const positions = Array.isArray(telemetry?.positions) ? telemetry.positions : []
   const openOrders = Array.isArray(telemetry?.openOrders) ? telemetry.openOrders : []
+  const recentOrders = Array.isArray(telemetry?.recentOrders) ? telemetry.recentOrders : []
   const sourceAgeSeconds = ageSeconds(telemetry?.sourceGeneratedAt)
   const historySourceGeneratedAt = telemetry?.portfolioHistory?.sourceGeneratedAt
   const historyAgeSeconds = ageSeconds(historySourceGeneratedAt)
@@ -494,6 +495,23 @@ export function CommandView() {
               </table>
             </div>
           ) : <div className="inline-empty">NO OPEN ORDERS</div>}
+        </div>
+      </details>
+
+      <details className="disclosure-section" open={recentOrders.length > 0}>
+        <summary>
+          <span>Recent order history</span>
+          <small>{recentOrders.length} ORDERS</small>
+        </summary>
+        <div className="disclosure-body">
+          {recentOrders.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>SUBMITTED</th><th>FILLED</th><th>SYMBOL</th><th>SIDE</th><th>TYPE</th><th>QTY</th><th>FILLED QTY</th><th>AVG FILL</th><th>STATUS</th></tr></thead>
+                <tbody>{recentOrders.map((order, index) => <tr key={`${textValue(order?.id, 'UNKNOWN')}-${index}`}><td>{order?.submittedAt ? timestampLabel(order.submittedAt) : '-'}</td><td>{order?.filledAt ? timestampLabel(order.filledAt) : '-'}</td><th scope="row">{textValue(order?.symbol, 'UNKNOWN')}</th><td>{textValue(order?.side, 'UNKNOWN').toUpperCase()}</td><td>{textValue(order?.type, 'UNKNOWN').toUpperCase()}</td><td>{numberValue(order?.quantity, 4)}</td><td>{numberValue(order?.filledQuantity, 4)}</td><td>{currencyValue(order?.averageFillPriceUsd)}</td><td>{textValue(order?.status, 'UNKNOWN').toUpperCase()}</td></tr>)}</tbody>
+              </table>
+            </div>
+          ) : <div className="inline-empty">NO RECENT ORDERS</div>}
         </div>
       </details>
     </main>

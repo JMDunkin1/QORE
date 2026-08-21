@@ -37,6 +37,7 @@
     "trade:once": "node scripts/qore-live-trading-supervisor.mjs --once",
     "trade:run": "node scripts/qore-live-trading-supervisor.mjs",
     "broker:status": "node scripts/qore-alpaca-broker.mjs --status",
+    "broker:history": "node scripts/qore-alpaca-order-history.mjs",
     "broker:dry-run": "node scripts/qore-alpaca-broker.mjs --mode=dry-run --reconcile",
     "broker:paper": "node scripts/qore-alpaca-broker.mjs --mode=paper --reconcile",
     "broker:live": "node scripts/qore-alpaca-broker.mjs --mode=live --reconcile",

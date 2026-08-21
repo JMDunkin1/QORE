@@ -265,6 +265,8 @@ async function readTestTelemetry(refreshBroker) {
 async function runRemoteBrokerRefresh() {
   const command = remoteNodeCommand('qore-alpaca-broker.mjs', ['--status', '--json'])
   await commandResult(sshBinary, sshArgs(command), remoteRefreshTimeoutMs)
+  const historyCommand = remoteNodeCommand('qore-alpaca-order-history.mjs', ['--json'])
+  await commandResult(sshBinary, sshArgs(historyCommand), remoteRefreshTimeoutMs)
 }
 
 async function runRemoteSnapshot() {

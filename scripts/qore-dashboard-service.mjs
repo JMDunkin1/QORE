@@ -41,6 +41,7 @@ const sourcePaths = {
   brokerAccountStatus: path.resolve(process.env.QORE_BROKER_ACCOUNT_STATUS_FILE ?? path.join(brokerDir, 'account-status.json')),
   brokerStatus: path.resolve(process.env.QORE_BROKER_STATUS_FILE ?? path.join(brokerDir, 'status.json')),
   brokerSnapshot: path.resolve(process.env.QORE_BROKER_ACCOUNT_SNAPSHOT_FILE ?? path.join(brokerDir, 'account-snapshot.json')),
+  brokerOrderHistory: path.resolve(process.env.QORE_BROKER_ORDER_HISTORY_FILE ?? path.join(brokerDir, 'order-history.json')),
   liveWeatherStatus: path.resolve(process.env.QORE_LIVE_WEATHER_STATUS_FILE ?? path.join(liveWeatherDir, 'status.json')),
   signalIntent: path.resolve(process.env.QORE_LIVE_SIGNAL_INTENT_FILE ?? path.join(liveWeatherDir, 'signal-intent-reconcile.json')),
   riskState: path.resolve(process.env.QORE_LIVE_RISK_STATE_FILE ?? path.join(liveWeatherDir, 'risk-and-kill-switch-state.json')),
@@ -361,6 +362,8 @@ function normalizedOrder(order) {
     stopPriceUsd: roundedNumber(order?.stopPriceUsd ?? order?.stop_price, 4),
     averageFillPriceUsd: roundedNumber(order?.averageFillPriceUsd ?? order?.filled_avg_price, 4),
     submittedAt: isoTimestamp(order?.submittedAt ?? order?.submitted_at),
+    filledAt: isoTimestamp(order?.filledAt ?? order?.filled_at),
+    canceledAt: isoTimestamp(order?.canceledAt ?? order?.canceled_at),
     updatedAt: isoTimestamp(order?.updatedAt ?? order?.updated_at),
   }
 }
@@ -680,6 +683,10 @@ async function dashboardStatus() {
   const marketClockSource = connectionCanSupplyMarketClock && clockFreshness.fresh ? connectionSource : null
   const positionsSource = Array.isArray(accountSource?.positions) ? accountSource.positions : []
   const ordersSource = Array.isArray(accountSource?.openOrders) ? accountSource.openOrders : []
+  const orderHistory = sources.brokerOrderHistory.value
+  const orderHistorySource = sourceMatchesMode(orderHistory, activeConnectionMode) && Array.isArray(orderHistory?.orders)
+    ? orderHistory.orders
+    : []
   const operatorKillSwitch = booleanOrNull(operatorState?.killSwitchEngaged)
   const killSwitchEngaged = operatorKillSwitch === true
     ? true
@@ -765,6 +772,10 @@ async function dashboardStatus() {
     account: normalizedAccount(accountSource?.account, rawAccount),
     positions: positionsSource.slice(0, maxPositions).map(normalizedPosition).filter((position) => position.symbol),
     openOrders: ordersSource.slice(0, maxOpenOrders).map(normalizedOrder).filter((order) => order.symbol || order.id),
+    recentOrders: orderHistorySource
+      .slice(0, 200)
+      .map(normalizedOrder)
+      .filter((order) => order.symbol || order.id),
     marketClock: normalizedMarketClock(marketClockSource?.marketClock),
     portfolioHistory: normalizedPortfolioHistory(
       portfolioHistorySource?.portfolioHistory,

@@ -13,6 +13,7 @@ const execFileAsync = promisify(execFile)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const serviceScript = path.join(projectRoot, 'scripts', 'qore-dashboard-service.mjs')
 const brokerScript = path.join(projectRoot, 'scripts', 'qore-alpaca-broker.mjs')
+const orderHistoryScript = path.join(projectRoot, 'scripts', 'qore-alpaca-order-history.mjs')
 const allowedOrigin = 'http://127.0.0.1:5173'
 
 async function freePort() {
@@ -136,6 +137,16 @@ async function createTelemetryFixture() {
       points: [{ timestamp: now, equityUsd: 101_500, profitLossUsd: 1_500, profitLossPct: 1.5 }],
     },
   })
+  await writeJson(path.join(brokerDir, 'order-history.json'), {
+    generatedAt: now,
+    serviceId: 'qore-alpaca-order-history',
+    mode: 'paper',
+    limited: false,
+    orders: [{
+      id: 'safe-filled-order-id', account_id: 'SECRET-ID', symbol: 'UNG', side: 'buy', type: 'market', status: 'filled',
+      time_in_force: 'day', qty: '5', filled_qty: '5', filled_avg_price: '14.75', submitted_at: now, filled_at: now,
+    }],
+  })
   await writeJson(path.join(brokerDir, 'status.json'), {
     generatedAt: now,
     serviceId: 'qore-alpaca-target-weight-reconciler',
@@ -207,6 +218,10 @@ await writeFile(process.env.QORE_TEST_REFRESH_COUNT_FILE, String(count + 1))
     assert.equal(response.payload.positions[0].averageEntryPriceUsd, 14)
     assert.equal(response.payload.portfolioHistory.points[0].profitLossPct, 1.5)
     assert.equal(response.payload.portfolioHistory.sourceGeneratedAt, response.payload.sourceGeneratedAt)
+    assert.equal(response.payload.recentOrders[0].symbol, 'UNG')
+    assert.equal(response.payload.recentOrders[0].filledQuantity, 5)
+    assert.equal(response.payload.recentOrders[0].averageFillPriceUsd, 14.75)
+    assert.match(response.payload.recentOrders[0].filledAt, /^\d{4}-\d{2}-\d{2}T/)
     assert.match(response.payload.risk.blockedReasons.join(' '), /reconcile safety state/)
     assert.match(response.payload.risk.warnings.join(' '), /reconcile warning/)
     assert.equal(response.payload.risk.killSwitchEngaged, true)
@@ -692,7 +707,13 @@ async function startAlpacaFixture() {
     } else if (url.pathname === '/v2/positions') {
       response.end('[]')
     } else if (url.pathname === '/v2/orders') {
-      response.end('[]')
+      response.end(url.searchParams.get('status') === 'all'
+        ? JSON.stringify([{
+            id: 'filled-order', account_id: 'SECRET-ID', symbol: 'UNG', side: 'buy', type: 'market', status: 'filled',
+            time_in_force: 'day', qty: '10', filled_qty: '10', filled_avg_price: '15.25',
+            submitted_at: '2026-07-15T13:30:00.000Z', filled_at: '2026-07-15T13:30:01.000Z',
+          }])
+        : '[]')
     } else if (url.pathname === '/v2/clock') {
       response.end(JSON.stringify({ is_open: false, timestamp: new Date().toISOString() }))
     } else if (url.pathname === '/v2/stocks/quotes/latest') {
@@ -745,6 +766,45 @@ async function runBrokerStatus(stateDir, alpacaBaseUrl) {
     },
   })
   return JSON.parse(stdout)
+}
+
+async function testStandaloneOrderHistoryIsSanitizedAndReadOnly() {
+  const scratch = await mkdtemp(path.join(tmpdir(), 'qore-order-history-'))
+  const alpaca = await startAlpacaFixture()
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [orderHistoryScript, '--json'], {
+      cwd: projectRoot,
+      timeout: 20_000,
+      maxBuffer: 4 * 1024 * 1024,
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        QORE_ALPACA_TEST_ENDPOINT_CONFIRMED: '1',
+        QORE_ALPACA_BASE_URL: alpaca.baseUrl,
+        QORE_ALPACA_API_KEY_ID: 'test-key-not-a-secret',
+        QORE_ALPACA_API_SECRET_KEY: 'test-secret-not-a-secret',
+        QORE_BROKER_MODE: 'paper',
+        QORE_BROKER_STATE_DIR: scratch,
+      },
+    })
+    const payload = JSON.parse(stdout)
+    assert.equal(payload.serviceId, 'qore-alpaca-order-history')
+    assert.equal(payload.mode, 'paper')
+    assert.equal(payload.orders[0].status, 'filled')
+    assert.equal(payload.orders[0].averageFillPriceUsd, 15.25)
+    assert.equal(payload.orders[0].filledAt, '2026-07-15T13:30:01.000Z')
+    assert.doesNotMatch(JSON.stringify(payload), /SECRET-ID/)
+    assert.equal(alpaca.requests.length, 1)
+    assert.equal(alpaca.requests[0].method, 'GET')
+    assert.match(alpaca.requests[0].search, /status=all/)
+    assert.match(alpaca.requests[0].search, /limit=500/)
+    const persisted = JSON.parse(await readFile(path.join(scratch, 'order-history.json'), 'utf8'))
+    assert.deepEqual(persisted, payload)
+  } finally {
+    await alpaca.stop()
+    await rm(scratch, { recursive: true, force: true })
+  }
+  console.log('ok - standalone Alpaca order history is bounded, sanitized, and read-only')
 }
 
 async function runBrokerProcess(stateDir, alpacaBaseUrl) {
@@ -939,5 +999,6 @@ await testCrossModeBrokerDataIsSuppressed()
 await testMalformedConnectionModeFailsClosed()
 await testMarketClockFreshnessFailsClosed()
 await testBrokerPortfolioHistoryIsBestEffort()
+await testStandaloneOrderHistoryIsSanitizedAndReadOnly()
 await testOfflineStatusMarksCachedSnapshotDisconnected()
 await testBrokerStatusErrorRoutingAndOperationLock()

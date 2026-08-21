@@ -31,6 +31,8 @@ export type LiveOrder = {
   stopPriceUsd: number | null
   averageFillPriceUsd: number | null
   submittedAt: string | null
+  filledAt: string | null
+  canceledAt: string | null
   updatedAt: string | null
 }
 
@@ -71,6 +73,7 @@ export type LiveTelemetry = {
   } | null
   positions: LivePosition[]
   openOrders: LiveOrder[]
+  recentOrders: LiveOrder[]
   marketClock: {
     isOpen: boolean | null
     timestamp: string | null
