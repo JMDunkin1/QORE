@@ -10,8 +10,8 @@ const port = validPort(process.env.QORE_COMMAND_BRIDGE_PORT ?? process.env.QORE_
 const remoteHost = process.env.QORE_COMMAND_REMOTE_HOST ?? '100.81.167.107'
 const remoteName = process.env.QORE_COMMAND_REMOTE_NAME ?? 'm1-server'
 const remoteUser = process.env.QORE_COMMAND_REMOTE_USER ?? 'jdunkin'
-const remoteRepoDir = process.env.QORE_COMMAND_REMOTE_REPO_DIR ?? '/srv/codex-work/projects/QORE'
-const remoteNode = process.env.QORE_COMMAND_REMOTE_NODE ?? '/usr/bin/node-22'
+const remoteTelemetryHelper = process.env.QORE_COMMAND_REMOTE_TELEMETRY_HELPER
+  ?? '/usr/local/sbin/qore-readonly-telemetry'
 const t3BaseUrl = new URL(process.env.QORE_COMMAND_T3_BASE_URL ?? `http://${remoteHost}:3000`)
 const sshBinary = process.env.QORE_COMMAND_SSH_BIN ?? '/usr/bin/ssh'
 const identityFile = path.resolve(
@@ -230,15 +230,6 @@ function sshArgs(remoteCommand) {
   ]
 }
 
-function remoteNodeCommand(scriptName, args = []) {
-  const command = [
-    shellQuote(remoteNode),
-    shellQuote(path.posix.join(remoteRepoDir, 'scripts', scriptName)),
-    ...args.map(shellQuote),
-  ].join(' ')
-  return `cd ${shellQuote(remoteRepoDir)} && exec ${command}`
-}
-
 async function checkExistingT3Route() {
   updateConnection('checking-t3', 28, `Checking the existing T3 connection to ${remoteName}.`)
   try {
@@ -263,14 +254,12 @@ async function readTestTelemetry(refreshBroker) {
 }
 
 async function runRemoteBrokerRefresh() {
-  const command = remoteNodeCommand('qore-alpaca-broker.mjs', ['--status', '--json'])
+  const command = `exec sudo -n ${shellQuote(remoteTelemetryHelper)} refresh`
   await commandResult(sshBinary, sshArgs(command), remoteRefreshTimeoutMs)
-  const historyCommand = remoteNodeCommand('qore-alpaca-order-history.mjs', ['--json'])
-  await commandResult(sshBinary, sshArgs(historyCommand), remoteRefreshTimeoutMs)
 }
 
 async function runRemoteSnapshot() {
-  const command = remoteNodeCommand('qore-dashboard-service.mjs', ['--snapshot-json'])
+  const command = `exec sudo -n ${shellQuote(remoteTelemetryHelper)} snapshot`
   const result = await commandResult(sshBinary, sshArgs(command), remoteSnapshotTimeoutMs)
   const output = result.stdout.trim()
   if (!output || output.includes('\n')) throw new Error(`${remoteName} returned invalid telemetry framing.`)

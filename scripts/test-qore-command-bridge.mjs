@@ -324,7 +324,7 @@ if (failures > 0) {
 }
 let delayMs = 0
 try { delayMs = Number(readFileSync(delayPath, 'utf8')) || 0 } catch {}
-if (delayMs > 0 && command.includes('qore-dashboard-service.mjs')) {
+if (delayMs > 0 && command.endsWith(' snapshot')) {
   await new Promise((resolve) => setTimeout(resolve, delayMs))
 }
 process.stdout.write(readFileSync(telemetryPath, 'utf8').trim())
@@ -368,7 +368,8 @@ process.stdout.write(readFileSync(telemetryPath, 'utf8').trim())
     assert.equal(connection.transport, 't3-tailscale-ssh')
     const startupCommands = (await readFile(sshLogPath, 'utf8')).trim().split('\n')
     assert.ok(startupCommands.length >= 2, 'startup SSH failure must recover through status-triggered backoff')
-    assert.ok(startupCommands.every((command) => command.includes('qore-dashboard-service.mjs')))
+    assert.ok(startupCommands.every((command) => command.endsWith(' snapshot')))
+    assert.ok(startupCommands.every((command) => command.includes('qore-readonly-telemetry')))
     assert.ok(startupCommands.every((command) => !command.includes(' -e ')))
 
     const liveResponse = await fetch(`${bridgeBaseUrl}/api/live/status`, { headers: { Origin: origin } })
@@ -388,12 +389,10 @@ process.stdout.write(readFileSync(telemetryPath, 'utf8').trim())
     assert.match(refreshed.risk.warnings.join(' '), /Read-only broker refresh failed/)
     assert.doesNotMatch(JSON.stringify(refreshed), /SUPERSECRET|SSH-ACCOUNT-SECRET/)
     const refreshCommands = (await readFile(sshLogPath, 'utf8')).trim().split('\n')
-    const brokerCommandIndex = refreshCommands.findIndex((command) => command.includes('qore-alpaca-broker.mjs'))
-    assert.ok(brokerCommandIndex >= 0)
-    assert.match(refreshCommands[brokerCommandIndex], /qore-alpaca-broker\.mjs.*'--status'.*'--json'/)
-    assert.doesNotMatch(refreshCommands[brokerCommandIndex], /--reconcile|--preflight-only|--paper|--live/)
-    assert.doesNotMatch(refreshCommands[brokerCommandIndex], /qore-dashboard-service/)
-    assert.match(refreshCommands[brokerCommandIndex + 1], /qore-dashboard-service\.mjs.*'--snapshot-json'/)
+    const refreshCommandIndex = refreshCommands.findIndex((command) => command.endsWith(' refresh'))
+    assert.ok(refreshCommandIndex >= 0)
+    assert.match(refreshCommands[refreshCommandIndex], /sudo -n .*qore-readonly-telemetry.* refresh$/)
+    assert.match(refreshCommands[refreshCommandIndex + 1], /qore-readonly-telemetry.* snapshot$/)
 
     await new Promise((resolve) => setTimeout(resolve, 10))
     const raceStartCount = (await commandLog(sshLogPath)).length
@@ -409,11 +408,11 @@ process.stdout.write(readFileSync(telemetryPath, 'utf8').trim())
     assert.equal(ordinaryReadResponse.status, 200)
     assert.equal(forcedRefreshResponse.status, 200)
     const raceCommands = (await commandLog(sshLogPath)).slice(raceStartCount)
-    assert.equal(raceCommands.filter((command) => command.includes('qore-dashboard-service.mjs')).length, 2)
-    assert.equal(raceCommands.filter((command) => command.includes('qore-alpaca-broker.mjs')).length, 1)
-    assert.match(raceCommands[0], /qore-dashboard-service\.mjs.*'--snapshot-json'/)
-    assert.match(raceCommands[1], /qore-alpaca-broker\.mjs.*'--status'.*'--json'/)
-    assert.match(raceCommands[2], /qore-dashboard-service\.mjs.*'--snapshot-json'/)
+    assert.equal(raceCommands.filter((command) => command.endsWith(' snapshot')).length, 2)
+    assert.equal(raceCommands.filter((command) => command.endsWith(' refresh')).length, 1)
+    assert.match(raceCommands[0], /qore-readonly-telemetry.* snapshot$/)
+    assert.match(raceCommands[1], /qore-readonly-telemetry.* refresh$/)
+    assert.match(raceCommands[2], /qore-readonly-telemetry.* snapshot$/)
 
     await new Promise((resolve) => setTimeout(resolve, 10))
     await writeFile(failureCountPath, '1', 'utf8')
