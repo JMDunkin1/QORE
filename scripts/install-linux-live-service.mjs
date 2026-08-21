@@ -18,7 +18,13 @@ if (!existsSync(envPath)) {
 }
 await chmod(envPath, 0o600)
 
-const readiness = spawnSync(process.execPath, ['scripts/qore-live-readiness.mjs', '--local-only'], {
+// Installation only verifies static host/config prerequisites. Fresh signal,
+// market, and risk handoffs are produced by the supervisor after it starts.
+const readiness = spawnSync(process.execPath, [
+  'scripts/qore-live-readiness.mjs',
+  '--local-only',
+  '--supervisor-prestart',
+], {
   cwd: repoDir,
   env: process.env,
   encoding: 'utf8',

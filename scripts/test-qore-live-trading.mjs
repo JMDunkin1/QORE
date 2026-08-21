@@ -2506,6 +2506,10 @@ async function testSupervisorPrestartDefersRefreshableState() {
 
   const installer = await readFile(path.join(repoDir, 'scripts/install-linux-live-service.mjs'), 'utf8')
   assert.match(installer, /ExecStartPre=.* --local-only --supervisor-prestart/)
+  assert.match(
+    installer,
+    /spawnSync\(process\.execPath, \[\s*'scripts\/qore-live-readiness\.mjs',\s*'--local-only',\s*'--supervisor-prestart',/,
+  )
   console.log('ok - systemd prestart defers state that the supervisor refreshes')
 }
 
