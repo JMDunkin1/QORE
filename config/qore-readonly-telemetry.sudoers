@@ -1,0 +1,1 @@
+jdunkin ALL=(root) NOPASSWD: /usr/local/sbin/qore-readonly-telemetry refresh, /usr/local/sbin/qore-readonly-telemetry snapshot
